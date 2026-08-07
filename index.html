@@ -148,9 +148,10 @@
                 </ul>
               </div>
               <dl class="proj__stats">
+                <div><dt>Detection</dt><dd>100<span class="unit">%</span> <span class="unit">&ge;4 cm</span></dd></div>
+                <div><dt>Detect latency</dt><dd>0.10<span class="unit">s</span></dd></div>
+                <div><dt>Blind within</dt><dd>11<span class="unit">cm</span></dd></div>
                 <div><dt>IK solution pool</dt><dd>120</dd></div>
-                <div><dt>Candidate plans</dt><dd>8</dd></div>
-                <div><dt>Replan latency</dt><dd>1&ndash;3<span class="unit">s</span></dd></div>
               </dl>
             </li>
 
@@ -338,6 +339,73 @@
             </p>
           </figure>
 
+
+          <figure class="bench">
+            <figcaption class="bench__cap">
+              <h3>Obstacle detection &mdash; UR12e replanning</h3>
+              <p>Synthetic frames with known ground truth, through the detector&rsquo;s own callback.</p>
+              <ul class="legend"><li><span class="sw sw--py"></span>Detected</li><li><span class="sw sw--cpp"></span>Missed</li></ul>
+            </figcaption>
+            <table class="bench__table">
+              <thead>
+                <tr><th scope="col">Obstacle radius</th><th scope="col">Detected</th>
+                    <th scope="col">Centroid error</th><th scope="col" class="ta-r">Latency</th>
+                    <th scope="col" class="viz-h">40 trials</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">2 cm</th><td>0 / 40</td><td>&mdash;</td><td class="ta-r">&mdash;</td>
+                    <td class="viz"><span class="bar bar--cpp" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">3 cm</th><td>0 / 40</td><td>&mdash;</td><td class="ta-r">&mdash;</td>
+                    <td class="viz"><span class="bar bar--cpp" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">4 cm</th><td><b>40 / 40</b></td><td>2.3 mm</td><td class="ta-r">0.10 s</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">6 cm</th><td><b>40 / 40</b></td><td>2.1 mm</td><td class="ta-r">0.10 s</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">10 cm</th><td><b>40 / 40</b></td><td>2.1 mm</td><td class="ta-r">0.10 s</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:100%"></span></td></tr>
+              </tbody>
+            </table>
+            <p class="bench__note">
+              Below about 4 cm an object returns fewer points than the detector&rsquo;s threshold and is
+              never seen. Above it the thing saturates &mdash; size stops mattering, the centroid lands
+              within ~2 mm of truth, and detection takes two frames at 20 Hz. Zero false positives in
+              300 frames with the arm in view. The pipeline runs in 2.47 ms against a 50 ms budget,
+              so latency is set by the debounce counter, not by compute.
+            </p>
+          </figure>
+
+          <figure class="bench">
+            <figcaption class="bench__cap">
+              <h3>&hellip;and where it goes blind</h3>
+              <p>An obstacle walked in toward the forearm, 25 trials per distance.</p>
+            </figcaption>
+            <table class="bench__table">
+              <thead>
+                <tr><th scope="col">Distance to nearest link</th><th scope="col">Detected</th>
+                    <th scope="col" class="viz-h">25 trials</th></tr>
+              </thead>
+              <tbody>
+                <tr class="is-mine"><th scope="row">8 cm</th><td><b>0%</b></td>
+                    <td class="viz"><span class="bar bar--cpp" style="--w:100%"></span></td></tr>
+                <tr class="is-mine"><th scope="row">10 cm</th><td><b>0%</b></td>
+                    <td class="viz"><span class="bar bar--cpp" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">11 cm</th><td>76%</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:76%"></span><span class="bar bar--cpp" style="--w:24%"></span></td></tr>
+                <tr><th scope="row">12 cm</th><td>100%</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:100%"></span></td></tr>
+                <tr><th scope="row">30 cm</th><td>100%</td>
+                    <td class="viz"><span class="bar bar--py" style="--w:100%"></span></td></tr>
+              </tbody>
+            </table>
+            <p class="bench__note">
+              This is the number worth knowing, and I would rather publish it than not.
+              <code>ARM_SEG_RADIUS</code> carves a 12 cm tube around the kinematic chain and everything
+              inside it is discarded as the robot&rsquo;s own body &mdash; so a hand closer than about
+              11 cm to a link is <em>invisible</em>, not detected late. It is a deliberate trade
+              against phantom detections off the arm itself, but it means the safety claim is
+              &ldquo;avoids what it can see&rdquo;, and things within 11 cm are not in that set.
+            </p>
+          </figure>
 
           <figure class="bench">
             <figcaption class="bench__cap">
