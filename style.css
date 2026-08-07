@@ -325,6 +325,10 @@ a { color: inherit; }
 .bench__table tbody td { font: 400 13px/1.4 var(--mono); color: var(--ink-2); }
 .bench__table tbody tr { border-bottom: 1px solid var(--rule); }
 .bench__table tbody tr:hover { background: var(--paper-3); }
+.bench__table tr.is-mine { background: var(--signal-w); }
+.bench__table tr.is-mine:hover { background: var(--signal-w); }
+.bench__table tr.is-mine th, .bench__table tr.is-mine td { color: var(--ink); }
+.bench__table tbody td a { font-size: 12px; }
 .bench__table b { color: var(--signal); font-weight: 600; }
 .ta-r { text-align: right !important; }
 

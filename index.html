@@ -338,6 +338,51 @@
             </p>
           </figure>
 
+
+          <figure class="bench">
+            <figcaption class="bench__cap">
+              <h3>Garment folding, against the literature</h3>
+              <p>Published figures, each on its own task. Not a head-to-head.</p>
+            </figcaption>
+            <table class="bench__table">
+              <thead>
+                <tr><th scope="col">System</th><th scope="col">Reported</th>
+                    <th scope="col">Measured on</th><th scope="col" class="ta-r">Source</th></tr>
+              </thead>
+              <tbody>
+                <tr class="is-mine"><th scope="row">This project <span class="sub">ACT / Diffusion Policy / smolVLA</span></th>
+                    <td><b>60.4%</b> avg, 78% peak</td>
+                    <td>Bimanual multi-garment folding, 4 categories, Isaac&nbsp;Sim</td>
+                    <td class="ta-r">&mdash;</td></tr>
+                <tr><th scope="row">SpeedFolding <span class="sub">Avigal et al., IROS 2022</span></th>
+                    <td>93%, &lt;120 s per fold</td>
+                    <td>Real garments from a random initial configuration, engineered bimanual primitives, 4,300 annotated actions</td>
+                    <td class="ta-r"><a class="inline" href="https://arxiv.org/abs/2208.10552" target="_blank" rel="noopener">2208.10552</a></td></tr>
+                <tr><th scope="row">ACT <span class="sub">Zhao et al., RSS 2023</span></th>
+                    <td>80&ndash;90%</td>
+                    <td>Six fine-grained bimanual tasks &mdash; battery slotting, condiment cup. Rigid objects</td>
+                    <td class="ta-r"><a class="inline" href="https://arxiv.org/abs/2304.13705" target="_blank" rel="noopener">2304.13705</a></td></tr>
+                <tr><th scope="row">smolVLA <span class="sub">Hugging Face, 2025</span></th>
+                    <td>78.3%</td>
+                    <td>SO100 pick-place, stacking, sorting. Rigid objects</td>
+                    <td class="ta-r"><a class="inline" href="https://huggingface.co/blog/smolvla" target="_blank" rel="noopener">blog</a></td></tr>
+                <tr><th scope="row">Diffusion Policy <span class="sub">Chi et al., RSS 2023</span></th>
+                    <td>+46.9% over prior SOTA</td>
+                    <td>12 tasks across 4 manipulation benchmarks</td>
+                    <td class="ta-r"><a class="inline" href="https://arxiv.org/abs/2303.04137" target="_blank" rel="noopener">2303.04137</a></td></tr>
+              </tbody>
+            </table>
+            <p class="bench__note">
+              Read this as context, not a leaderboard &mdash; no two rows share a task, a robot or a
+              success criterion. Two things it does show. The 78&ndash;90% those architectures report is
+              on <em>rigid</em> objects; none of it is deformables, which is the part that makes garments
+              hard. And the one row that <em>is</em> garment folding, SpeedFolding at 93%, gets there with
+              engineered bimanual action primitives and 4,300 annotated actions rather than an
+              end-to-end learned policy. The distance between 60.4% and 93% is mostly that gap, and
+              closing it is what the sim-to-real work is for.
+            </p>
+          </figure>
+
           <p class="bench__meta">
             <svg class="ico ico--sm" aria-hidden="true"><use href="#i-terminal"/></svg>
             Intel Xeon 2.10 GHz · g++ 13.3 <code>-O2</code> · Python 3.11, numpy 2.4. Nothing is
