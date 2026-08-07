@@ -1,116 +1,501 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mohammed Abdul Rahman | Robotics Engineer</title>
-  <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mohammed Abdul Rahman — Robotics Engineer</title>
+<meta name="description" content="Robotics engineer working on motion planning, manipulation and physical AI. MS Robotics at Northeastern University, Advanced Robotics and AI intern at Siemens.">
+<meta name="author" content="Mohammed Abdul Rahman">
+<meta property="og:title" content="Mohammed Abdul Rahman — Robotics Engineer">
+<meta property="og:description" content="Motion planning, manipulation and physical AI. Planners written from scratch, benchmarked rather than estimated.">
+<meta property="og:type" content="website">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <nav>
-      <div class="logo">Mohammed Abdul Rahman</div>
-      <ul class="nav-links">
-        <li><a href="#about">About</a></li>
-        <li><a href="#experience">Experience</a></li>
-        <li><a href="#projects">Projects</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- Lucide icons (ISC), plus the two brand marks. Single source so stroke and size stay consistent. -->
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7 0-.7 0-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></symbol>
+    <symbol id="i-linkedin" viewBox="0 0 24 24"><path fill="currentColor" d="M20.4 20.4h-3.6v-5.6c0-1.3 0-3-1.9-3s-2.1 1.4-2.1 2.9v5.7H9.4V9h3.4v1.6h.1a3.8 3.8 0 0 1 3.4-1.9c3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2zm1.8 13H3.5V9h3.6v11.4zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 1 .8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7c0-1-.8-1.7-1.8-1.7z"/></symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- ── left rail ───────────────────────────────────────────────────── -->
+  <aside class="rail">
+    <div class="rail__top">
+      <a class="mark" href="#main" aria-label="Mohammed Abdul Rahman, top of page">
+        <span class="mark__initials">MAR</span>
+        <span class="mark__rule" aria-hidden="true"></span>
+      </a>
+    </div>
+
+    <nav class="rail__nav" aria-label="Sections">
+      <ol>
+        <li><a href="#intro"    data-nav><span class="num">01</span><span class="lbl">Intro</span></a></li>
+        <li><a href="#work"     data-nav><span class="num">02</span><span class="lbl">Work</span></a></li>
+        <li><a href="#measured" data-nav><span class="num">03</span><span class="lbl">Measured</span></a></li>
+        <li><a href="#stack"    data-nav><span class="num">04</span><span class="lbl">Stack</span></a></li>
+        <li><a href="#path"     data-nav><span class="num">05</span><span class="lbl">Path</span></a></li>
+        <li><a href="#contact"  data-nav><span class="num">06</span><span class="lbl">Contact</span></a></li>
+      </ol>
     </nav>
-    <section class="hero">
-      <h1><span id="typed"></span></h1>
-      <p>ROS Dev | Robotics Engineer | AI & Control Systems Enthusiast</p>
-      <a href="Resume.pdf" class="btn">Download Resume</a>
-    </section>
-  </header>
 
-  <main>
-    <section id="about" class="section">
-      <h2>About Me</h2>
-      <p>I am a robotics engineer specializing in ROS/ROS2, navigation, and control systems with over 4 years of hands-on experience. I led Team Robocon MJCET and contributed to national-level robotics competitions with full-stack robot development.</p>
-    </section>
+    <div class="rail__foot">
+      <a class="icolink" href="https://github.com/abdu7rahman" rel="me noopener" target="_blank">
+        <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
+      <a class="icolink" href="https://linkedin.com/in/abdu7rahman" rel="me noopener" target="_blank">
+        <svg class="ico" aria-hidden="true"><use href="#i-linkedin"/></svg><span>LinkedIn</span></a>
+    </div>
+  </aside>
 
-    <section id="experience" class="section">
-      <h2>Experience</h2>
-      <div class="timeline">
-        <div class="exp-card">
-          <h3>Team Robocon MJCET</h3>
-          <p><strong>Team Mentor</strong> (Aug 2024 - Present)</p>
-          <p><strong>Team Lead</strong> (Jul 2023 - Aug 2024)</p>
-          <p><strong>Robotics Engineer</strong> (Jul 2022 - Aug 2023)</p>
-          <p><strong>Programmer</strong> (Aug 2021 - Jul 2022)</p>
-          <p><strong>Junior Programmer</strong> (Dec 2020 - Aug 2021)</p>
+  <!-- ── content ─────────────────────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- hero -->
+    <header class="hero" id="intro">
+      <div class="grid">
+        <p class="hero__eyebrow">Robotics engineer</p>
+        <h1 class="hero__name">Mohammed<br>Abdul&nbsp;Rahman</h1>
+        <p class="hero__lede">
+          I build motion software — global planners, local controllers, reactive replanning for
+          manipulators, and the bringup that makes any of it run on real hardware. Currently working
+          on physical AI: learned policies for bimanual manipulation, and getting them off the
+          simulator and onto a UR12e.
+        </p>
+
+        <dl class="hero__meta">
+          <div><dt>Now</dt><dd>Advanced Robotics &amp; AI intern, Siemens</dd></div>
+          <div><dt>Study</dt><dd>MS Robotics (ECE), Northeastern University &rsquo;27</dd></div>
+          <div><dt>Before</dt><dd>Team Robocon MJCET, five seasons</dd></div>
+          <div><dt>Based</dt><dd><svg class="ico ico--sm" aria-hidden="true"><use href="#i-pin"/></svg>Berkeley, California</dd></div>
+        </dl>
+
+        <div class="hero__actions">
+          <a class="btn btn--solid" href="mailto:mohammedabdulr.1@northeastern.edu">
+            <svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg>
+            <span>mohammedabdulr.1@northeastern.edu</span>
+          </a>
+          <a class="btn" href="Resume.pdf">
+            <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span>Résumé (PDF)</span>
+          </a>
         </div>
-        <div class="exp-card">
-          <h3>Consciente Technologies</h3>
-          <p><strong>Robotics Engineer Intern</strong> (Aug 2022 - Sep 2022)</p>
+      </div>
+    </header>
+
+    <!-- work -->
+    <section class="sec" id="work">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">02</span>
+          <h2>Work</h2>
+          <p class="sec__note">Six systems worth showing. Everything else lives on GitHub.</p>
+        </div>
+
+        <div class="sec__body">
+          <ol class="projects">
+
+            <li class="proj">
+              <span class="proj__idx">01</span>
+              <div class="proj__main">
+                <h3 class="proj__title">Bimanual deformable garment manipulation</h3>
+                <p class="proj__desc">
+                  Trained and evaluated ACT, Diffusion Policy and smolVLA on multi-garment folding in a
+                  bimanual setup in Isaac Sim. Sim-to-real transfer onto a UR12e is in progress.
+                </p>
+                <ul class="chips">
+                  <li>Isaac&nbsp;Sim</li><li>ACT</li><li>Diffusion&nbsp;Policy</li><li>smolVLA</li><li>Physical&nbsp;AI</li>
+                </ul>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Success rate</dt><dd>60.4<span class="unit">%</span></dd></div>
+                <div><dt>Peak, long top</dt><dd>78<span class="unit">%</span></dd></div>
+                <div><dt>Categories</dt><dd>4</dd></div>
+              </dl>
+            </li>
+
+            <li class="proj">
+              <span class="proj__idx">02</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">
+                    Dynamic bin picking with reactive replanning
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  UR12e and a Robotiq Hand-E. A RealSense depth pipeline with workspace filtering, robot
+                  self-masking and colour-based body exclusion isolates live obstacles, so when a hand
+                  enters the planned path the controller cancels cleanly, waits for the arm to settle and
+                  re-plans from the current state.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2 Jazzy</li><li>MoveIt&nbsp;2</li><li>BIT*</li><li>RealSense&nbsp;D435i</li><li>OctoMap</li>
+                </ul>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>IK solution pool</dt><dd>120</dd></div>
+                <div><dt>Candidate plans</dt><dd>8</dd></div>
+                <div><dt>Replan latency</dt><dd>1&ndash;3<span class="unit">s</span></dd></div>
+              </dl>
+            </li>
+
+            <li class="proj">
+              <span class="proj__idx">03</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
+                    Reactive autonomous navigation stack
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  A planner/controller architecture written from scratch for TurtleBot4 — no Nav2 behaviour
+                  tree server. A*, Theta*, SMAC and RRT sit behind one global interface; DWA has shipped,
+                  with Pure Pursuit, Stanley, TEB and MPPI in progress. The C++ port is
+                  <a class="inline" href="#measured">benchmarked below</a>.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2 Jazzy</li><li>C++</li><li>TurtleBot4</li><li>nav2_costmap_2d</li>
+                </ul>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Global planners</dt><dd>4</dd></div>
+                <div><dt>Local controllers</dt><dd>5</dd></div>
+                <div><dt>A* after C++ port</dt><dd>99&ndash;192<span class="unit">×</span></dd></div>
+              </dl>
+            </li>
+
+            <li class="proj">
+              <span class="proj__idx">04</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/K.A.L.B" target="_blank" rel="noopener">
+                    K.A.L.B — kinematical autonomous legged robot
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  A twelve-axis quadruped with locomotion modelled after the MIT Cheetah. Gait stability
+                  and autonomous navigation validated with SLAM in Gazebo. Now collecting locomotion and
+                  obstacle-avoidance demonstrations for inverse reinforcement learning, aimed at a
+                  Unitree Go2.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2</li><li>Gazebo</li><li>gmapping</li><li>AMCL</li><li>Inverse&nbsp;RL</li>
+                </ul>
+                <a class="demo" href="https://youtu.be/ESjXvtUxYeM" target="_blank" rel="noopener">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch it walk</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Actuated axes</dt><dd>12</dd></div>
+                <div><dt>Legs</dt><dd>4</dd></div>
+                <div><dt>Gait</dt><dd>Trot</dd></div>
+              </dl>
+            </li>
+
+            <li class="proj">
+              <span class="proj__idx">05</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/Custom-DWA-Local-Planner" target="_blank" rel="noopener">
+                    Custom DWA local planner
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  The dynamic window approach written from scratch instead of pulling in
+                  <code>nav2_dwb_controller</code> — velocity sampling inside the dynamic constraints,
+                  trajectory rollout, cost evaluation on goal distance and clearance, and an RViz marker
+                  for every candidate so you can see what it rejected.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2 Humble</li><li>TurtleBot3</li><li>RViz</li>
+                </ul>
+                <a class="demo" href="https://youtu.be/yFtexC6-Z1g" target="_blank" rel="noopener">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the rollouts</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>GitHub stars</dt><dd>6</dd></div>
+                <div><dt>Written from</dt><dd>Scratch</dd></div>
+              </dl>
+            </li>
+
+            <li class="proj">
+              <span class="proj__idx">06</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/pincher-x100-puppet-control" target="_blank" rel="noopener">
+                    PincherX100 puppet control
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  Vision-only teleoperation. Hand position maps to waist, shoulder, elbow and wrist; a
+                  thumb-index pinch drives the gripper through MoveIt 2. No headset, no controller, and
+                  not a defensible way to run a manipulator — a proof of concept for how quickly an
+                  intuitive interface can be prototyped.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2 Humble</li><li>MediaPipe</li><li>MoveIt&nbsp;2</li>
+                </ul>
+                <a class="demo" href="https://www.youtube.com/watch?v=WEzc5oIadew" target="_blank" rel="noopener">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the demo</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Tracking rate</dt><dd>30<span class="unit">fps</span></dd></div>
+                <div><dt>Hand-to-motion</dt><dd>~200<span class="unit">ms</span></dd></div>
+                <div><dt>Mapped joints</dt><dd>4</dd></div>
+              </dl>
+            </li>
+
+          </ol>
         </div>
       </div>
     </section>
 
-    <section id="projects" class="section">
-      <h2>Projects</h2>
-      <div class="projects">
-        <div class="project">
-          <h3>GAMORA</h3>
-          <video controls muted>
-            <source src="videos/gamora.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-          <p>VR-controlled 5-DOF robotic arm using Oculus Quest + MoveIt.</p>
+    <!-- measured -->
+    <section class="sec sec--band" id="measured">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">03</span>
+          <h2>Measured</h2>
+          <p class="sec__note">Claims I could check, checked.</p>
         </div>
-        <div class="project">
-          <h3>KALB</h3>
-          <video controls muted>
-            <source src="videos/kalb.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-          <p>12-axis quadruped robot with CHAMP framework and autonomous SLAM navigation.</p>
-        </div>
-        <div class="project">
-          <h3>Custom DWA Local Planner</h3>
-          <video controls muted>
-            <source src="videos/dwa.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-          <p>Built a ROS2 DWA planner from scratch for real-time navigation in Gazebo.</p>
-        </div>
-        <div class="project">
-          <h3>Swerve Drive</h3>
-          <video controls muted>
-            <source src="videos/swerve.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-          <p>Omnidirectional drive system with URDF, odometry, and sensor fusion.</p>
+
+        <div class="sec__body">
+          <p class="lead">
+            My résumé said porting the planners to C++ made them faster. That was an impression, so I wrote
+            a harness that loads the real modules and times them on identical maps. It found something I
+            did not expect.
+          </p>
+
+          <figure class="bench">
+            <figcaption class="bench__cap">
+              <h3>A* global planner</h3>
+              <p>Median of five runs on 8-connected costmaps.</p><ul class="legend"><li><span class="sw sw--py"></span>Python</li><li><span class="sw sw--cpp"></span>C++</li></ul>
+            </figcaption>
+            <table class="bench__table">
+              <thead>
+                <tr><th scope="col">Map</th><th scope="col">Python</th><th scope="col">C++</th>
+                    <th scope="col" class="ta-r">Speedup</th><th scope="col" class="viz-h">Relative (log)</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">128 × 128</th><td>7.50 ms</td><td>0.046 ms</td><td class="ta-r"><b>163×</b></td>
+                    <td class="viz"><span class="bar bar--py" style="--w:60%"></span><span class="bar bar--cpp" style="--w:18%"></span></td></tr>
+                <tr><th scope="row">256 × 256</th><td>110.26 ms</td><td>1.115 ms</td><td class="ta-r"><b>99×</b></td>
+                    <td class="viz"><span class="bar bar--py" style="--w:82%"></span><span class="bar bar--cpp" style="--w:44%"></span></td></tr>
+                <tr><th scope="row">384 × 384</th><td>884.21 ms</td><td>4.598 ms</td><td class="ta-r"><b>192×</b></td>
+                    <td class="viz"><span class="bar bar--py" style="--w:99%"></span><span class="bar bar--cpp" style="--w:56%"></span></td></tr>
+              </tbody>
+            </table>
+            <p class="bench__note">
+              Not all of that is the language. The C++ port also introduced a closed set, so it expands
+              21,015 nodes where Python expands 61,631 on the same map. Roughly 3× is algorithmic; the rest
+              is a <code>heapq</code> of tuples against a <code>priority_queue</code> of PODs.
+            </p>
+          </figure>
+
+          <figure class="bench">
+            <figcaption class="bench__cap">
+              <h3>DWA rollout and scoring</h3>
+              <p>Median of 25 runs, 2.5 s horizon at dt = 0.1.</p><ul class="legend"><li><span class="sw sw--py"></span>Python</li><li><span class="sw sw--cpp"></span>C++</li></ul>
+            </figcaption>
+            <table class="bench__table">
+              <thead>
+                <tr><th scope="col">Window</th><th scope="col">Python</th><th scope="col">C++</th>
+                    <th scope="col" class="ta-r">Per trajectory</th><th scope="col" class="viz-h">Relative (log)</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Accel-limited <span class="sub">one control cycle, ~30 traj.</span></th>
+                    <td>0.3037 ms</td><td>0.0098 ms</td><td class="ta-r"><b>26×</b></td>
+                    <td class="viz"><span class="bar bar--py" style="--w:34%"></span><span class="bar bar--cpp" style="--w:6%"></span></td></tr>
+                <tr><th scope="row">Full velocity space <span class="sub">2,626 trajectories</span></th>
+                    <td>4.2121 ms</td><td>1.0570 ms</td><td class="ta-r"><b>4×</b></td>
+                    <td class="viz"><span class="bar bar--py" style="--w:55%"></span><span class="bar bar--cpp" style="--w:44%"></span></td></tr>
+              </tbody>
+            </table>
+            <p class="bench__note">
+              The gap <em>shrinks</em> as the batch grows. At the window the controller actually evaluates
+              each cycle, numpy pays fixed per-call overhead across a few dozen trajectories and loses by
+              26×. Give it 2,626 and vectorisation amortises that down to 4×. So the C++ port buys the
+              most where it matters least — both clear a 20 Hz budget on the real window — and the global
+              planner is where it earns its keep.
+            </p>
+          </figure>
+
+          <p class="bench__meta">
+            <svg class="ico ico--sm" aria-hidden="true"><use href="#i-terminal"/></svg>
+            Intel Xeon 2.10 GHz · g++ 13.3 <code>-O2</code> · Python 3.11, numpy 2.4. Nothing is
+            reimplemented: both harnesses call the planners' own code.
+            <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav/tree/main/bench" target="_blank" rel="noopener">Harness and method</a>.
+          </p>
         </div>
       </div>
     </section>
 
-    <section id="contact" class="section">
-      <h2>Contact</h2>
-      <p>Email: <a href="mailto:abdulrahmantrm@gmail.com">abdulrahmantrm@gmail.com</a></p>
-      <p>LinkedIn: <a href="https://www.linkedin.com/in/abdu7rahman/">abdu7rahman</a></p>
-      <p>GitHub: <a href="https://github.com/abdu7rahman">abdu7rahman</a></p>
+    <!-- stack -->
+    <section class="sec" id="stack">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">04</span>
+          <h2>Stack</h2>
+          <p class="sec__note">Things I have shipped something with, not things I have read about.</p>
+        </div>
+        <div class="sec__body">
+          <dl class="stack">
+            <div><dt>Frameworks</dt><dd>ROS / ROS 2 (Humble, Jazzy) · MoveIt 2 · Nav2 · Gazebo · RViz · Isaac Sim · Autoware</dd></div>
+            <div><dt>Planning</dt><dd>A* · Theta* · SMAC · RRT / RRT-Connect · BIT* · DWA · Pure Pursuit · Stanley · TEB · MPPI</dd></div>
+            <div><dt>Physical AI</dt><dd>ACT · Diffusion Policy · smolVLA · inverse RL · sim-to-real transfer · foundation models</dd></div>
+            <div><dt>Perception</dt><dd>YOLO · OpenCV · depth estimation · sensor fusion · OctoMap · visual SLAM (PySLAM)</dd></div>
+            <div><dt>Hardware</dt><dd>UR12e / UR5 · Robotiq Hand-E &amp; 2F-85 · PincherX100 · TurtleBot3/4 · Unitree Go2 · Jetson Nano · Arduino</dd></div>
+            <div><dt>Sensors</dt><dd>LiDAR · IMU · wheel encoders · Intel RealSense D435i · GPS/GNSS RTK</dd></div>
+            <div><dt>Languages</dt><dd>Python · C++ · C · URDF / XACRO · CMake</dd></div>
+            <div><dt>Design</dt><dd>SolidWorks · OnShape · Eagle PCB</dd></div>
+          </dl>
+        </div>
+      </div>
     </section>
+
+    <!-- path -->
+    <section class="sec sec--band" id="path">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">05</span>
+          <h2>Path</h2>
+          <p class="sec__note">Five ABU Robocon seasons, then grad school.</p>
+        </div>
+        <div class="sec__body">
+          <ol class="path">
+            <li>
+              <p class="path__when">2026 &ndash;</p>
+              <div class="path__what">
+                <h3>Advanced Robotics and AI intern <span class="at">Siemens</span></h3>
+                <p>Berkeley, California. On-site, from June 2026.</p>
+              </div>
+            </li>
+            <li>
+              <p class="path__when">2026</p>
+              <div class="path__what">
+                <h3>Graduate lab assistant <span class="at">Northeastern University</span></h3>
+                <p>
+                  ROS 2 bag collection from a Ford Mustang Mach-E autonomous vehicle platform, with visual
+                  SLAM run over the recorded drives for trajectory analysis. Configured the UR12e URDF with
+                  Robotiq gripper integration and built the MoveIt 2 planning stack for faculty research,
+                  plus an end-effector camera mount now used across several setups.
+                </p>
+              </div>
+            </li>
+            <li>
+              <p class="path__when">2025 &ndash; 27</p>
+              <div class="path__what">
+                <h3>MS Robotics, Electrical &amp; Computer Engineering <span class="at">Northeastern University</span></h3>
+                <p>Expected May 2027. Robotics Lab.</p>
+              </div>
+            </li>
+            <li>
+              <p class="path__when">2020 &ndash; 25</p>
+              <div class="path__what">
+                <h3>Team Robocon MJCET</h3>
+                <p class="path__roles">Junior programmer → programmer → robotics control engineer → team lead/captain → team mentor</p>
+                <p>
+                  Five ABU Robocon seasons. As team lead I took the team to its first national appearance
+                  in over five years at <em>Harvest Day</em> (2024) — two holonomic drives with ball
+                  shooters, pneumatic seedling collection and silo placement, on a ROS stack with custom
+                  waypoint navigation, colour-based ball detection, and a learned policy that chose silo
+                  placements against the opponent&rsquo;s moves.
+                </p>
+                <p>
+                  Before that: <em>lagori</em> (2022), an omni shooter paired with a swerve robot, computer
+                  vision tracking incoming balls and a model predicting where the stack would fall;
+                  <em>Angkor Wat</em> (2023), omni and mecanum platforms detecting rings and poles; and
+                  <em>pitch-pot</em> (2021), a holonomic chassis with pneumatic arrow handling and a
+                  spring-based shooter. Mentored the 2025 basketball season.
+                </p>
+              </div>
+            </li>
+            <li>
+              <p class="path__when">2020 &ndash; 24</p>
+              <div class="path__what">
+                <h3>BE Computer Science &amp; Engineering <span class="at">Osmania University</span></h3>
+                <p>Hyderabad, India.</p>
+              </div>
+            </li>
+            <li>
+              <p class="path__when">2022</p>
+              <div class="path__what">
+                <h3>Robotics engineer intern <span class="at">Consciente Technologies</span></h3>
+                <p>
+                  Computed Denavit&ndash;Hartenberg parameters for a custom 5-DOF manipulator and configured
+                  the MoveIt planning stack for integrated control, then implemented a coordinate-based
+                  autonomous navigation system taking terminal goal inputs and deployed it on physical
+                  hardware.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- contact -->
+    <section class="sec sec--end" id="contact">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">06</span>
+          <h2>Contact</h2>
+        </div>
+        <div class="sec__body">
+          <p class="closing">
+            Open to Summer 2027 robotics internships — physical AI, manipulation, motion planning.
+            Happy to talk about any of the above, including the parts that did not work.
+          </p>
+          <ul class="contact">
+            <li><a href="mailto:mohammedabdulr.1@northeastern.edu">
+              <svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg>
+              <span>mohammedabdulr.1@northeastern.edu</span>
+              <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
+            <li><a href="https://linkedin.com/in/abdu7rahman" target="_blank" rel="noopener me">
+              <svg class="ico" aria-hidden="true"><use href="#i-linkedin"/></svg>
+              <span>linkedin.com/in/abdu7rahman</span>
+              <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
+            <li><a href="https://github.com/abdu7rahman" target="_blank" rel="noopener me">
+              <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>
+              <span>github.com/abdu7rahman</span>
+              <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
+            <li><a href="Resume.pdf">
+              <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg>
+              <span>Résumé (PDF)</span>
+              <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
+          </ul>
+        </div>
+      </div>
+
+      <footer class="foot">
+        <div class="grid">
+          <p class="foot__l">Mohammed Abdul Rahman</p>
+          <p class="foot__r">Built by hand. No template.</p>
+        </div>
+      </footer>
+    </section>
+
   </main>
+</div>
 
-  <footer>
-    <p>&copy; 2025 Mohammed Abdul Rahman. All rights reserved.</p>
-  </footer>
-
-  <script>
-    var typed = new Typed('#typed', {
-      strings: [
-        "Pushing the Boundaries of Robotics",
-        "Building Intelligent Robots",
-        "ROS Developer & Control Systems Engineer"
-      ],
-      typeSpeed: 50,
-      backSpeed: 30,
-      loop: true
-    });
-  </script>
+<script src="main.js" defer></script>
 </body>
 </html>
