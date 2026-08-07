@@ -5,7 +5,10 @@
   "use strict";
 
   var REPO = "abdu7rahman/reactive_autonomous_nav";
-  var BRANCHES = ["main", "feat/complete-planners"];   // whichever has the fixes
+  // The fix branch first: main still carries the Bresenham line-of-sight that
+// returns paths through walls, and this page should not demonstrate that. Once
+// the branch merges and is deleted, the fallback picks main up automatically.
+  var BRANCHES = ["feat/complete-planners", "main"];
   var MODULES = {
     astar:      { file: "astar_planner.py",      cls: "AStarPlannerNode",      call: "_astar" },
     theta_star: { file: "theta_star_planner.py", cls: "ThetaStarPlannerNode",  call: "_theta_star" },
