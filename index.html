@@ -90,6 +90,9 @@
             <svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg>
             <span>mohammedabdulr.1@northeastern.edu</span>
           </a>
+          <a class="btn" href="demo.html">
+            <svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Run my planners</span>
+          </a>
           <a class="btn" href="Resume.pdf">
             <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span>Résumé (PDF)</span>
           </a>
@@ -103,10 +106,19 @@
         <div class="sec__label">
           <span class="tag">02</span>
           <h2>Work</h2>
-          <p class="sec__note">Six systems worth showing. Everything else lives on GitHub.</p>
+          <p class="sec__note">Five systems worth showing. Everything else lives on GitHub.</p>
         </div>
 
         <div class="sec__body">
+          <a class="tryit" href="demo.html">
+            <span class="tryit__tag">Interactive</span>
+            <span class="tryit__body">
+              <b>Run the planners yourself.</b> A*, Theta* and RRT are downloaded from the repo and
+              executed in your browser on a map you draw. Not a video &mdash; the actual search.
+            </span>
+            <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+          </a>
+
           <ol class="projects">
 
             <li class="proj">
@@ -237,23 +249,7 @@
               </dl>
             </li>
 
-            <li class="proj">
-              <span class="proj__idx">06</span>
-              <div class="proj__main">
-                <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/pincher-x100-puppet-control" target="_blank" rel="noopener">
-                    PincherX100 puppet control
-                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
-                  </a>
-                </h3>
-                <p class="proj__desc">
-                  Vision-only teleoperation. Hand position maps to waist, shoulder, elbow and wrist; a
-                  thumb-index pinch drives the gripper through MoveIt 2. No headset, no controller, and
-                  not a defensible way to run a manipulator — a proof of concept for how quickly an
-                  intuitive interface can be prototyped.
-                </p>
-                <ul class="chips">
-                  <li>ROS&nbsp;2 Humble</li><li>MediaPipe</li><li>MoveIt&nbsp;2</li>
+            <li>MediaPipe</li><li>MoveIt&nbsp;2</li>
                 </ul>
                 <a class="demo" href="https://www.youtube.com/watch?v=WEzc5oIadew" target="_blank" rel="noopener">
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the demo</span></a>
@@ -476,7 +472,7 @@
             <div><dt>Planning</dt><dd>A* · Theta* · SMAC · RRT / RRT-Connect · BIT* · DWA · Pure Pursuit · Stanley · TEB · MPPI</dd></div>
             <div><dt>Physical AI</dt><dd>ACT · Diffusion Policy · smolVLA · inverse RL · sim-to-real transfer · foundation models</dd></div>
             <div><dt>Perception</dt><dd>YOLO · OpenCV · depth estimation · sensor fusion · OctoMap · visual SLAM (PySLAM)</dd></div>
-            <div><dt>Hardware</dt><dd>UR12e / UR5 · Robotiq Hand-E &amp; 2F-85 · PincherX100 · TurtleBot3/4 · Unitree Go2 · Jetson Nano · Arduino</dd></div>
+            <div><dt>Hardware</dt><dd>UR12e / UR5 · Robotiq Hand-E &amp; 2F-85 · TurtleBot3/4 · Unitree Go2 · Jetson Nano · Arduino</dd></div>
             <div><dt>Sensors</dt><dd>LiDAR · IMU · wheel encoders · Intel RealSense D435i · GPS/GNSS RTK</dd></div>
             <div><dt>Languages</dt><dd>Python · C++ · C · URDF / XACRO · CMake</dd></div>
             <div><dt>Design</dt><dd>SolidWorks · OnShape · Eagle PCB</dd></div>

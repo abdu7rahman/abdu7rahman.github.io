@@ -477,3 +477,27 @@ a.inline:hover { border-color: var(--signal); }
   .bench__table thead th:nth-child(3), .bench__table tbody td:nth-child(3) { display: none; }
   .hero__actions .btn span { font-size: 12px; }
 }
+
+/* ── interactive callout ───────────────────────────────────── */
+.tryit {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 18px;
+  padding: 18px 20px; margin-bottom: 8px;
+  text-decoration: none; color: var(--ink);
+  border: 1px solid var(--signal); border-radius: 2px;
+  background: var(--signal-w);
+  transition: background .18s var(--ease), padding .22s var(--ease);
+}
+.tryit:hover { background: var(--paper-3); padding-left: 28px; }
+.tryit__tag {
+  font: 500 9.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+  color: var(--signal); border: 1px solid var(--signal); border-radius: 2px;
+  padding: 6px 8px; white-space: nowrap;
+}
+.tryit__body { font-size: .9375rem; line-height: 1.55; color: var(--ink-2); }
+.tryit__body b { color: var(--ink); }
+.tryit .ico--link { color: var(--signal); transition: transform .22s var(--ease); }
+.tryit:hover .ico--link { transform: translate(3px, -3px); }
+@media (max-width: 620px) {
+  .tryit { grid-template-columns: 1fr; gap: 10px; }
+}
