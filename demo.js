@@ -517,6 +517,26 @@
     "        if clear(wps):",
     "            return wps, 'side %s%+.2f' % (axis, off)",
     "    return None, 'all detours blocked'",
+    "def _grip_state():",
+    "    # run_demo()'s gripper, from the leg the queue is on. Open is 1.",
+    "    d = _ARM",
+    "    leg = d.get('leg', '')",
+    "    q = d['queue'][d['qi']] if d.get('queue') else None",
+    "    total = float(q[2]) if q else 0.0",
+    "    prog = 1.0 if total <= 0 else min(1.0, max(0.0, 1.0 - d['dwell'] / total))",
+    "    if leg == 'gripper closing': return 1.0 - prog, prog > 0.55",
+    "    if leg == 'to PLACE': return 0.0, True",
+    "    if leg == 'gripper opening': return prog, prog < 0.45",
+    "    return 1.0, False",
+    "def _payload():",
+    "    # The thing being moved. It sits at PICK until the gripper closes on it,",
+    "    # rides the tool to PLACE, and stays there until the cycle comes round.",
+    "    import numpy as np",
+    "    d = _ARM; w = arm_waypoints()",
+    "    if 'pay' not in d: d['pay'] = [float(v) for v in w['pick']]",
+    "    grip, held = _grip_state()",
+    "    if held: d['pay'] = [float(v) for v in d['pos']]",
+    "    return d['pay'], float(grip), bool(held)",
     "def chase_reset_motion():",
     "    d = _ARM",
     "    q = chase_queue()",
@@ -567,6 +587,20 @@
     "        d['dwell'] -= dt",
     "        return d['leg'], d['leg'], d['detour_note']",
     "",
+    "    # A moved obstacle is a new problem, not a continuation of the old one.",
+    "    # The node re-injects its collision object once the thing shifts by",
+    "    # OBSTACLE_MOVE_EPS, so the recursion cap re-arms on the same threshold --",
+    "    # otherwise two detours exhaust the budget and the arm stops reacting",
+    "    # while the obstacle is still moving, which is not replanning, it is",
+    "    # having replanned.",
+    "    import numpy as _np",
+    "    if sphere is not None:",
+    "        prev = d.get('seen_at')",
+    "        if prev is None or float(_np.linalg.norm(sphere - prev)) > n.OBSTACLE_MOVE_EPS:",
+    "            d['seen_at'] = sphere.copy()",
+    "            d['replans'] = 0",
+    "    else:",
+    "        d['seen_at'] = None",
     "    # the watch loop: only worth checking once the sphere is real",
     "    if sphere is not None and d['replans'] < n.MAX_REPLAN_DEPTH:",
     "        path = _planned_path()",
@@ -585,6 +619,9 @@
     "        d['detour_wps'] = None",
     "        return d['leg'], 'PREEMPTED: ' + preempted, ''",
     "",
+    "    # Once on a detour, keep watching it. The route the arm is following is",
+    "    # what _planned_path returns, so the check above already covers it -- but",
+    "    # only while the budget allows, which is why the budget re-arms.",
     "    # move along whatever route is current",
     "    tgt = d['queue'][d['qi']][0]",
     "    route = [_v(p) for p in d['detour_wps']] if d.get('detour_wps') else [_v(tgt)]",
@@ -601,7 +638,9 @@
     "        d['dwell'] = d['queue'][d['qi']][2]",
     "        d['qi'] = (d['qi'] + 1) % len(d['queue'])",
     "        d['leg'] = d['queue'][d['qi']][1]",
-    "        if d['qi'] == 0: d['replans'] = 0        # new cycle, fresh replan budget",
+    "        if d['qi'] == 0:",
+    "            d['replans'] = 0                    # new cycle, fresh replan budget",
+    "            d['pay'] = [float(v) for v in arm_waypoints()['pick']]",
     "    return d['leg'], d['leg'], d['detour_note']",
     "def _proj_path(pts):",
     "    import numpy as np",
@@ -657,6 +696,14 @@
     "            du, dv = _project(s.to_camera(np.array([dxyz])))",
     "            det = [float(du[0]), float(dv[0])]",
     "            err = float(np.linalg.norm(dxyz - gt))",
+    "    # the payload, the gripper, and how far each joint is from the camera --",
+    "    # the renderer needs depth to make a near link thicker than a far one",
+    "    pay, grip, held = _payload()",
+    "    pcam = s.to_camera(np.array([pay]))",
+    "    ppu, ppv = _project(pcam)",
+    "    pay_uv = [float(ppu[0]), float(ppv[0]), float(max(1e-3, pcam[0][2]))]",
+    "    lcam = s.to_camera(P)",
+    "    depth = [float(max(1e-3, z)) for z in lcam[:, 2]]",
     "    return [[float(x) for x in pu], [float(y) for y in pv],",
     "            [int(r) << 16 | int(g) << 8 | int(b) for r, g, b in col],",
     "            ou, ov, orad, bool(hit), det, err,",
@@ -669,7 +716,7 @@
     "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg,",
     "            state, note, int(a['replans']), _proj_path(_planned_path()),",
     "            (_proj_one(sphere) if sphere is not None else []),",
-    "            float(n.SPHERE_RADIUS)]",
+    "            float(n.SPHERE_RADIUS), pay_uv, grip, held, depth]",
     "_RACE = {}",
     "RACE_CTRL = [('pure_pursuit_controller', 'PurePursuitControllerNode'),",
     "             ('stanley_controller', 'StanleyControllerNode'),",
@@ -2108,20 +2155,100 @@
         }
       }
 
-      // the arm chain, moving, so the self-filter has something to track
+      // The arm, drawn as an arm rather than as a wireframe: each link is a
+      // tapered shell between two joint housings, and the housings get a
+      // highlight so the chain reads as solid. Widths come from the joint
+      // depths the frame returns, so a link nearer the camera is thicker --
+      // without that a projected chain looks flat and toy-like.
       if (links.length) {
-        g.strokeStyle = "#5aa5af"; g.globalAlpha = 0.5; g.lineWidth = 2;
-        g.lineCap = "round";
-        g.beginPath();
-        chain.forEach(function (s) {
-          g.moveTo(links[s[0]][0], links[s[0]][1]);
-          g.lineTo(links[s[1]][0], links[s[1]][1]);
+        // 28 payload uv+z, 29 gripper opening, 30 held, 31 per-joint depth --
+        // the frame array is positional and these live past SPHERE_RADIUS.
+        var dep = f && f[31] ? f[31] : null;
+        var SHELL = "#3f5f66", EDGE = "#7fc3cd", HI = "#a9dbe2";
+        // A real arm tapers from a fat shoulder to a slim wrist, so the width
+        // comes mostly from position in the chain. Depth only nudges it, and
+        // is clamped: straight 1/z made a near joint thirty pixels across and
+        // a far one two, which draws a funnel rather than an arm.
+        var TAPER = [13, 12.5, 11, 9, 7, 6, 5.2, 4.4];
+        var NOMINAL = 1.9;                       // m, roughly plate centre
+        var rAt = function (i) {
+          var base = TAPER[Math.min(i, TAPER.length - 1)];
+          if (!dep) return base;
+          var k = NOMINAL / Math.max(0.35, dep[i]);
+          return base * Math.max(0.72, Math.min(1.35, k));
+        };
+        // payload first when it is behind the gripper, so the hand covers it
+        var pay = f && f[28] ? f[28] : null, held = !!(f && f[30]);
+
+        chain.forEach(function (sg) {
+          var a = links[sg[0]], b = links[sg[1]];
+          var ra = rAt(sg[0]) * 0.9, rb = rAt(sg[1]) * 0.9;
+          var dx = b[0] - a[0], dy = b[1] - a[1];
+          var L = Math.hypot(dx, dy) || 1;
+          var nx = -dy / L, ny = dx / L;
+          g.beginPath();
+          g.moveTo(a[0] + nx * ra, a[1] + ny * ra);
+          g.lineTo(b[0] + nx * rb, b[1] + ny * rb);
+          g.lineTo(b[0] - nx * rb, b[1] - ny * rb);
+          g.lineTo(a[0] - nx * ra, a[1] - ny * ra);
+          g.closePath();
+          g.fillStyle = SHELL; g.globalAlpha = 0.92; g.fill();
+          g.globalAlpha = 1; g.strokeStyle = EDGE; g.lineWidth = 1.1; g.stroke();
+          // a highlight down one side, which is what stops it reading as a bar
+          g.beginPath();
+          g.moveTo(a[0] + nx * ra * 0.45, a[1] + ny * ra * 0.45);
+          g.lineTo(b[0] + nx * rb * 0.45, b[1] + ny * rb * 0.45);
+          g.strokeStyle = HI; g.globalAlpha = 0.30; g.lineWidth = 1.4; g.stroke();
+          g.globalAlpha = 1;
         });
-        g.stroke();
-        g.fillStyle = "#5aa5af";
-        links.forEach(function (p) {
-          g.beginPath(); g.arc(p[0], p[1], 2.6, 0, 6.284); g.fill();
+        links.forEach(function (p, i) {
+          var r = rAt(i);
+          g.beginPath(); g.arc(p[0], p[1], r, 0, 6.284);
+          g.fillStyle = SHELL; g.fill();
+          g.strokeStyle = EDGE; g.lineWidth = 1.2; g.stroke();
+          g.beginPath(); g.arc(p[0] - r * 0.25, p[1] - r * 0.25, r * 0.34, 0, 6.284);
+          g.fillStyle = HI; g.globalAlpha = 0.4; g.fill(); g.globalAlpha = 1;
         });
+
+        // The gripper: two fingers on the wrist axis, opening with f[26].
+        var tp0 = links[links.length - 1], wp = links[links.length - 2] || tp0;
+        var gdx = tp0[0] - wp[0], gdy = tp0[1] - wp[1];
+        var gl = Math.hypot(gdx, gdy) || 1;
+        var ux = gdx / gl, uy = gdy / gl, px = -uy, py = ux;
+        var open = f && typeof f[29] === "number" ? f[29] : 1;
+        var rT = rAt(links.length - 1);
+        var span = rT * (0.55 + 1.15 * open), fl = rT * 1.9;
+        g.strokeStyle = EDGE; g.lineWidth = Math.max(2, rT * 0.42); g.lineCap = "round";
+        [1, -1].forEach(function (sgn) {
+          var bx = tp0[0] + px * span * sgn, by = tp0[1] + py * span * sgn;
+          g.beginPath();
+          g.moveTo(tp0[0] + px * span * sgn * 0.35, tp0[1] + py * span * sgn * 0.35);
+          g.lineTo(bx, by);
+          g.lineTo(bx + ux * fl, by + uy * fl);
+          g.stroke();
+        });
+        g.lineCap = "butt";
+
+        // the thing it is moving, drawn last so the gripper does not bury it
+        var drawPayload = function () {
+        if (pay && pay.length) {
+          // Sized against the drawn gripper rather than off its true metres:
+          // the links are drawn to a taper, so a physically-scaled box comes
+          // out four times the wrist and reads as a crate on a toy arm.
+          var pr = Math.max(3.5, rAt(links.length - 1) * 1.45);
+          g.beginPath();
+          g.rect(pay[0] - pr, pay[1] - pr, pr * 2, pr * 2);
+          g.fillStyle = held ? "#e0a03a" : "#c98a2e";
+          g.globalAlpha = 0.95; g.fill(); g.globalAlpha = 1;
+          g.strokeStyle = "#f0c979"; g.lineWidth = 1.2; g.stroke();
+          if (!held) {
+            g.globalAlpha = 0.35; g.strokeStyle = "#f0c979";
+            g.beginPath(); g.ellipse(pay[0], pay[1] + pr * 1.1, pr * 1.3, pr * 0.42, 0, 0, 6.284);
+            g.stroke(); g.globalAlpha = 1;
+          }
+        }
+        };
+
         // the tool, and the radius inside which the node cancels and replans
         var tp = links[links.length - 1];
         g.globalAlpha = f && f[20] ? 0.9 : 0.34;
@@ -2131,6 +2258,7 @@
         g.setLineDash([]); g.globalAlpha = 1;
         g.fillStyle = f && f[20] ? "#ff8a5c" : "#5aa5af";
         g.beginPath(); g.arc(tp[0], tp[1], 4.2, 0, 6.284); g.fill();
+        drawPayload();
         label("tool0", tp[0] + 9, tp[1] + 4, f && f[20] ? "#ff8a5c" : "#5aa5af", 9);
       }
 
