@@ -219,6 +219,24 @@
 
 .chase__lede em { font-style: italic; color: var(--ink); }
 
+/* ── race: one toggle per controller ─────────────────────── */
+/* The chips sit in the same key row as the swatches, so they opt out of the
+   margin-left:auto that pushes a lone button to the end. */
+.racer {
+  margin-left: 0; display: inline-flex; align-items: center; gap: 8px;
+  opacity: .45; text-transform: lowercase;
+}
+.racer .kx { height: 9px; width: 9px; border-radius: 1px; }
+.racer.is-on { opacity: 1; border-color: var(--ink-3); }
+.racer:hover { opacity: .85; }
+.racer.is-on:hover { opacity: 1; }
+#race-run { margin-left: auto; }
+#race-canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule-2); background: var(--paper);
+}
+.chase__lede--note { font-size: .94rem; color: var(--ink-3); }
+
 .chase__stage { position: relative; }
 #chase, #arm {
   display: block; width: 100%; height: auto;

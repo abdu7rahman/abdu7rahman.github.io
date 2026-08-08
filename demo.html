@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run my robots — Mohammed Abdul Rahman</title>
-<meta name="description" content="Three of my robotics repos, running in your browser. Draw a map and search it, drive a TurtleBot with your cursor, or reach into a UR12e's workspace. The source is fetched from GitHub and executed unmodified.">
+<meta name="description" content="My robotics repos, running in your browser. Draw a map and search it, drive a TurtleBot with your cursor, race five local controllers over one plan, or reach into a UR12e's workspace. The source is fetched from GitHub and executed unmodified.">
 <meta property="og:title" content="Run my robots in your browser">
-<meta property="og:description" content="A*, Theta* and RRT on a map you draw; a DWA-tracked robot chasing your cursor; and a UR12e's obstacle detector deciding whether it can see your hand.">
+<meta property="og:description" content="Five planners on a map you draw; a DWA-tracked robot chasing your cursor; five local controllers racing over one plan; and a UR12e's obstacle detector deciding whether it can see your hand.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,18 +34,20 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Three things on this page, and none of them are a recording. Your browser downloads the Python
+      Four things on this page, and none of them are a recording. Your browser downloads the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
       <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>
       and executes it here, unmodified — ROS is stubbed at the import boundary and nothing below it is
       touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
-      way; then reach into a UR12e's workspace and find out where it stops seeing you.
+      way; race all five of the package's local controllers over one plan; then reach into a UR12e's
+      workspace and find out where it stops seeing you.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
+      <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
     </ol>
   </header>
@@ -143,6 +145,44 @@
     <div class="chase__stage">
       <canvas id="chase" width="1204" height="616" aria-label="A robot that drives toward your cursor. A* plans the route and the DWA controller from the repository follows it. Click to add obstacles and watch it re-plan."></canvas>
       <p class="chase__read" id="chase-read">move the cursor over the field &middot; click to drop an obstacle</p>
+    </div>
+  </section>
+
+  <section class="chase" id="race">
+    <div class="chase__head">
+      <p class="panel__label">Five controllers, one plan</p>
+      <h2 class="chase__title">Race</h2>
+      <p class="chase__lede">
+        The package ships five local controllers. They all take the same job &mdash; here is a path,
+        follow it &mdash; and they disagree about how. So: one A* plan, one costmap, five identical
+        robots, and each controller running <em>its own</em> <code>_control_loop</code> at
+        <em>its own</em> <code>dt</code>, on the tuning the repo ships. Nothing is normalised.
+      </p>
+      <p class="chase__lede">
+        Fairness is in simulated time. Every frame advances each controller by however many of its
+        own ticks add up to the same simulated interval, which is why MPPI takes two where the rest
+        take one. Watch the two turns: a straight run would tie, and it is coming off the end of one
+        wall and then the other that separates a controller which cuts the corner from one that
+        holds the line.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        MPPI is off by default, and not because it loses &mdash; it lands mid-pack, ahead of both
+        Stanley and TEB. It draws 1000
+        samples a tick and spends real time doing it: about <strong>470&nbsp;ms a tick in this
+        tab</strong> against roughly 2&nbsp;ms for DWA, which is 18&nbsp;seconds of driving that
+        takes three minutes to watch. The profile puts that cost in
+        <code>_sample_controls</code> and <code>_path_angle_cost</code>, not in marker building, so
+        there is nothing to trim without running something other than what the repo ships. A robot
+        with a real CPU makes its 20&nbsp;Hz. Turn it on if you want to see it; the
+        <code>ms/tick</code> column is why it is off.
+      </p>
+      <p class="chase__key" id="race-key">
+        <button class="tbtn tbtn--sm" id="race-run" type="button">Run the race</button>
+      </p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="race-canvas" width="1204" height="560" aria-label="Five local controllers from the repository following the same A-star path across the same course, each on its own simulated robot."></canvas>
+      <p class="chase__read" id="race-read">press run &middot; five controllers, one plan</p>
     </div>
   </section>
 
