@@ -731,7 +731,7 @@
     "                        'state': 'running', 'travel': 0.0, 'sim': 0.0, 'v': 0.0, 'w': 0.0,",
     "                        'xt': 0.0, 'xtn': 0, 'ms': 0.0, 'ticks': 0})",
     "    _RACE.update(runners=runners, pts=pts, P=P, raw=raw, g=g, res=res, h=h, w=w,",
-    "                 goal=pts[-1], start=(x0, y0, yaw0))",
+    "                 goal=pts[-1], start=(x0, y0, yaw0), target=0.0)",
     "    return [[[float(a), float(b)] for a, b in pts],",
     "            [(0.0 if r is None else r['dt']) for r in runners]]",
     "def _race_tick(r):",
@@ -774,18 +774,9 @@
     "        r['state'] = 'reached'; r['v'] = r['w'] = 0.0",
     "    elif r['sim'] > 90.0:",
     "        r['state'] = 'stalled'",
-    "def race_step():",
-    "    # Same simulated interval for everyone, however many of their own ticks",
-    "    # that takes.",
-    "    d = _RACE",
-    "    if not d: return []",
-    "    for r in d['runners']:",
-    "        if r is None or r['state'] != 'running': continue",
-    "        for _ in range(max(1, int(round(RACE_SIM_DT / r['dt'])))):",
-    "            if r['state'] != 'running': break",
-    "            _race_tick(r)",
+    "def _race_rows():",
     "    out = []",
-    "    for r in d['runners']:",
+    "    for r in _RACE['runners']:",
     "        if r is None:",
     "            out.append([]); continue",
     "        out.append([float(r['pose'][0]), float(r['pose'][1]), float(r['pose'][2]),",
@@ -793,6 +784,36 @@
     "                    float(r['w']), float(r['xt'] / max(1, r['xtn'])),",
     "                    float(r['ms'] / max(1, r['ticks']))])",
     "    return out",
+    "def race_step(budget_ms=28.0):",
+    "    # Everyone advances the same simulated interval -- but not necessarily",
+    "    # inside one animation frame.",
+    "    #",
+    "    # Doing a whole interval per call is what made the page lock up with MPPI",
+    "    # on the line: at ~470 ms a tick it needs two ticks per 0.1 s of sim, so",
+    "    # the frame blocked for most of a second and every other demo on the page",
+    "    # stopped with it. Now the target sim time only moves once everyone has",
+    "    # reached it, and the work toward it is spread over as many frames as it",
+    "    # takes. A slow controller makes the race take longer in wall clock, which",
+    "    # is honest, rather than making the tab unresponsive, which is a bug.",
+    "    import time",
+    "    d = _RACE",
+    "    if not d: return []",
+    "    t0 = time.perf_counter()",
+    "    running = [r for r in d['runners'] if r is not None and r['state'] == 'running']",
+    "    if not running: return _race_rows()",
+    "    if all(r['sim'] >= d['target'] - 1e-9 for r in running):",
+    "        d['target'] += RACE_SIM_DT",
+    "    # Round-robin a tick at a time so nobody gets ahead within an interval,",
+    "    # and stop as soon as the frame budget is gone.",
+    "    while (time.perf_counter() - t0) * 1000.0 < budget_ms:",
+    "        behind = [r for r in running",
+    "                  if r['state'] == 'running' and r['sim'] < d['target'] - 1e-9]",
+    "        if not behind: break",
+    "        for r in behind:",
+    "            if r['state'] != 'running': continue",
+    "            _race_tick(r)",
+    "            if (time.perf_counter() - t0) * 1000.0 >= budget_ms: break",
+    "    return _race_rows()",
     "def race_done():",
     "    d = _RACE",
     "    return bool(d) and all(r is None or r['state'] != 'running' for r in d['runners'])",
@@ -1021,9 +1042,11 @@
       pyodide.runPython(BOOTSTRAP);
       log("ros stubbed at the import boundary", "ok");
 
+      var fetched = {};                 // kept so the race worker can reuse them
       for (var key in MODULES) {
         var m = MODULES[key];
         var src = await fetchSource(m.file);
+        fetched[m.file.replace(".py", "")] = src.text;
         pyodide.globals.set("__src", src.text);
         pyodide.globals.set("__name_", m.file.replace(".py", ""));
         var found = pyodide.runPython("load_module(__name_, __src)").toJs();
@@ -1037,16 +1060,17 @@
       log(DWA.file + "  " + dsrc.text.length.toLocaleString() + " bytes from " + dsrc.branch, "ok");
       startChase();
 
-      // the other four local controllers, for the race
+      // The other four local controllers, for the race. The race runs in its
+      // own worker, so these are fetched here and handed over by message --
+      // one download, two runtimes.
+      var raceSrc = { astar_planner: fetched.astar_planner, dwa_controller: dsrc.text };
       for (var i = 0; i < RACERS.length; i++) {
         if (RACERS[i].file === DWA.file) continue;
         var rs = await fetchSource(RACERS[i].file);
-        pyodide.globals.set("__src", rs.text);
-        pyodide.globals.set("__name_", RACERS[i].file.replace(".py", ""));
-        pyodide.runPython("load_module(__name_, __src)");
+        raceSrc[RACERS[i].file.replace(".py", "")] = rs.text;
         log(RACERS[i].file + "  " + rs.text.length.toLocaleString() + " bytes from " + rs.branch, "ok");
       }
-      race.ready();
+      race.ready(BOOTSTRAP, raceSrc);
 
       ready = true;
       runBtn.disabled = false;
@@ -1403,6 +1427,7 @@
     var PX = cvr.width / CW;
     var occ = new Uint8Array(CW * CH);
     var plan = [], trails = [], rows = [], live = false, armed = false, raf2 = 0;
+    var worker = null;
     var frames = 0;
 
     // The course: two walls staggered so the route has to come off one end and
@@ -1536,16 +1561,13 @@
       });
     }
 
-    function step() {
+    // Everything below drives the worker rather than pyodide directly. A frame
+    // is now: ask for a step, draw whatever comes back, ask again. The main
+    // thread never waits on Python, so an MPPI tick costing half a second
+    // slows the race down instead of freezing the page.
+    function onStep(msg) {
       if (!live) return;
-      var out;
-      try {
-        out = pyodide.runPython("race_step()").toJs();
-      } catch (e) {
-        log("race: " + String(e && e.message ? e.message : e).split("\n").slice(-3).join(" | "), "err");
-        live = false; runBtnEl.textContent = "Run the race"; return;
-      }
-      rows = out;
+      rows = msg.rows;
       frames++;
       RACERS.forEach(function (rc, i) {
         var o = rows[i];
@@ -1557,15 +1579,38 @@
       });
       draw();
 
-      var done = pyodide.runPython("race_done()");
+      var done = msg.done;
       var finished = rows.filter(function (o) { return o && o.length && o[3] === "reached"; }).length;
       var running = rows.filter(function (o) { return o && o.length && o[3] === "running"; }).length;
+      // Simulated time comes off the runners, not the frame count. Now that a
+      // frame is capped by a wall-clock budget, a slow controller takes several
+      // frames per interval and counting frames would overstate the clock.
+      var sim = 0;
+      rows.forEach(function (o) { if (o && o.length) sim = Math.max(sim, o[4]); });
+      // Cost, so a race that is taking a while reads as compute rather than as
+      // the page being stuck.
+      var slow = 0;
+      rows.forEach(function (o) { if (o && o.length) slow = Math.max(slow, o[9]); });
+      var cost = slow > 40 ? " · " + Math.round(slow) + " ms a tick, so this runs slower than real time" : "";
       readEl.textContent = done
         ? "done · " + finished + " of " + rows.filter(function (o) { return o && o.length; }).length +
-          " reached the goal · " + (frames * 0.1).toFixed(1) + " s simulated"
-        : running + " still driving · " + (frames * 0.1).toFixed(1) + " s simulated";
+          " reached the goal · " + sim.toFixed(1) + " s simulated"
+        : running + " still driving · " + sim.toFixed(1) + " s simulated" + cost;
       if (done) { live = false; runBtnEl.textContent = "Run it again"; return; }
-      raf2 = requestAnimationFrame(step);
+      raf2 = requestAnimationFrame(function () { if (live) worker.postMessage({ type: "step" }); });
+    }
+
+    function onInit(msg) {
+      if (!msg.meta || !msg.meta.length) {
+        readEl.textContent = "A* found no route across the course";
+        live = false; runBtnEl.textContent = "Run the race"; return;
+      }
+      plan = msg.meta[0];
+      log("race: A* planned " + plan.length + " waypoints; " +
+          RACERS.filter(function (rc) { return rc.on; }).map(function (rc) { return rc.key; }).join(", ") +
+          " on the line", "ok");
+      draw();
+      worker.postMessage({ type: "step" });
     }
 
     function start() {
@@ -1573,44 +1618,52 @@
       var active = RACERS.map(function (rc) { return rc.on; });
       if (!active.some(Boolean)) { readEl.textContent = "pick at least one controller"; return; }
       if (raf2) cancelAnimationFrame(raf2);
-      trails = []; rows = []; frames = 0;
-      pyodide.globals.set("__flat", Array.from(occ));
-      pyodide.globals.set("__act", active);
-      var meta;
-      try {
-        meta = pyodide.runPython(
-          "race_init(__flat.to_py() if hasattr(__flat,'to_py') else list(__flat), " +
-          CH + ", " + CW + ", " + RES + ", " + START.r + ", " + START.c + ", " +
-          GOAL.r + ", " + GOAL.c + ", __act.to_py() if hasattr(__act,'to_py') else list(__act))"
-        ).toJs();
-      } catch (e) {
-        log("race: " + String(e && e.message ? e.message : e).split("\n").slice(-3).join(" | "), "err");
-        return;
-      }
-      if (!meta || !meta.length) { readEl.textContent = "A* found no route across the course"; return; }
-      plan = meta[0];
-      log("race: A* planned " + plan.length + " waypoints; " +
-          RACERS.filter(function (rc) { return rc.on; }).map(function (rc, i) { return rc.key; }).join(", ") +
-          " on the line", "ok");
+      trails = []; rows = []; frames = 0; plan = [];
       live = true;
       runBtnEl.textContent = "Running…";
-      draw();
-      raf2 = requestAnimationFrame(step);
+      readEl.textContent = "planning…";
+      worker.postMessage({
+        type: "init", flat: Array.from(occ), active: active,
+        h: CH, w: CW, res: RES, sr: START.r, sc: START.c, gr: GOAL.r, gc: GOAL.c
+      });
     }
 
     return {
-      ready: function () {
-        armed = true;
+      // Called once the main thread has fetched the sources, so the worker
+      // gets them by message rather than downloading everything a second time.
+      ready: function (bootstrap, sources) {
+        worker = new Worker("race-worker.js");
+        worker.onmessage = function (e) {
+          var msg = e.data;
+          if (msg.type === "ready") { armed = true; readyRead(); }
+          else if (msg.type === "init") onInit(msg);
+          else if (msg.type === "step") onStep(msg);
+          else if (msg.type === "error") {
+            log("race: " + msg.error, "err");
+            live = false; runBtnEl.textContent = "Run the race";
+            readEl.textContent = "the race worker failed · see the console";
+          }
+        };
+        worker.onerror = function (e) {
+          log("race worker: " + (e.message || "failed to start"), "err");
+          readEl.textContent = "the race worker could not start";
+        };
+        worker.postMessage({ type: "boot", bootstrap: bootstrap, sources: sources });
+
         chips();
         runBtnEl.addEventListener("click", function () {
           if (live) { live = false; runBtnEl.textContent = "Run the race"; return; }
           start();
         });
         drawStatic();
-        readEl.textContent = "press run · " + RACERS.filter(function (rc) { return rc.on; }).length +
-          " controllers on the line, MPPI off";
+        readEl.textContent = "loading the race runtime…";
       }
     };
+
+    function readyRead() {
+      readEl.textContent = "press run · " + RACERS.filter(function (rc) { return rc.on; }).length +
+        " controllers on the line, MPPI off";
+    }
   })();
 
   /* ---------- reach in: the arm's obstacle detector ---------------------
