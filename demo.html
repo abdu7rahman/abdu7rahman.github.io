@@ -34,7 +34,7 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Five things on this page, and none of them are a recording. Four of them download the Python
+      Six things on this page, and none of them are a recording. Four of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
@@ -42,15 +42,17 @@
       and executes it here, unmodified — ROS is stubbed at the import boundary and nothing below it is
       touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
       way; race all five of the package's local controllers over one plan; reach into a UR12e's
-      workspace and find out where it stops seeing you. The fifth is not mine and does not run here
-      &mdash; &pi;0.5 is a 12&nbsp;GB checkpoint, so the page is the client and the model runs on a
-      GPU somewhere else.
+      workspace and find out where it stops seeing you. The fifth runs too, but is copied rather than
+      fetched, because the repository behind it is private. The sixth is not mine and does not run
+      here &mdash; &pi;0.5 is a 12&nbsp;GB checkpoint, so the page is the client and the model runs
+      on a GPU somewhere else.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
+      <li><a href="#embodiment">One vector, six robots</a><span>cross-embodiment action masks</span></li>
       <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
   </header>
@@ -233,6 +235,47 @@
   <!-- data-server is an openpi policy server's websocket. Empty means the
        section explains how to start one rather than failing at the network.
        See tools/stub_policy_server.py to develop against the protocol. -->
+  <section class="chase" id="embodiment">
+    <div class="chase__head">
+      <p class="panel__label">One vector, six robots</p>
+      <h2 class="chase__title">Where a policy puts its actions</h2>
+      <p class="chase__lede">
+        A policy trained on many robots has to emit <em>one</em> action vector, because a
+        per-embodiment output head cannot transfer &mdash; a bimanual episode would teach the
+        single-arm head nothing. The alternative, adapted here from RDT-1B, is one 32-D vector that
+        every robot writes into, with a boolean mask deciding which dimensions are real for a given
+        morphology and the loss masked to match.
+      </p>
+      <p class="chase__lede">
+        <strong>Pick a robot and watch the mask.</strong> Every cell below is one dimension of the
+        vector; lit means the loss sees it. This is
+        <code>embodiment_mask()</code> from my <a class="inline" href="#embodiment-note">robot
+        foundation model</a>, called once per click &mdash; the pattern is not drawn by hand.
+      </p>
+      <p class="chase__lede">
+        The row underneath is the part worth staring at: how many of the six robots light each
+        dimension. <code>base_vel</code> and <code>torso_lift</code> are covered by <strong>two</strong>,
+        so those columns get gradient as rare as a mobile base appears in the mixture. Dimension&nbsp;6
+        drops to five because a 6-DoF arm truncates the 7-DoF joint slice. A per-slice loss curve
+        would show you that twelve hours into a run; the table shows it before you start.
+      </p>
+      <p class="chase__key" id="emb-key"></p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="emb-canvas" width="1204" height="470" aria-label="The 32-dimensional unified action vector, showing which dimensions are active for the selected robot morphology and how many of the six morphologies cover each dimension."></canvas>
+      <p class="chase__read" id="emb-read">loading the action space…</p>
+    </div>
+    <p class="chase__lede chase__lede--note" id="embodiment-note">
+      Unlike everything else on this page, this one is not fetched from GitHub at load: the
+      repository is private, so <code>raw.githubusercontent.com</code> returns 404. The two files
+      are <strong>copied</strong> into this site at
+      <a class="inline" href="https://github.com/abdu7rahman/abdu7rahman.github.io/blob/main/vendor/rfm/PROVENANCE.md" target="_blank" rel="noopener">vendor/rfm</a>,
+      with the source commit and their SHA-256 recorded, and they run unmodified. That repository is
+      an architecture I am building, not a working policy &mdash; it has no trained weights, no
+      rollouts and no simulator, and nothing here should be read as a robot doing anything. What it
+      is, is a real design decision with real consequences you can see above.
+    </p>
+
   <section class="chase" id="policy" data-server="">
     <div class="chase__head">
       <p class="panel__label">The one that does not run here</p>
@@ -300,7 +343,7 @@
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      The four demos run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      Five of the six run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
       and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask &pi;0.5</a>,
       which sends one observation to whatever policy server it is pointed at, and only when you press
       the button. The source shown in the log is fetched live from
@@ -319,6 +362,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=f3d0b674" defer></script>
+<script src="demo.js?v=1837520c" defer></script>
 </body>
 </html>
