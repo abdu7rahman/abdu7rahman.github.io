@@ -822,6 +822,38 @@
     "def race_done():",
     "    d = _RACE",
     "    return bool(d) and all(r is None or r['state'] != 'running' for r in d['runners'])",
+    "_FM = {}",
+    "def fm_init():",
+    "    # The watchlist and the checker are the repo's own; this page supplies a",
+    "    # snapshot and reports what check_alarms() says about it.",
+    "    import sys",
+    "    if '/rfm_pkg' not in sys.path: sys.path.insert(0, '/rfm_pkg')",
+    "    from rfm.eval.ablations import FAILURE_MODES",
+    "    from rfm.eval.metrics import check_alarms",
+    "    from rfm import schemas as S",
+    "    _FM.update(modes=FAILURE_MODES, check=check_alarms, S=S)",
+    "    out = []",
+    "    for fm in FAILURE_MODES:",
+    "        out.append([fm.code, fm.name, fm.metric.split('.')[-1], float(fm.threshold),",
+    "                    fm.direction, fm.consequence, fm.mitigation])",
+    "    return out",
+    "def fm_check(vals, baseline_vl):",
+    "    # vals is a plain dict of metric name -> float, from the sliders. The two",
+    "    # dict-valued fields are wrapped the way a real snapshot carries them:",
+    "    # per-embodiment and per-component, with _extract taking the max.",
+    "    d = _FM; S = d['S']",
+    "    v = dict(vals)",
+    "    snap = S.MetricSnapshot(",
+    "        global_step=1000, stage=S.TrainingStage.STAGE2_DYNAMICS_COTRAIN,",
+    "        vl_probe_score=float(v['vl_probe_score']),",
+    "        dynamics_copy_margin=float(v['dynamics_copy_margin']),",
+    "        holdout_masked_action_mse={'single_arm_6dof': float(v['holdout_masked_action_mse'])},",
+    "        flow_sample_variance=float(v['flow_sample_variance']),",
+    "        reasoning_counterfactual_accuracy=float(v['reasoning_counterfactual_accuracy']),",
+    "        competence_regret_s=float(v['competence_regret_s']),",
+    "        p99_latency_ms={'action_expert': float(v['p99_latency_ms'])})",
+    "    tripped = d['check'](snap, float(baseline_vl))",
+    "    return [[fm.code, float(val)] for fm, val in tripped]",
     "_RFM = {}",
     "def rfm_init():",
     "    # The package is laid out at its real module paths and imported the way",
@@ -1125,6 +1157,7 @@
           pyodide.runPython("arm_write(__path, __src)");
         }
         embDemo.ready();
+        fmDemo.ready();
       } catch (e) {
         log("action space unavailable: " + String(e && e.message ? e.message : e), "err");
       }
@@ -2099,6 +2132,174 @@
   runBtn.addEventListener("click", run);
 
 
+
+  /* ---------- the failure-mode watchlist --------------------------------
+     FAILURE_MODES and check_alarms() out of the robot foundation model. The
+     page supplies a MetricSnapshot and the repo decides what has tripped.
+
+     Worth reading the consequence strings rather than the thresholds: every
+     one of them describes a run whose headline number looks healthy. FM-4 is
+     the sharpest -- "held-out MSE IMPROVES while every multimodal task
+     fails" -- which is a metric actively pointing the wrong way.
+     ------------------------------------------------------------------- */
+  var fmDemo = (function () {
+    var cv = document.getElementById("fm-canvas");
+    if (!cv) return { ready: function () {} };
+    var g = cv.getContext("2d");
+    var readEl = document.getElementById("fm-read");
+    var whyEl = document.getElementById("fm-why");
+    var slidersEl = document.getElementById("fm-sliders");
+    var modes = [], tripped = {}, BASE_VL = 1.5;
+
+    // The metrics check_alarms() can read off a snapshot. FM-7 and FM-9 watch
+    // execution traces instead, so they have no slider and say so.
+    var CTRL = [
+      { k: "vl_probe_score",                    lo: -3,    hi: 3,    step: 0.05, healthy: 1.2,   bad: -2.0,   fm: "FM-1" },
+      { k: "dynamics_copy_margin",              lo: 0,     hi: 0.4,  step: 0.005, healthy: 0.20, bad: 0.02,   fm: "FM-2" },
+      { k: "holdout_masked_action_mse",         lo: 0,     hi: 0.01, step: 0.0002, healthy: 0.0, bad: 0.003,  fm: "FM-3" },
+      { k: "flow_sample_variance",              lo: 0,     hi: 0.05, step: 0.0002, healthy: 0.02, bad: 0.0005, fm: "FM-4" },
+      { k: "reasoning_counterfactual_accuracy", lo: 0,     hi: 1,    step: 0.01, healthy: 0.74,  bad: 0.42,   fm: "FM-5" },
+      { k: "competence_regret_s",               lo: 0,     hi: 90,   step: 1,    healthy: 12,    bad: 55,     fm: "FM-6" },
+      { k: "p99_latency_ms",                    lo: 40,    hi: 260,  step: 1,    healthy: 98,    bad: 180,    fm: "FM-8" }
+    ];
+    var vals = {};
+
+    function label(t, x, y, col, size, align) {
+      g.fillStyle = col;
+      g.font = "500 " + (size || 10) + "px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = align || "left";
+      g.fillText(t, x, y);
+    }
+
+    function draw() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      var X = 26, Y = 34, ROW = 52;
+      label("code", X, Y - 12, C.mut, 9.5);
+      label("failure mode", X + 58, Y - 12, C.mut, 9.5);
+      label("watches", X + 366, Y - 12, C.mut, 9.5);
+      label("threshold", X + 640, Y - 12, C.mut, 9.5, "right");
+      label("now", X + 740, Y - 12, C.mut, 9.5, "right");
+      label("state", X + 780, Y - 12, C.mut, 9.5);
+
+      modes.forEach(function (m, i) {
+        var y = Y + i * ROW;
+        var t = tripped[m[0]];
+        var traceOnly = (m[0] === "FM-7" || m[0] === "FM-9");
+        var col = t ? C.signal : (traceOnly ? C.mut : C.ink);
+
+        if (t) {
+          g.fillStyle = C.signal; g.globalAlpha = 0.07;
+          g.fillRect(X - 8, y - 15, cv.width - 2 * X + 16, ROW - 6);
+          g.globalAlpha = 1;
+          g.fillStyle = C.signal; g.fillRect(X - 8, y - 15, 3, ROW - 6);
+        }
+        label(m[0], X, y, col, 11);
+        label(m[1], X + 58, y, col, 11);
+        label(m[2], X + 366, y, traceOnly ? C.mut : C.ink3 || C.mut, 10);
+        label((m[4] === "above_is_bad" ? "≤ " : "≥ ") + m[3], X + 640, y, C.mut, 10, "right");
+        if (traceOnly) {
+          label("—", X + 740, y, C.mut, 10, "right");
+          label("watches execution traces, not this snapshot", X + 780, y, C.mut, 9.5);
+        } else {
+          var v = t ? t : null;
+          label(v === null ? "ok" : (Math.abs(v) < 0.01 ? v.toExponential(1) : v.toFixed(3)),
+                X + 740, y, t ? C.signal : C.mut, 10, "right");
+          label(t ? "TRIPPED" : "within bounds", X + 780, y, t ? C.signal : C.mut, 10);
+        }
+        // the consequence, which is the reason the list exists
+        g.font = "400 9.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillStyle = t ? C.ink : C.mut; g.globalAlpha = t ? 0.95 : 0.5;
+        g.textAlign = "left";
+        // one line, and say so when it does not fit rather than stopping
+        // mid-sentence; the full text is printed under the canvas anyway
+        var avail = cv.width - X - 58 - 26;
+        var words = m[5].split(/\s+/), line = "";
+        for (var w = 0; w < words.length; w++) {
+          var test = line ? line + " " + words[w] : words[w];
+          if (g.measureText(test + " …").width > avail) { line = line + " …"; break; }
+          line = test;
+        }
+        g.fillText(line, X + 58, y + 16);
+        g.globalAlpha = 1;
+      });
+    }
+
+    function evaluate() {
+      var out;
+      try {
+        pyodide.globals.set("__vals", pyodide.toPy(vals));
+        out = pyodide.runPython("fm_check(__vals, " + BASE_VL + ")").toJs();
+      } catch (e) {
+        readEl.textContent = "check_alarms failed: " + (e && e.message ? e.message.split("\n").pop() : e);
+        return;
+      }
+      tripped = {};
+      out.forEach(function (r) { tripped[r[0]] = r[1]; });
+      var n = out.length;
+      readEl.textContent = n === 0
+        ? "no alarms · every watched metric within bounds"
+        : n + (n === 1 ? " alarm" : " alarms") + " tripped · " +
+          out.map(function (r) { return r[0]; }).join(", ");
+      var why = [];
+      modes.forEach(function (m) {
+        if (!tripped[m[0]]) return;
+        why.push(m[0] + "  " + m[1]);
+        why.push("  consequence: " + m[5]);
+        why.push("  mitigation:  " + m[6]);
+        why.push("");
+      });
+      whyEl.textContent = why.length ? why.join("\n")
+        : "nothing tripped · move a slider, or try “the one that lies”";
+      draw();
+    }
+
+    function preset(which) {
+      CTRL.forEach(function (c) {
+        vals[c.k] = which === "bad" ? c.bad : c.healthy;
+        var el = document.getElementById("fm-" + c.k);
+        if (el) { el.value = vals[c.k]; el.nextElementSibling.textContent = fmt(vals[c.k]); }
+      });
+      document.getElementById("fm-healthy").classList.toggle("is-on", which !== "bad");
+      document.getElementById("fm-silent").classList.toggle("is-on", which === "bad");
+      evaluate();
+    }
+
+    function fmt(v) {
+      return Math.abs(v) >= 10 ? v.toFixed(0) : Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(0) : v.toFixed(2);
+    }
+
+    return {
+      ready: function () {
+        try {
+          modes = pyodide.runPython("fm_init()").toJs();
+        } catch (e) {
+          log("watchlist: " + String(e && e.message ? e.message : e).split("\n").slice(-3).join(" | "), "err");
+          readEl.textContent = "the watchlist could not be loaded";
+          return;
+        }
+        CTRL.forEach(function (c) {
+          vals[c.k] = c.healthy;
+          var l = document.createElement("label");
+          l.innerHTML = '<span title="' + c.k + '">' + c.fm + '</span>' +
+            '<input type="range" id="fm-' + c.k + '" min="' + c.lo + '" max="' + c.hi +
+            '" step="' + c.step + '" value="' + c.healthy + '"><output>' + fmt(c.healthy) + '</output>';
+          slidersEl.appendChild(l);
+          l.querySelector("input").addEventListener("input", function (e) {
+            vals[c.k] = parseFloat(e.target.value);
+            e.target.nextElementSibling.textContent = fmt(vals[c.k]);
+            document.getElementById("fm-healthy").classList.remove("is-on");
+            document.getElementById("fm-silent").classList.remove("is-on");
+            evaluate();
+          });
+        });
+        document.getElementById("fm-healthy").addEventListener("click", function () { preset("healthy"); });
+        document.getElementById("fm-silent").addEventListener("click", function () { preset("bad"); });
+        log("watchlist: " + modes.length + " failure modes, thresholds from FAILURE_MODES", "ok");
+        preset("healthy");
+      }
+    };
+  })();
+
   /* ---------- one vector, six robots -----------------------------------
      The cross-embodiment action space out of my robot foundation model.
      Every robot writes into one 32-D vector and a boolean mask says which
@@ -2112,7 +2313,12 @@
      vendor/rfm/PROVENANCE.md for the commit and hashes.
      ------------------------------------------------------------------- */
   var RFM = { files: ["vendor/rfm/__init__.py", "vendor/rfm/schemas.py",
-                      "vendor/rfm/data/__init__.py", "vendor/rfm/data/action_space.py"] };
+                      "vendor/rfm/data/__init__.py", "vendor/rfm/data/action_space.py",
+                      "vendor/rfm/eval/__init__.py", "vendor/rfm/eval/ablations.py",
+                      "vendor/rfm/eval/metrics.py",
+                      "vendor/rfm/orchestration/__init__.py",
+                      "vendor/rfm/orchestration/harness.py",
+                      "vendor/rfm/orchestration/tools.py"] };
 
   var embDemo = (function () {
     var cv = document.getElementById("emb-canvas");

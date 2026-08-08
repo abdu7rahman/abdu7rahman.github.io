@@ -34,7 +34,7 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Six things on this page, and none of them are a recording. Four of them download the Python
+      Seven things on this page, and none of them are a recording. Four of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
@@ -53,6 +53,7 @@
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
       <li><a href="#embodiment">One vector, six robots</a><span>cross-embodiment action masks</span></li>
+      <li><a href="#alarms">Nine ways it can lie</a><span>the failure-mode watchlist</span></li>
       <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
   </header>
@@ -276,6 +277,36 @@
       is, is a real design decision with real consequences you can see above.
     </p>
 
+  <section class="chase" id="alarms">
+    <div class="chase__head">
+      <p class="panel__label">Nine ways it can lie to you</p>
+      <h2 class="chase__title">The watchlist</h2>
+      <p class="chase__lede">
+        The hard part of training a model like this is not that it breaks. It is that it breaks
+        while every number you are looking at stays healthy. So the repository carries a named list
+        of the ways that can happen, each with the metric that would catch it, a threshold, and a
+        written consequence &mdash; and read the consequences, because that is the whole point:
+        <em>every single one describes a run that looks fine.</em>
+      </p>
+      <p class="chase__lede">
+        <strong>Move a slider and watch what trips.</strong> The verdict is
+        <code>check_alarms()</code> from the repo, called on a real <code>MetricSnapshot</code>;
+        the thresholds and the prose are <code>FAILURE_MODES</code>. I supply the numbers and
+        nothing else.
+      </p>
+      <p class="chase__key" id="fm-key">
+        <button class="tbtn tbtn--sm racer is-on" id="fm-healthy" type="button">A healthy run</button>
+        <button class="tbtn tbtn--sm racer" id="fm-silent" type="button">The one that lies</button>
+      </p>
+      <div class="joints" id="fm-sliders"></div>
+    </div>
+    <div class="chase__stage">
+      <canvas id="fm-canvas" width="1204" height="540" aria-label="The nine failure modes on the watchlist, showing which alarms have tripped for the current metric values."></canvas>
+      <p class="chase__read" id="fm-read">no alarms</p>
+    </div>
+    <pre id="fm-why" class="log log--raw" aria-live="polite">nothing tripped &middot; move a slider</pre>
+  </section>
+
   <section class="chase" id="policy" data-server="">
     <div class="chase__head">
       <p class="panel__label">The one that does not run here</p>
@@ -343,7 +374,7 @@
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      Five of the six run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      Six of the seven run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
       and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask &pi;0.5</a>,
       which sends one observation to whatever policy server it is pointed at, and only when you press
       the button. The source shown in the log is fetched live from
@@ -362,6 +393,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=1837520c" defer></script>
+<script src="demo.js?v=0c867b1c" defer></script>
 </body>
 </html>
