@@ -16,6 +16,21 @@
     hybrid:     { file: "rrt_smac_hybrid_planner.py", cls: "HybridRRTSMACPlannerNode", call: "_plan_hybrid_unified", se2: true }
   };
   var DWA = { file: "dwa_controller.py", cls: "DWAControllerNode" };
+  // Every local controller in the package, for the race. dwa is fetched as
+  // DWA above and reused rather than downloaded twice.
+  //
+  // mppi is off by default. It draws 1000 samples per tick and profiles at
+  // ~129 ms in _sample_controls and ~173 ms in _path_angle_cost against 4 ms
+  // of marker building -- real control work, so it cannot be trimmed without
+  // running something other than what the repo ships. On a robot with a real
+  // CPU it makes its 20 Hz; in a browser it does not.
+  var RACERS = [
+    { key: "pure_pursuit", file: "pure_pursuit_controller.py", label: "Pure Pursuit", col: "#3f6b57", on: true },
+    { key: "stanley",      file: "stanley_controller.py",      label: "Stanley",      col: "#d6b27c", on: true },
+    { key: "dwa",          file: "dwa_controller.py",          label: "DWA",          col: "#9a4a26", on: true },
+    { key: "teb",          file: "teb_controller.py",          label: "TEB",          col: "#5a7d8c", on: true },
+    { key: "mppi",         file: "mppi_controller.py",         label: "MPPI",         col: "#8a6a94", on: false }
+  ];
   // The arm's detector comes from a different repo, and it ships a headless
   // harness -- tests/harness.py loads the node with ROS stubbed and tests/
   // scene.py builds synthetic RealSense frames. Both are laid into the Pyodide
@@ -650,6 +665,137 @@
     "            state, note, int(a['replans']), _proj_path(_planned_path()),",
     "            (_proj_one(sphere) if sphere is not None else []),",
     "            float(n.SPHERE_RADIUS)]",
+    "_RACE = {}",
+    "RACE_CTRL = [('pure_pursuit_controller', 'PurePursuitControllerNode'),",
+    "             ('stanley_controller', 'StanleyControllerNode'),",
+    "             ('dwa_controller', 'DWAControllerNode'),",
+    "             ('teb_controller', 'TEBControllerNode'),",
+    "             ('mppi_controller', 'MPPIControllerNode')]",
+    "RACE_SIM_DT = 0.1                # simulated seconds per frame, same for all",
+    "def _race_build(mod, cls, g, h, w, res):",
+    "    # One controller, with the shared costmap under every attribute name the",
+    "    # five of them use between them. Nothing here is controller-specific:",
+    "    # each node reads the subset it declared and ignores the rest.",
+    "    import collections",
+    "    n = _defaults(object.__new__(getattr(_LOADED[mod], cls)), _SRC[mod])",
+    "    info = types.SimpleNamespace(resolution=res, width=w, height=h)",
+    "    for a, v in (('costmap_data', g), ('costmap_info', info), ('costmap_origin', (0.0, 0.0)),",
+    "                 ('global_data', g), ('global_info', info), ('global_origin', (0.0, 0.0)),",
+    "                 ('local_data', g), ('local_info', info), ('local_origin', (0.0, 0.0)),",
+    "                 ('odom_to_map', (0.0, 0.0, 0.0)), ('current_vel', {'v': 0.0, 'omega': 0.0}),",
+    "                 ('wp_idx', 0), ('goal_reached', False)):",
+    "        setattr(n, a, v)",
+    "    n.position_history = collections.deque(maxlen=50)",
+    "    n.recovery_mode, n.recovery_timer, n.recovery_dir = False, 0, 1.0",
+    "    n._record_pose = lambda *a, **k: None",
+    "    class _S:",
+    "        def __init__(s): s.last = None",
+    "        def publish(s, m): s.last = m",
+    "    # Every publisher the node makes becomes a sink, read out of its own",
+    "    # source. Hardcoding the names means a node that adds a marker topic",
+    "    # breaks the race; this way the visualisation path runs instead of",
+    "    # being patched out, which is where these nodes spend real time.",
+    "    import re",
+    "    names = set(re.findall(r'self\\.(\\w+)\\s*=\\s*self\\.create_publisher', _SRC[mod]))",
+    "    for name in names | {'cmd_pub', 'status_pub'}:",
+    "        setattr(n, name, _S())",
+    "    n.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None, debug=lambda *a, **k: None)",
+    "    stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    n.get_clock = lambda: types.SimpleNamespace(now=lambda: stamp)",
+    "    return n",
+    "def race_init(flat, h, w, res, sr, sc, gr, gc, active):",
+    "    # One plan, handed to everyone. The race is about tracking it, so the",
+    "    # planner must not be a variable.",
+    "    import numpy as np",
+    "    raw = np.array(flat, dtype=np.int16).reshape(h, w) * 254",
+    "    g = _inflate(raw, 4, res)",
+    "    p = _wire(_defaults(object.__new__(getattr(_LOADED['astar_planner'], 'AStarPlannerNode')), _SRC['astar_planner']), g, h, w)",
+    "    p.global_info = types.SimpleNamespace(resolution=res, width=w, height=h)",
+    "    cells, _exp = p._astar((int(sr), int(sc)), (int(gr), int(gc)))",
+    "    if not cells: return []",
+    "    pts = [((c + 0.5) * res, (r + 0.5) * res) for r, c in cells]",
+    "    P = np.array(pts)",
+    "    heads = []",
+    "    x0, y0 = pts[0]",
+    "    import math",
+    "    yaw0 = math.atan2(pts[min(4, len(pts) - 1)][1] - y0, pts[min(4, len(pts) - 1)][0] - x0)",
+    "    runners = []",
+    "    for i, (mod, cls) in enumerate(RACE_CTRL):",
+    "        if mod not in _LOADED or not active[i]:",
+    "            runners.append(None); continue",
+    "        n = _race_build(mod, cls, g, h, w, res)",
+    "        n._path_cb(_as_path(pts))",
+    "        if getattr(n, 'current_path', None) is None: n.current_path = _as_path(pts)",
+    "        n.goal_reached = False",
+    "        runners.append({'n': n, 'pose': (x0, y0, yaw0), 'dt': float(getattr(n, 'dt', 0.1) or 0.1),",
+    "                        'state': 'running', 'travel': 0.0, 'sim': 0.0, 'v': 0.0, 'w': 0.0,",
+    "                        'xt': 0.0, 'xtn': 0, 'ms': 0.0, 'ticks': 0})",
+    "    _RACE.update(runners=runners, pts=pts, P=P, raw=raw, g=g, res=res, h=h, w=w,",
+    "                 goal=pts[-1], start=(x0, y0, yaw0))",
+    "    return [[[float(a), float(b)] for a, b in pts],",
+    "            [(0.0 if r is None else r['dt']) for r in runners]]",
+    "def _race_tick(r):",
+    "    # One tick of one controller on its own plant. The plant is the same",
+    "    # unicycle for all five; only the command differs.",
+    "    import math, numpy as np, time",
+    "    d = _RACE; n = r['n']; dt = r['dt']",
+    "    x, y, yaw = r['pose']",
+    "    n._get_robot_pose = lambda p=(x, y, yaw): p",
+    "    n._get_tf = lambda t, s, p=(x, y, yaw): p if 'base_link' in (t, s) else (0.0, 0.0, 0.0)",
+    "    n.current_pose = types.SimpleNamespace(x=x, y=y, yaw=yaw)",
+    "    n.cmd_pub.last = None",
+    "    t0 = time.perf_counter()",
+    "    try:",
+    "        n._control_loop()",
+    "    except Exception:",
+    "        r['state'] = 'error'; return",
+    "    r['ms'] += (time.perf_counter() - t0) * 1000.0; r['ticks'] += 1",
+    "    if getattr(n, 'goal_reached', False):",
+    "        r['state'] = 'reached'; r['v'] = r['w'] = 0.0; return",
+    "    m = n.cmd_pub.last",
+    "    v = float(getattr(m.linear, 'x', 0.0)) if m is not None else 0.0",
+    "    w = float(getattr(m.angular, 'z', 0.0)) if m is not None else 0.0",
+    "    if isinstance(getattr(n, 'current_vel', None), dict):",
+    "        n.current_vel = {'v': v, 'omega': w}",
+    "    r['v'], r['w'] = v, w",
+    "    nx, ny = x + v * math.cos(yaw) * dt, y + v * math.sin(yaw) * dt",
+    "    yaw = (yaw + w * dt + math.pi) % (2 * math.pi) - math.pi",
+    "    r['travel'] += math.hypot(nx - x, ny - y); r['sim'] += dt",
+    "    r['pose'] = (nx, ny, yaw)",
+    "    # cross-track against the plan everyone was given, as a running mean",
+    "    P = d['P']",
+    "    r['xt'] += float(np.min(np.hypot(P[:, 0] - nx, P[:, 1] - ny))); r['xtn'] += 1",
+    "    # truth for collision is the uninflated map: a centre inside the",
+    "    # inflation band is a controller being brave, not a crash",
+    "    rr, cc = int(ny / d['res']), int(nx / d['res'])",
+    "    if not (0 <= rr < d['h'] and 0 <= cc < d['w']) or d['raw'][rr, cc] >= 253:",
+    "        r['state'] = 'collided'; return",
+    "    if math.hypot(nx - d['goal'][0], ny - d['goal'][1]) < 0.25:",
+    "        r['state'] = 'reached'; r['v'] = r['w'] = 0.0",
+    "    elif r['sim'] > 90.0:",
+    "        r['state'] = 'stalled'",
+    "def race_step():",
+    "    # Same simulated interval for everyone, however many of their own ticks",
+    "    # that takes.",
+    "    d = _RACE",
+    "    if not d: return []",
+    "    for r in d['runners']:",
+    "        if r is None or r['state'] != 'running': continue",
+    "        for _ in range(max(1, int(round(RACE_SIM_DT / r['dt'])))):",
+    "            if r['state'] != 'running': break",
+    "            _race_tick(r)",
+    "    out = []",
+    "    for r in d['runners']:",
+    "        if r is None:",
+    "            out.append([]); continue",
+    "        out.append([float(r['pose'][0]), float(r['pose'][1]), float(r['pose'][2]),",
+    "                    r['state'], float(r['sim']), float(r['travel']), float(r['v']),",
+    "                    float(r['w']), float(r['xt'] / max(1, r['xtn'])),",
+    "                    float(r['ms'] / max(1, r['ticks']))])",
+    "    return out",
+    "def race_done():",
+    "    d = _RACE",
+    "    return bool(d) and all(r is None or r['state'] != 'running' for r in d['runners'])",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -890,6 +1036,17 @@
       pyodide.runPython("load_module(__name_, __src)");
       log(DWA.file + "  " + dsrc.text.length.toLocaleString() + " bytes from " + dsrc.branch, "ok");
       startChase();
+
+      // the other four local controllers, for the race
+      for (var i = 0; i < RACERS.length; i++) {
+        if (RACERS[i].file === DWA.file) continue;
+        var rs = await fetchSource(RACERS[i].file);
+        pyodide.globals.set("__src", rs.text);
+        pyodide.globals.set("__name_", RACERS[i].file.replace(".py", ""));
+        pyodide.runPython("load_module(__name_, __src)");
+        log(RACERS[i].file + "  " + rs.text.length.toLocaleString() + " bytes from " + rs.branch, "ok");
+      }
+      race.ready();
 
       ready = true;
       runBtn.disabled = false;
@@ -1222,6 +1379,239 @@
       });
     } catch (e) { log("chase unavailable: " + e.message, "err"); }
   }
+
+  /* ---------- race: five controllers, one plan -------------------------
+     Every local controller in the package, given the same A* path over the
+     same costmap, each on its own identical unicycle and its own shipped dt.
+     The comparison is only worth anything if nothing is normalised, so
+     nothing is: the tuning is whatever the node's __init__ assigns.
+
+     Simulated time is the shared clock. A frame advances each controller by
+     however many of its own ticks add up to the same simulated interval, so
+     MPPI's 20 Hz and everyone else's 10 Hz both come out right.
+     ------------------------------------------------------------------- */
+  var race = (function () {
+    var cvr = document.getElementById("race-canvas");
+    if (!cvr) return { ready: function () {} };
+    var g = cvr.getContext("2d");
+    var readEl = document.getElementById("race-read");
+    var keyEl = document.getElementById("race-key");
+    var runBtnEl = document.getElementById("race-run");
+    var RES = 0.05;
+    var CELL = 12;
+    var CW = Math.floor(cvr.width / CELL), CH = Math.floor(cvr.height / CELL);
+    var PX = cvr.width / CW;
+    var occ = new Uint8Array(CW * CH);
+    var plan = [], trails = [], rows = [], live = false, armed = false, raf2 = 0;
+    var frames = 0;
+
+    // The course: two walls staggered so the route has to come off one end and
+    // then the other. A straight run would tie, and a single turn would only
+    // separate the ones that overshoot; two in opposite directions is what
+    // makes a controller that cuts the corner look different from one that
+    // does not.
+    function course() {
+      occ.fill(0);
+      for (var c = 0; c < CW; c++) { occ[c] = 1; occ[(CH - 1) * CW + c] = 1; }
+      for (var r = 0; r < CH; r++) { occ[r * CW] = 1; occ[r * CW + CW - 1] = 1; }
+      var a = Math.round(CW * 0.32), b = Math.round(CW * 0.63);
+      for (var r2 = 3; r2 < CH - 3; r2++) {
+        for (var d = 0; d < 3; d++) {
+          if (r2 < Math.round(CH * 0.62)) occ[r2 * CW + a + d] = 1;
+          if (r2 > Math.round(CH * 0.38)) occ[r2 * CW + b + d] = 1;
+        }
+      }
+    }
+    course();
+    var START = { r: Math.round(CH * 0.5), c: 4 },
+        GOAL  = { r: Math.round(CH * 0.5), c: CW - 5 };
+
+    function toPx(mx, my) { return [mx / RES * PX, my / RES * PX]; }
+
+    function chips() {
+      RACERS.forEach(function (rc) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "tbtn tbtn--sm racer" + (rc.on ? " is-on" : "");
+        b.innerHTML = '<i class="kx" style="background:' + rc.col + '"></i>' + rc.label;
+        b.addEventListener("click", function () {
+          if (live) return;
+          rc.on = !rc.on;
+          b.classList.toggle("is-on", rc.on);
+        });
+        keyEl.insertBefore(b, runBtnEl);
+      });
+    }
+
+    function drawStatic() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvr.width, cvr.height);
+      g.strokeStyle = C.rule; g.globalAlpha = 0.45; g.lineWidth = 1;
+      g.beginPath();
+      for (var c = 0; c <= CW; c += 8) { g.moveTo(c * PX + 0.5, 0); g.lineTo(c * PX + 0.5, cvr.height); }
+      for (var r = 0; r <= CH; r += 8) { g.moveTo(0, r * PX + 0.5); g.lineTo(cvr.width, r * PX + 0.5); }
+      g.stroke(); g.globalAlpha = 1;
+
+      g.fillStyle = C.ink;
+      for (var i = 0; i < occ.length; i++) {
+        if (occ[i]) g.fillRect((i % CW) * PX, Math.floor(i / CW) * PX, PX + 0.5, PX + 0.5);
+      }
+    }
+
+    // The plan goes on top of the trails, not under them: the whole question
+    // is how far each controller is from it, and it cannot be read if four
+    // trails are drawn over it.
+    function drawPlan() {
+      if (!plan.length) return;
+      g.strokeStyle = C.ink; g.globalAlpha = 0.5; g.lineWidth = 2;
+      g.setLineDash([7, 6]); g.beginPath();
+      plan.forEach(function (p, i) {
+        var q = toPx(p[0], p[1]);
+        i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]);
+      });
+      g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      var s = toPx(plan[0][0], plan[0][1]), e = toPx(plan[plan.length - 1][0], plan[plan.length - 1][1]);
+      g.strokeStyle = C.ink; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(s[0], s[1], 6, 0, 6.284); g.stroke();
+      label("start", s[0] - 10, s[1] - 12, C.mut, 10);
+      g.beginPath(); g.moveTo(e[0] - 6, e[1] - 6); g.lineTo(e[0] + 6, e[1] + 6);
+      g.moveTo(e[0] + 6, e[1] - 6); g.lineTo(e[0] - 6, e[1] + 6); g.stroke();
+      label("goal", e[0] - 8, e[1] - 12, C.mut, 10);
+    }
+
+    function label(t, x, y, col, size) {
+      g.fillStyle = col; g.font = "500 " + (size || 10) +
+        "px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left"; g.fillText(t, x, y);
+    }
+
+    function draw() {
+      drawStatic();
+      RACERS.forEach(function (rc, i) {
+        var tr = trails[i];
+        if (!tr || !tr.length) return;
+        g.strokeStyle = rc.col; g.globalAlpha = 0.85; g.lineWidth = 2;
+        g.beginPath();
+        tr.forEach(function (p, k) { k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); });
+        g.stroke(); g.globalAlpha = 1;
+        var o = rows[i];
+        if (!o || !o.length) return;
+        var p2 = toPx(o[0], o[1]);
+        g.save(); g.translate(p2[0], p2[1]); g.rotate(o[2]);
+        g.fillStyle = rc.col;
+        g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 5.5); g.lineTo(-6, -5.5); g.closePath(); g.fill();
+        g.restore();
+        if (o[3] === "reached") {
+          g.strokeStyle = rc.col; g.globalAlpha = 0.6; g.lineWidth = 1.5;
+          g.beginPath(); g.arc(p2[0], p2[1], 11, 0, 6.284); g.stroke(); g.globalAlpha = 1;
+        }
+      });
+
+      drawPlan();
+
+      // the standings, in finishing order
+      var order = RACERS.map(function (rc, i) { return { rc: rc, o: rows[i], i: i }; })
+        .filter(function (e) { return e.o && e.o.length; })
+        .sort(function (a, b) {
+          var af = a.o[3] === "reached", bf = b.o[3] === "reached";
+          if (af !== bf) return af ? -1 : 1;
+          if (af) return a.o[4] - b.o[4];
+          return b.o[5] - a.o[5];
+        });
+      var X = 14, Y = 20;
+      g.fillStyle = C.paper; g.globalAlpha = 0.86;
+      g.fillRect(X - 8, Y - 14, 366, 22 + order.length * 17); g.globalAlpha = 1;
+      label("controller        sim s   metres  xtrack   ms/tick", X, Y, C.mut, 10);
+      order.forEach(function (e, k) {
+        var o = e.o, y = Y + 16 + k * 17;
+        var name = e.rc.label.toLowerCase().replace(" ", "-");
+        g.fillStyle = e.rc.col; g.fillRect(X, y - 7, 7, 7);
+        label(name, X + 12, y, C.ink, 11);
+        label(o[4].toFixed(1), X + 118, y, C.ink, 11);
+        label(o[5].toFixed(2), X + 176, y, C.ink, 11);
+        label(o[8].toFixed(3), X + 238, y, C.ink, 11);
+        label(o[9] < 10 ? o[9].toFixed(2) : o[9].toFixed(0), X + 300, y, C.ink, 11);
+        if (o[3] !== "running" && o[3] !== "reached") {
+          label(o[3], X + 344, y, C.signal, 10);
+        }
+      });
+    }
+
+    function step() {
+      if (!live) return;
+      var out;
+      try {
+        out = pyodide.runPython("race_step()").toJs();
+      } catch (e) {
+        log("race: " + String(e && e.message ? e.message : e).split("\n").slice(-3).join(" | "), "err");
+        live = false; runBtnEl.textContent = "Run the race"; return;
+      }
+      rows = out;
+      frames++;
+      RACERS.forEach(function (rc, i) {
+        var o = rows[i];
+        if (!o || !o.length) return;
+        if (!trails[i]) trails[i] = [];
+        var p = toPx(o[0], o[1]);
+        var last = trails[i][trails[i].length - 1];
+        if (!last || Math.abs(last[0] - p[0]) + Math.abs(last[1] - p[1]) > 1.2) trails[i].push(p);
+      });
+      draw();
+
+      var done = pyodide.runPython("race_done()");
+      var finished = rows.filter(function (o) { return o && o.length && o[3] === "reached"; }).length;
+      var running = rows.filter(function (o) { return o && o.length && o[3] === "running"; }).length;
+      readEl.textContent = done
+        ? "done · " + finished + " of " + rows.filter(function (o) { return o && o.length; }).length +
+          " reached the goal · " + (frames * 0.1).toFixed(1) + " s simulated"
+        : running + " still driving · " + (frames * 0.1).toFixed(1) + " s simulated";
+      if (done) { live = false; runBtnEl.textContent = "Run it again"; return; }
+      raf2 = requestAnimationFrame(step);
+    }
+
+    function start() {
+      if (!armed || live) return;
+      var active = RACERS.map(function (rc) { return rc.on; });
+      if (!active.some(Boolean)) { readEl.textContent = "pick at least one controller"; return; }
+      if (raf2) cancelAnimationFrame(raf2);
+      trails = []; rows = []; frames = 0;
+      pyodide.globals.set("__flat", Array.from(occ));
+      pyodide.globals.set("__act", active);
+      var meta;
+      try {
+        meta = pyodide.runPython(
+          "race_init(__flat.to_py() if hasattr(__flat,'to_py') else list(__flat), " +
+          CH + ", " + CW + ", " + RES + ", " + START.r + ", " + START.c + ", " +
+          GOAL.r + ", " + GOAL.c + ", __act.to_py() if hasattr(__act,'to_py') else list(__act))"
+        ).toJs();
+      } catch (e) {
+        log("race: " + String(e && e.message ? e.message : e).split("\n").slice(-3).join(" | "), "err");
+        return;
+      }
+      if (!meta || !meta.length) { readEl.textContent = "A* found no route across the course"; return; }
+      plan = meta[0];
+      log("race: A* planned " + plan.length + " waypoints; " +
+          RACERS.filter(function (rc) { return rc.on; }).map(function (rc, i) { return rc.key; }).join(", ") +
+          " on the line", "ok");
+      live = true;
+      runBtnEl.textContent = "Running…";
+      draw();
+      raf2 = requestAnimationFrame(step);
+    }
+
+    return {
+      ready: function () {
+        armed = true;
+        chips();
+        runBtnEl.addEventListener("click", function () {
+          if (live) { live = false; runBtnEl.textContent = "Run the race"; return; }
+          start();
+        });
+        drawStatic();
+        readEl.textContent = "press run · " + RACERS.filter(function (rc) { return rc.on; }).length +
+          " controllers on the line, MPPI off";
+      }
+    };
+  })();
 
   /* ---------- reach in: the arm's obstacle detector ---------------------
      Same idea as above, different repo. tests/harness.py drives the real
