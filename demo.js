@@ -46,7 +46,7 @@
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
     rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards.",
     smac: "Hybrid A* over an SE2 lattice. Every expansion is an arc the robot can actually drive, so the path obeys a 0.22 m turning radius instead of cutting a grid corner.",
-    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking."
+    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking. Its tree stays inside the planner, so this is the one planner with nothing to show under “explored”."
   };
 
   var COLS = 96, ROWS = 64;
@@ -298,10 +298,15 @@
     "        out = (fn((sw[0], sw[1], 0.0), (gw[0], gw[1], 0.0)) if kind == 'smac'",
     "               else fn(sw[0], sw[1], 0.0, gw[0], gw[1], 0.0))",
     "        ms = (time.perf_counter() - t0) * 1000.0",
+    "        # _hybrid_astar returns (path, explored) -- the world-frame centre of",
+    "        # every lattice node it popped. _plan_hybrid_unified returns the path",
+    "        # alone: its RRT tree is a local in that function and is not handed",
+    "        # back, so there is nothing to draw for it rather than nothing to find.",
     "        pts = out[0] if isinstance(out, tuple) else out",
+    "        seen = out[1] if (isinstance(out, tuple) and len(out) > 1) else []",
     "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
     "        path = [w2g(p) for p in (pts or [])]",
-    "        expl = []",
+    "        expl = [w2g(p) for p in (seen or [])]",
     "    else:",
     "        res = getattr(node, '_astar' if kind == 'astar' else '_theta_star')((sr, sc), (gr, gc))",
     "        ms = (time.perf_counter() - t0) * 1000.0",
