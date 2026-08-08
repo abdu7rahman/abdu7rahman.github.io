@@ -276,6 +276,54 @@
     "        path = [[int(a), int(b)] for a, b in (p or [])]",
     "        expl = [[int(a), int(b)] for a, b in (e or [])]",
     "    return [path, expl, ms]",
+    "# \u2500\u2500 link geometry, measured off tests/scene.py's pose \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    "L_BASE_Z = 0.18                 # base -> shoulder, straight up",
+    "L1, L2, L3 = 0.27, 0.34, 0.25   # shoulder -> upper_arm -> forearm -> wrist_1",
+    "WRIST = ((0.0, 0.0, -0.098), (0.0, 0.0, -0.063), (0.0, 0.0, -0.054))",
+    "L_WRIST = 0.215                 # wrist_1 down to tool0",
+    "BIN_A = (-0.52, -0.26, 0.30)",
+    "BIN_B = (-0.52, 0.38, 0.30)",
+    "LIFT_Z = 0.46",
+    "def _lerp(a, b, t):",
+    "    return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))",
+    "def _ease(t):",
+    "    return t * t * (3.0 - 2.0 * t)",
+    "def eef_target(u):",
+    "    # One pick-and-place loop, u in [0,1). Descend, grip, lift, traverse,",
+    "    # descend, release, return -- the cycle the node drives on the robot.",
+    "    A, B = BIN_A, BIN_B",
+    "    hiA = (A[0], A[1], LIFT_Z); hiB = (B[0], B[1], LIFT_Z)",
+    "    legs = ((0.00, 0.14, hiA, A), (0.14, 0.24, A, A), (0.24, 0.38, A, hiA),",
+    "            (0.38, 0.58, hiA, hiB), (0.58, 0.72, hiB, B), (0.72, 0.82, B, B),",
+    "            (0.82, 1.00, hiB, hiA))",
+    "    for t0, t1, p, q in legs:",
+    "        if t0 <= u < t1:",
+    "            return _lerp(p, q, _ease((u - t0) / (t1 - t0))), (t0, t1)",
+    "    return hiA, (0.0, 1.0)",
+    "def arm_pose(u):",
+    "    # Three-link planar solve in the vertical plane through the base and the",
+    "    # target, so the chain stays connected and the joint limits stay sane.",
+    "    import math, numpy as np",
+    "    tool, leg = eef_target(u)",
+    "    S = np.array([0.0, 0.0, L_BASE_Z])",
+    "    W = np.array([tool[0], tool[1], tool[2] + L_WRIST])       # wrist_1",
+    "    F = W + np.array([0.0, 0.0, L3])                          # forearm, L3 hangs down",
+    "    d = F - S",
+    "    r = math.hypot(d[0], d[1]); dz = d[2]",
+    "    reach = math.hypot(r, dz)",
+    "    reach = min(max(reach, abs(L1 - L2) + 1e-3), L1 + L2 - 1e-3)",
+    "    ca = (reach * reach + L1 * L1 - L2 * L2) / (2.0 * L1 * reach)",
+    "    a1 = math.atan2(dz, r) + math.acos(min(1.0, max(-1.0, ca)))",
+    "    yaw = math.atan2(d[1], d[0])",
+    "    A = S + np.array([math.cos(a1) * math.cos(yaw) * L1,",
+    "                      math.cos(a1) * math.sin(yaw) * L1,",
+    "                      math.sin(a1) * L1])                     # upper_arm",
+    "    links = {'base_link': np.zeros(3), 'shoulder_link': S, 'upper_arm_link': A,",
+    "             'forearm_link': F, 'wrist_1_link': W}",
+    "    p = W",
+    "    for name, off in zip(('wrist_2_link', 'wrist_3_link', 'tool0'), WRIST):",
+    "        p = p + np.array(off); links[name] = p",
+    "    return links, np.array(tool), leg",
     "_ARM = {}",
     "def arm_write(path, src):",
     "    import os",
@@ -292,9 +340,6 @@
     "    cls = harness.load_node_class()",
     "    rig = harness.Rig(cls)",
     "    n = rig.node",
-    "    # Count what each stage keeps by wrapping the node's own calls. The",
-    "    # workspace box is inline in _cloud_cb, so its survivors are read off",
-    "    # what reaches the colour filter.",
     "    st = {}",
     "    _colour, _self = n._is_robot_color, n._filter_robot_self",
     "    def colour(rgb):",
@@ -308,23 +353,33 @@
     "        return out",
     "    n._is_robot_color, n._filter_robot_self = colour, selff",
     "    _ARM.update(rig=rig, n=n, scene=scene, st=st,",
-    "                rng=np.random.default_rng(int(seed)), t=0.0)",
-    "    # prime the baseline the way the node does: parked arm, empty workspace",
-    "    for _ in range(8):",
+    "                rng=np.random.default_rng(int(seed)))",
+    "    # Prime the baseline the way the node does: parked, and parked means one",
+    "    # pose, which is the whole reason the swept-volume history exists once",
+    "    # it starts moving.",
+    "    _set_pose(0.0)",
+    "    for _ in range(10):",
     "        cam, rgb, _g = scene.build(_ARM['rng'])",
     "        rig.feed(cam, rgb)",
     "    n._executing = True",
-    "    L = scene.LINKS",
     "    return [float(n.DEPTH_MIN), float(n.DEPTH_MAX), int(n.OBSTACLE_THRESHOLD),",
     "            int(n.DEBOUNCE_FRAMES), float(n.CLOUD_THROTTLE),",
-    "            int(n._baseline_count or 0),",
-    "            [[float(a) for a in L[k]] for k in L],",
-    "            [[list(L).index(a), list(L).index(b)] for a, b in scene.CHAIN]]",
-    "F, CX, CY = 610.0, 559.0, 245.0        # px; chosen so the workspace fills the plate",
-    "PLANE_Y = 0.08                          # the arm's own plane, and the one the",
-    "                                        # camera axis is least parallel to, so the",
-    "                                        # cursor unprojects cleanly across the plate",
-    "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))    # the node's workspace box",
+    "            int(n._baseline_count or 0), float(n.PREEMPT_DIST),",
+    "            int(len(n._arm_pos_history.maxlen and [0] * n._arm_pos_history.maxlen)),",
+    "            [[list(scene.LINKS).index(a), list(scene.LINKS).index(b)]",
+    "             for a, b in scene.CHAIN]]",
+    "def _set_pose(u):",
+    "    # One pose, handed to both the renderer and the node's TF, so the point",
+    "    # cloud and the self-filter cannot disagree about where the arm is.",
+    "    a = _ARM; s = a['scene']",
+    "    links, tool, leg = arm_pose(u)",
+    "    s.LINKS = links",
+    "    a['rig'].node.tf_buffer.links = links",
+    "    a['tool'] = tool",
+    "    return links, tool",
+    "F, CX, CY = 481.0, 504.0, 346.0     # fitted to the arm over a whole cycle",
+    "PLANE_Y = 0.08",
+    "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))",
     "def _project(p):",
     "    z = p[:, 2].copy(); z[z < 1e-3] = 1e-3",
     "    return F * p[:, 0] / z + CX, F * p[:, 1] / z + CY",
@@ -336,51 +391,54 @@
     "    t = (PLANE_Y - s.CAM_POS[1]) / d[1]",
     "    if t <= 0: return None",
     "    p = s.CAM_POS + t * d",
-    "    # keep it inside the box the node filters on, so the cursor cannot",
-    "    # wander somewhere the pipeline would discard for a boring reason",
     "    return np.array([min(max(p[i], WS[i][0]), WS[i][1]) for i in range(3)])",
-    "def arm_links():",
+    "def arm_frame(cycle_u, cur_u, cur_v, radius, keep, hand):",
     "    import numpy as np",
-    "    s = _ARM['scene']",
-    "    P = np.array([s.LINKS[k] for k in s.LINKS])",
-    "    u, v = _project(s.to_camera(P))",
-    "    return [[float(a), float(b)] for a, b in zip(u, v)]",
-    "def arm_frame(u, v, radius, keep):",
-    "    import numpy as np, time",
     "    a = _ARM; s, rig, n, st = a['scene'], a['rig'], a['n'], a['st']",
-    "    c = arm_unproject(u, v)",
-    "    if c is None: return None",
+    "    links, tool = _set_pose(cycle_u)",
+    "    c = arm_unproject(cur_u, cur_v) if hand else None",
     "    st.clear()",
     "    before = len(rig.detections)",
-    "    cam, rgb, gt = s.build(a['rng'], obstacle=(tuple(c), radius))",
+    "    kw = dict(obstacle=(tuple(c), radius)) if c is not None else {}",
+    "    cam, rgb, gt = s.build(a['rng'], **kw)",
     "    ms = rig.feed(cam, rgb) * 1000.0",
     "    hit = len(rig.detections) > before",
-    "    # nearest distance from the obstacle surface to any arm segment",
-    "    near = 1e9",
-    "    for A, B in s.CHAIN:",
-    "        p0, p1 = s.LINKS[A], s.LINKS[B]",
-    "        d = p1 - p0; L2 = float(d @ d)",
-    "        t = 0.0 if L2 < 1e-9 else float(np.clip((c - p0) @ d / L2, 0.0, 1.0))",
-    "        near = min(near, float(np.linalg.norm(c - (p0 + t * d))))",
+    "    near, eef = 1e9, 1e9",
+    "    if c is not None:",
+    "        for A, B in s.CHAIN:",
+    "            p0, p1 = links[A], links[B]",
+    "            d = p1 - p0; L2_ = float(d @ d)",
+    "            t = 0.0 if L2_ < 1e-9 else float(np.clip((c - p0) @ d / L2_, 0.0, 1.0))",
+    "            near = min(near, float(np.linalg.norm(c - (p0 + t * d))))",
+    "        eef = float(np.linalg.norm(c - links['tool0']))",
     "    idx = np.linspace(0, len(cam) - 1, min(int(keep), len(cam))).astype(int)",
     "    pu, pv = _project(cam[idx])",
     "    col = rgb[idx]",
-    "    ou, ov = _project(s.to_camera(np.array([c])))",
-    "    det = [float(ou[0]), float(ov[0])]",
+    "    P = np.array([links[k] for k in links])",
+    "    lu, lv = _project(s.to_camera(P))",
+    "    det = []",
     "    err = 0.0",
-    "    if hit:",
-    "        dxyz, _dif = rig.detections[-1]",
-    "        du, dv = _project(s.to_camera(np.array([dxyz])))",
-    "        det = [float(du[0]), float(dv[0])]",
-    "        err = float(np.linalg.norm(dxyz - gt))",
+    "    ou = ov = orad = 0.0",
+    "    if c is not None:",
+    "        cu, cv = _project(s.to_camera(np.array([c])))",
+    "        ou, ov = float(cu[0]), float(cv[0])",
+    "        orad = float(radius / max(1e-3, np.linalg.norm(s.to_camera(np.array([c]))[0])) * F)",
+    "        det = [ou, ov]",
+    "        if hit:",
+    "            dxyz, _dif = rig.detections[-1]",
+    "            du, dv = _project(s.to_camera(np.array([dxyz])))",
+    "            det = [float(du[0]), float(dv[0])]",
+    "            err = float(np.linalg.norm(dxyz - gt))",
     "    return [[float(x) for x in pu], [float(y) for y in pv],",
     "            [int(r) << 16 | int(g) << 8 | int(b) for r, g, b in col],",
-    "            float(ou[0]), float(ov[0]), float(radius / max(1e-3, np.linalg.norm(",
-    "                s.to_camera(np.array([c]))[0])) * F),",
-    "            bool(hit), det, err, float(near), ms,",
+    "            ou, ov, orad, bool(hit), det, err,",
+    "            (float(near) if c is not None else -1.0), ms,",
     "            int(len(cam)), int(st.get('ws', 0)), int(st.get('colour', 0)),",
     "            int(st.get('self', 0)), int(n._baseline_count or 0),",
-    "            int(n._obstacle_streak), bool(n._obstacle_present)]",
+    "            int(n._obstacle_streak), bool(n._obstacle_present),",
+    "            [[float(x), float(y)] for x, y in zip(lu, lv)],",
+    "            (float(eef) if c is not None else -1.0),",
+    "            bool(c is not None and hit and eef < n.PREEMPT_DIST)]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -970,6 +1028,7 @@
     var live = false, lastF = 0, cur = { u: 300, v: 300 }, have = false;
     var links = [], chain = [], meta = null, f = null, radius = 0.07;
     var hist = [];                                    // recent decisions, for the strip
+    var t0 = 0, PERIOD = 14000;                       // one pick-and-place loop
 
     function bar(x, y, w, h, frac, colour, alpha) {
       g.fillStyle = C.rule; g.globalAlpha = 0.55;
@@ -1002,7 +1061,7 @@
         }
       }
 
-      // the arm chain, so the self-filter has something to point at
+      // the arm chain, moving, so the self-filter has something to track
       if (links.length) {
         g.strokeStyle = "#5aa5af"; g.globalAlpha = 0.5; g.lineWidth = 2;
         g.lineCap = "round";
@@ -1016,11 +1075,21 @@
         links.forEach(function (p) {
           g.beginPath(); g.arc(p[0], p[1], 2.6, 0, 6.284); g.fill();
         });
-        g.globalAlpha = 1;
+        // the tool, and the radius inside which the node cancels and replans
+        var tp = links[links.length - 1];
+        g.globalAlpha = f && f[20] ? 0.9 : 0.34;
+        g.strokeStyle = f && f[20] ? "#ff8a5c" : "#5aa5af";
+        g.setLineDash([3, 4]); g.lineWidth = 1;
+        g.beginPath(); g.arc(tp[0], tp[1], 46, 0, 6.284); g.stroke();
+        g.setLineDash([]); g.globalAlpha = 1;
+        g.fillStyle = f && f[20] ? "#ff8a5c" : "#5aa5af";
+        g.beginPath(); g.arc(tp[0], tp[1], 4.2, 0, 6.284); g.fill();
+        label("tool0", tp[0] + 9, tp[1] + 4, f && f[20] ? "#ff8a5c" : "#5aa5af", 9);
       }
 
-      if (f) {
+      if (f && have) {
         var ox = f[3], oy = f[4], orad = Math.max(6, f[5]), hit = f[6];
+        if (!have) { ox = -999; }
         // the obstacle you are holding
         g.strokeStyle = hit ? "#ff8a5c" : "#d7d3c6";
         g.lineWidth = 1.8;
@@ -1041,7 +1110,7 @@
       // plate label
       label("CAMERA  /  depth + color points", 16, 24, "#8b8578", 10);
       label("arm chain", 16, 44, "#5aa5af", 9.5);
-      label("your hand", 82, 44, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
+      if (have) label("your hand", 82, 44, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
       label(meta ? meta[0].toFixed(1) + "-" + meta[1].toFixed(1) + " m depth gate" : "",
             16, cvn.height - 14, "#6e6a5c", 10);
       g.restore();
@@ -1101,6 +1170,23 @@
       // the blind spot, which is the interesting part
       var near = f[9];
       label("obstacle to nearest link", X, y, C.mut, 10);
+      if (near < 0) {
+        label("no hand in the workspace", X, y + 18, C.mut, 12);
+        y += 54;
+        label("decision", X, y, C.mut, 10);
+        g.fillStyle = C.mut;
+        g.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.textAlign = "left";
+        g.fillText("ARM WORKING", X, y + 26);
+        label("baseline holding at " + f[15] + " foreign points", X, y + 46, C.mut, 10);
+        y += 66;
+        label("frame time", X, y, C.mut, 10);
+        bar(X, y + 8, W - 66, 8, f[10] / (meta[4] * 1000), C.ink, 0.7);
+        label(f[10].toFixed(1) + " ms", X + W, y + 17, C.ink, 13, "right");
+        label("budget " + (meta[4] * 1000).toFixed(0) + " ms at " +
+              Math.round(1 / meta[4]) + " Hz", X, y + 30, C.mut, 9.5);
+        return;
+      }
       var NW = W - 66, dmax = 0.5;
       bar(X, y + 8, NW, 8, near / dmax, near < 0.11 ? C.mut : C.accent, 0.85);
       var bx = X + NW * 0.11 / dmax;
@@ -1139,21 +1225,29 @@
       requestAnimationFrame(step);
       if (ts - lastF < 110) return;                   // a shade under the node's 20 Hz
       lastF = ts;
-      if (!have) { paint(); return; }
+      var u = ((ts - t0) % PERIOD) / PERIOD;
       try {
         var out = pyodide.runPython(
-          "arm_frame(" + cur.u + "," + cur.v + "," + radius + ",2600)");
+          "arm_frame(" + u.toFixed(5) + "," + cur.u + "," + cur.v + "," +
+          radius + ",2600," + (have ? "True" : "False") + ")");
         if (out) {
           f = out.toJs();
+          links = f[18];
           hist.push(f[6]); if (hist.length > 40) hist.shift();
         }
       } catch (e) { /* leave the last frame up */ }
       paint();
-      readEl.textContent = f
-        ? (f[6] ? "detected" : f[9] < 0.11 ? "inside the self-filter" : "no obstacle") +
-          "  ·  " + f[14].toLocaleString() + " foreign points  ·  " +
-          f[9].toFixed(2) + " m from the arm  ·  " + f[10].toFixed(1) + " ms"
-        : "move the cursor over the camera plate";
+      readEl.textContent = !f
+        ? "loading"
+        : !have
+          ? "arm running its cycle  ·  " + f[14].toLocaleString() +
+            " foreign points  ·  no hand in the workspace  ·  " + f[10].toFixed(1) + " ms"
+          : (f[20] ? "PREEMPT: obstacle inside " + meta[6].toFixed(2) + " m of the tool"
+             : f[6] ? "detected" : f[9] >= 0 && f[9] < 0.11 ? "inside the self-filter"
+             : "not enough foreign points") +
+            "  ·  " + f[14].toLocaleString() + " foreign points  ·  " +
+            f[9].toFixed(2) + " m from the arm  ·  " + f[19].toFixed(2) +
+            " m from the tool  ·  " + f[10].toFixed(1) + " ms";
     }
 
     function place(clientX, clientY) {
@@ -1176,8 +1270,8 @@
     return {
       start: function (m) {
         meta = m;
-        links = pyodide.runPython("arm_links()").toJs();
-        chain = m[7];
+        chain = m[8];
+        t0 = performance.now();
         live = true; paint(); requestAnimationFrame(step);
       }
     };
@@ -1206,7 +1300,8 @@
       var m = pyodide.runPython("arm_init(20260808)").toJs();
       arm.start(m);
       log("detector online: threshold " + m[2] + " foreign points, " + m[3] +
-          "-frame debounce, " + Math.round(1 / m[4]) + " Hz", "ok");
+          "-frame debounce, " + Math.round(1 / m[4]) + " Hz, preempt inside " +
+          m[6] + " m of the tool", "ok");
     } catch (e) {
       log("arm detector unavailable: " + String(e && e.message || e)
           .split("\n").slice(-3).join(" | "), "err");

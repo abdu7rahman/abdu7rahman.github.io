@@ -151,15 +151,24 @@
       <p class="chase__lede">
         This is the UR12e bin-picking cell from
         <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>,
-        seen down the RealSense. Move your cursor to put a hand in the workspace and
-        <code>_cloud_cb</code> runs on it &mdash; the depth gate, the workspace box, the colour mask
-        that drops robot-coloured points, and the geometric self-filter that erases the arm. Every
-        count on the right is read off the node's own filter calls. Scroll to resize the hand.
+        seen down the RealSense. The arm is running a pick-and-place cycle &mdash; its joints are
+        solved each frame, not played back &mdash; and <code>_cloud_cb</code> runs on every frame of
+        it: the depth gate, the workspace box, the colour mask that drops robot-coloured points, and
+        the geometric self-filter that erases the arm from its own view. Every count on the right is
+        read off the node's own filter calls.
+      </p>
+      <p class="chase__lede">
+        <strong>Move your cursor to put a hand in the workspace.</strong> Watch the count on the
+        right while nothing is in there: a moving arm keeps revealing background it was occluding a
+        frame ago, and the self-filter has to erase all of it or every one of those points is a
+        phantom obstacle. Over a full cycle it reports zero.
       </p>
       <p class="chase__lede">
         The interesting part is where it <em>stops</em> seeing you. Walk the hand onto a link and it
         vanishes into the self-filter &mdash; the repo's own test puts that edge at 11&nbsp;cm, and
-        you can find it yourself. That is the cost of never reporting the robot as an obstacle.
+        you can find it yourself. Chase the tool and the dashed circle turns: that is
+        <code>PREEMPT_DIST</code>, the radius inside which the node cancels the motion it is
+        executing and replans. Both are the cost of never reporting the robot as an obstacle.
       </p>
     </div>
     <div class="chase__stage">
