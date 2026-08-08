@@ -528,14 +528,18 @@
     "    if leg == 'to PLACE': return 0.0, True",
     "    if leg == 'gripper opening': return prog, prog < 0.45",
     "    return 1.0, False",
-    "def _payload():",
+    "def _payload(tip):",
     "    # The thing being moved. It sits at PICK until the gripper closes on it,",
     "    # rides the tool to PLACE, and stays there until the cycle comes round.",
-    "    import numpy as np",
+    "    #",
+    "    # It rides the tool the renderer drew, not the tool the queue asked for.",
+    "    # Those differ whenever the IK clamps -- a detour lifts to DETOUR_HEIGHT,",
+    "    # which can be past the two-link reach -- and drawing the box at the",
+    "    # commanded pose then leaves it hanging in the air beside the gripper.",
     "    d = _ARM; w = arm_waypoints()",
     "    if 'pay' not in d: d['pay'] = [float(v) for v in w['pick']]",
     "    grip, held = _grip_state()",
-    "    if held: d['pay'] = [float(v) for v in d['pos']]",
+    "    if held: d['pay'] = [float(v) for v in tip]",
     "    return d['pay'], float(grip), bool(held)",
     "def chase_reset_motion():",
     "    d = _ARM",
@@ -698,7 +702,7 @@
     "            err = float(np.linalg.norm(dxyz - gt))",
     "    # the payload, the gripper, and how far each joint is from the camera --",
     "    # the renderer needs depth to make a near link thicker than a far one",
-    "    pay, grip, held = _payload()",
+    "    pay, grip, held = _payload(links['tool0'])",
     "    pcam = s.to_camera(np.array([pay]))",
     "    ppu, ppv = _project(pcam)",
     "    pay_uv = [float(ppu[0]), float(ppv[0]), float(max(1e-3, pcam[0][2]))]",
@@ -1073,6 +1077,25 @@
     "                _CH['viz'] = []",
     "            return out",
     "        c._get_closest_point = near",
+    "    elif kind == 'mppi' and hasattr(c, '_publish_trajectories'):",
+    "        # MPPI already samples and scores a fan; it just sends it to rviz.",
+    "        # Intercepting the publish gets the real rollouts and the real costs,",
+    "        # so the chase can draw for MPPI what it draws for DWA.",
+    "        def traj(trajectories, costs, weights):",
+    "            import numpy as np",
+    "            try:",
+    "                K = int(trajectories.shape[0])",
+    "                idx = np.unique(np.linspace(0, K - 1, min(28, K)).astype(int))",
+    "                best = int(np.argmin(costs))",
+    "                _CH['fan'] = [[float(v) for v in trajectories[i, :, 0]] +",
+    "                              [float(v) for v in trajectories[i, :, 1]]",
+    "                              for i in idx if i != best]",
+    "                _CH['best'] = ([float(v) for v in trajectories[best, :, 0]],",
+    "                               [float(v) for v in trajectories[best, :, 1]])",
+    "                _CH['n'] = K",
+    "            except Exception:",
+    "                _CH['fan'] = []; _CH['best'] = None; _CH['n'] = 0",
+    "        c._publish_trajectories = traj",
     "def chase_step_any(x, y, yaw, v, w_):",
     "    # The node's own _control_loop, run unedited, with the pose and the",
     "    # measured velocity fed in where the subscriptions would put them.",
@@ -1091,6 +1114,7 @@
     "    if isinstance(getattr(n, 'current_vel', None), dict):",
     "        n.current_vel = {'v': v, 'omega': w_}",
     "    n.cmd_pub.last = None",
+    "    _CH['fan'] = []; _CH['best'] = None",
     "    try:",
     "        n._control_loop()",
     "    except Exception as e:",
@@ -1110,7 +1134,10 @@
     "        # TEB keeps its elastic band on the node, already in world metres.",
     "        band = getattr(n, 'band', None) or []",
     "        viz = ['band'] + [float(q) for pt in band for q in list(pt)[:2]]",
-    "    return [bv, bw, 0, 0, [], [], [], 0, wp, viz]",
+    "    fan = _CH.get('fan') or []",
+    "    bst = _CH.get('best')",
+    "    return [bv, bw, int(_CH.get('n', 0) or 0), 0,",
+    "            (bst[0] if bst else []), (bst[1] if bst else []), fan, 0, wp, viz]",
     "def chase_adopt_path(flat):",
     "    # A path planned somewhere else, handed to this controller the way /plan",
     "    # would. Used when the controller runs in a worker but the planner does",
@@ -1651,7 +1678,8 @@
                 : state === 5
                   ? "controller stopped  ·  see the console below"
                   : "A* " + (plan.length / 2 | 0) + " pts in " + planMs.toFixed(1) +
-                    " ms  ·  " + (nTraj ? "DWA scoring " + nTraj + " rollouts"
+                    " ms  ·  " + (nTraj ? chase.current().label + " scoring " +
+                                              nTraj.toLocaleString() + " rollouts"
                                             : chase.current().label +
                                               (ctlMs > 40 ? " thinking " + Math.round(ctlMs) + " ms a tick" : "")) +
                     "  ·  v " +
@@ -1788,6 +1816,12 @@
           var out = msg.out || [];
           if (!out.length) return;
           bot.v = out[0]; bot.w = out[1]; state = out[7];
+          // MPPI hands back its sampled rollouts in the same slots DWA uses,
+          // so the fan draws with no extra case -- but they have to be copied
+          // across, which is what was missing.
+          nTraj = out[2];
+          best = [out[4], out[5]];
+          fan = out[6] || [];
           viz = out.length > 9 ? out[9] : [];
           if (viz && viz[0] === "err" && !broke) {
             broke = true;
