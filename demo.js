@@ -9,7 +9,11 @@
   var MODULES = {
     astar:      { file: "astar_planner.py",      cls: "AStarPlannerNode",      call: "_astar" },
     theta_star: { file: "theta_star_planner.py", cls: "ThetaStarPlannerNode",  call: "_theta_star" },
-    rrt:        { file: "rrt_planner.py",        cls: "RRTPlannerNode",        call: "_rrt" }
+    rrt:        { file: "rrt_planner.py",        cls: "RRTPlannerNode",        call: "_rrt" },
+    // SE2 planners: they carry a heading and a 0.22 m turning radius, so they
+    // are given the start and goal in world coordinates rather than cells
+    smac:       { file: "smac_planner.py",       cls: "SmacPlannerNode",       call: "_hybrid_astar", se2: true },
+    hybrid:     { file: "rrt_smac_hybrid_planner.py", cls: "HybridRRTSMACPlannerNode", call: "_plan_hybrid_unified", se2: true }
   };
   var DWA = { file: "dwa_controller.py", cls: "DWAControllerNode" };
   // The arm's detector comes from a different repo, and it ships a headless
@@ -25,7 +29,9 @@
   var HINTS = {
     astar: "8-connected grid search, octile heuristic. Expands in cost order.",
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
-    rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards."
+    rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards.",
+    smac: "Hybrid A* over an SE2 lattice. Every expansion is an arc the robot can actually drive, so the path obeys a 0.22 m turning radius instead of cutting a grid corner.",
+    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking."
   };
 
   var COLS = 96, ROWS = 64;
@@ -269,6 +275,18 @@
     "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
     "        path = [w2g(p) for p in out.get('path', [])]",
     "        expl = [w2g(p) for p in out.get('tree', [])]",
+    "    elif kind in ('smac', 'hybrid'):",
+    "        sw = ((sc + 0.5) * 0.05, (sr + 0.5) * 0.05)",
+    "        gw = ((gc + 0.5) * 0.05, (gr + 0.5) * 0.05)",
+    "        import random as _r; _r.seed(7)",
+    "        fn = node._hybrid_astar if kind == 'smac' else node._plan_hybrid_unified",
+    "        out = (fn((sw[0], sw[1], 0.0), (gw[0], gw[1], 0.0)) if kind == 'smac'",
+    "               else fn(sw[0], sw[1], 0.0, gw[0], gw[1], 0.0))",
+    "        ms = (time.perf_counter() - t0) * 1000.0",
+    "        pts = out[0] if isinstance(out, tuple) else out",
+    "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
+    "        path = [w2g(p) for p in (pts or [])]",
+    "        expl = []",
     "    else:",
     "        res = getattr(node, '_astar' if kind == 'astar' else '_theta_star')((sr, sc), (gr, gc))",
     "        ms = (time.perf_counter() - t0) * 1000.0",
@@ -328,11 +346,13 @@
     "            return _lerp(p, q, _ease((u - t0) / (t1 - t0))), lbl",
     "    return H, 'parked, baseline rebuilding'",
     "def arm_pose(u):",
+    "    tool, leg = eef_target(u)",
+    "    return arm_ik(tool), np.array(tool), leg",
+    "def arm_ik(tool):",
     "    # Two-link solve in the vertical plane through the base and the target.",
     "    # Every position below is placed from the solved angles, so the links",
     "    # cannot stretch to cover an unreachable target.",
     "    import math, numpy as np",
-    "    tool, leg = eef_target(u)",
     "    S = np.array([0.0, 0.0, L_BASE_Z])",
     "    Wt = np.array([tool[0], tool[1], tool[2] + L_WRIST])       # wrist_1 target",
     "    d = Wt - S",
@@ -354,7 +374,7 @@
     "    p = W",
     "    for name, off in zip(('wrist_2_link', 'wrist_3_link', 'tool0'), WRIST):",
     "        p = p + np.array([0.0, 0.0, -off]); links[name] = p",
-    "    return links, np.array(tool), leg",
+    "    return links",
     "_ARM = {}",
     "def arm_write(path, src):",
     "    import os",
@@ -384,12 +404,23 @@
     "        st['self'] = len(out)",
     "        return out",
     "    n._is_robot_color, n._filter_robot_self = colour, selff",
+    "    n._last_obstacle_xyz = None",
+    "    _inj = n._inject_obstacle_at_xyz",
+    "    def inject(x, y, z, diff):",
+    "        n._last_obstacle_xyz = (x, y, z)      # line 525 of the node",
+    "        return _inj(x, y, z, diff)",
+    "    n._inject_obstacle_at_xyz = inject",
+    "    _rm = n._remove_obstacle",
+    "    def remove():",
+    "        n._last_obstacle_xyz = None",
+    "        return _rm()",
+    "    n._remove_obstacle = remove",
     "    _ARM.update(rig=rig, n=n, scene=scene, st=st,",
     "                rng=np.random.default_rng(int(seed)))",
     "    # Prime the baseline the way the node does: parked, and parked means one",
     "    # pose, which is the whole reason the swept-volume history exists once",
     "    # it starts moving.",
-    "    _set_pose(0.0)",
+    "    _set_pose(arm_waypoints()['home'])",
     "    for _ in range(10):",
     "        cam, rgb, _g = scene.build(_ARM['rng'])",
     "        rig.feed(cam, rgb)",
@@ -400,15 +431,16 @@
     "            int(len(n._arm_pos_history.maxlen and [0] * n._arm_pos_history.maxlen)),",
     "            [[list(scene.LINKS).index(a), list(scene.LINKS).index(b)]",
     "             for a, b in scene.CHAIN], PICK_DZ, PLACE_DY]",
-    "def _set_pose(u):",
+    "def _set_pose(tool):",
     "    # One pose, handed to both the renderer and the node's TF, so the point",
     "    # cloud and the self-filter cannot disagree about where the arm is.",
+    "    import numpy as np",
     "    a = _ARM; s = a['scene']",
-    "    links, tool, leg = arm_pose(u)",
+    "    links = arm_ik(tool)",
     "    s.LINKS = links",
     "    a['rig'].node.tf_buffer.links = links",
-    "    a['tool'] = tool",
-    "    return links, tool, leg",
+    "    a['tool'] = np.array(tool)",
+    "    return links, np.array(tool)",
     "F, CX, CY = 565.0, 533.0, 295.0     # fitted to the arm over a whole cycle",
     "PLANE_Y = 0.08",
     "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))",
@@ -424,10 +456,154 @@
     "    if t <= 0: return None",
     "    p = s.CAM_POS + t * d",
     "    return np.array([min(max(p[i], WS[i][0]), WS[i][1]) for i in range(3)])",
-    "def arm_frame(cycle_u, cur_u, cur_v, radius, keep, hand):",
+    "# \u2500\u2500 the node's cycle as a queue, so a replan can change it mid-motion \u2500\u2500",
+    "TOOL_SPEED = 0.15                # m/s along the tool path",
+    "SIDE_OFFSET = 0.18               # m, plan_arc_detour's side step",
+    "def _v(p):",
+    "    import numpy as np",
+    "    return np.array([float(p[0]), float(p[1]), float(p[2])])",
+    "def _seg_hits(a, b, c, r):",
+    "    # closest approach of segment a->b to sphere centre c",
+    "    import numpy as np",
+    "    d = b - a; L2 = float(d @ d)",
+    "    t = 0.0 if L2 < 1e-12 else float(np.clip((c - a) @ d / L2, 0.0, 1.0))",
+    "    return float(np.linalg.norm(c - (a + t * d))) < r",
+    "def chase_queue():",
+    "    w = arm_waypoints()",
+    "    # run_demo(): open, PICK, close, PLACE, open, park while the baseline rebuilds",
+    "    return [(w['pick'], 'to PICK', 0.0), (w['pick'], 'gripper closing', 0.8),",
+    "            (w['place'], 'to PLACE', 0.0), (w['place'], 'gripper opening', 0.8),",
+    "            (w['home'], 'to home', 0.0), (w['home'], 'parked, baseline rebuilding', 2.0)]",
+    "def _detour(cur, tgt, sphere, block_r):",
+    "    # plan_arc_detour, verbatim in shape: lift over when the motion is",
+    "    # horizontal-dominant, step aside when it is vertical. Its cartesian",
+    "    # solve is replaced by the same segment test the preempt uses.",
+    "    import numpy as np",
+    "    c, t = _v(cur), _v(tgt)",
+    "    dx, dy, dz = t[0] - c[0], t[1] - c[1], t[2] - c[2]",
+    "    horiz = (dx * dx + dy * dy) ** 0.5",
+    "    def clear(wps):",
+    "        pts = [c] + [_v(p) for p in wps]",
+    "        return not any(_seg_hits(pts[i], pts[i + 1], sphere, block_r)",
+    "                       for i in range(len(pts) - 1))",
+    "    if horiz > 0.05:",
+    "        lift = max(c[2], t[2]) + _ARM['n'].DETOUR_HEIGHT",
+    "        wps = [(c[0], c[1], lift), (t[0], t[1], lift), tuple(t)]",
+    "        return (wps, 'lift %.2f' % lift) if clear(wps) else (None, 'lift blocked')",
+    "    for axis, sign in (('y', 1), ('y', -1), ('x', 1), ('x', -1)):",
+    "        off = SIDE_OFFSET * sign",
+    "        ox, oy = (off, 0.0) if axis == 'x' else (0.0, off)",
+    "        wps = [(c[0] + ox, c[1] + oy, c[2]), (t[0] + ox, t[1] + oy, t[2]), tuple(t)]",
+    "        if clear(wps):",
+    "            return wps, 'side %s%+.2f' % (axis, off)",
+    "    return None, 'all detours blocked'",
+    "def chase_reset_motion():",
+    "    d = _ARM",
+    "    q = chase_queue()",
+    "    d.update(queue=q, qi=0, pos=_v(arm_waypoints()['home']), dwell=0.0,",
+    "             leg=q[0][1], planned=None, replans=0, phase='executing',",
+    "             decel=0.0, detour_note='')",
+    "def _planned_path():",
+    "    # what execute_trajectory would be watching: the tool waypoints of the",
+    "    # motion currently running, from where the tool is to the end of the leg",
+    "    d = _ARM",
+    "    if d['qi'] >= len(d['queue']): return []",
+    "    tgt = d['queue'][d['qi']][0]",
+    "    if d.get('detour_wps'):",
+    "        pts = [d['pos']] + [_v(p) for p in d['detour_wps']]",
+    "    else:",
+    "        pts = [d['pos'], _v(tgt)]",
+    "    out = []",
+    "    import numpy as np",
+    "    for i in range(len(pts) - 1):",
+    "        a, b = pts[i], pts[i + 1]",
+    "        n = max(2, int(np.linalg.norm(b - a) / 0.02))",
+    "        out += [a + (b - a) * (j / n) for j in range(n + 1)]",
+    "    return out",
+    "def chase_advance(dt, sphere):",
+    "    # One tick of the executor: watch, cancel, replan, then move.",
+    "    import numpy as np",
+    "    d = _ARM; n = d['n']",
+    "    if 'queue' not in d: chase_reset_motion()",
+    "    block_r = n.SPHERE_RADIUS + n.PATH_CLEARANCE",
+    "    preempted = ''",
+    "",
+    "    if d['phase'] == 'decelerating':",
+    "        d['decel'] -= dt",
+    "        if d['decel'] > 0: return d['leg'], 'cancelled, waiting %.1fs for the arm to stop' % d['decel'], ''",
+    "        tgt = d['queue'][d['qi']][0]",
+    "        wps, note = _detour(d['pos'], tgt, sphere, block_r) if sphere is not None else (None, 'obstacle gone')",
+    "        d['detour_note'] = note",
+    "        if wps is None:",
+    "            d['detour_wps'] = None",
+    "            d['phase'] = 'executing'",
+    "            return d['leg'], 'replan found nothing; holding', note",
+    "        d['detour_wps'] = wps",
+    "        d['replans'] += 1",
+    "        d['phase'] = 'executing'",
+    "        return d['leg'], 'replanned around it', note",
+    "",
+    "    if d['dwell'] > 0:",
+    "        d['dwell'] -= dt",
+    "        return d['leg'], d['leg'], d['detour_note']",
+    "",
+    "    # the watch loop: only worth checking once the sphere is real",
+    "    if sphere is not None and d['replans'] < n.MAX_REPLAN_DEPTH:",
+    "        path = _planned_path()",
+    "        if path:",
+    "            best = int(np.argmin([float(np.linalg.norm(p - d['pos'])) for p in path]))",
+    "            for i in range(best, len(path)):",
+    "                if float(np.linalg.norm(sphere - path[i])) < block_r:",
+    "                    preempted = 'planned waypoint %d/%d inside clearance' % (i, len(path))",
+    "                    break",
+    "        if not preempted and float(np.linalg.norm(sphere - d['pos'])) < n.PREEMPT_DIST:",
+    "            preempted = 'tool %.0f cm from the obstacle' % (",
+    "                float(np.linalg.norm(sphere - d['pos'])) * 100)",
+    "    if preempted:",
+    "        d['phase'] = 'decelerating'",
+    "        d['decel'] = n.DECEL_WAIT",
+    "        d['detour_wps'] = None",
+    "        return d['leg'], 'PREEMPTED: ' + preempted, ''",
+    "",
+    "    # move along whatever route is current",
+    "    tgt = d['queue'][d['qi']][0]",
+    "    route = [_v(p) for p in d['detour_wps']] if d.get('detour_wps') else [_v(tgt)]",
+    "    step = TOOL_SPEED * dt",
+    "    while step > 1e-9 and route:",
+    "        to = route[0] - d['pos']",
+    "        dist = float(np.linalg.norm(to))",
+    "        if dist <= step:",
+    "            d['pos'] = route.pop(0); step -= dist",
+    "            if d.get('detour_wps'): d['detour_wps'] = d['detour_wps'][1:] or None",
+    "        else:",
+    "            d['pos'] = d['pos'] + to * (step / dist); step = 0.0",
+    "    if not route and not d.get('detour_wps'):",
+    "        d['dwell'] = d['queue'][d['qi']][2]",
+    "        d['qi'] = (d['qi'] + 1) % len(d['queue'])",
+    "        d['leg'] = d['queue'][d['qi']][1]",
+    "        if d['qi'] == 0: d['replans'] = 0        # new cycle, fresh replan budget",
+    "    return d['leg'], d['leg'], d['detour_note']",
+    "def _proj_path(pts):",
+    "    import numpy as np",
+    "    if not pts: return []",
+    "    u, v = _project(_ARM['scene'].to_camera(np.array(pts)))",
+    "    return [[float(a), float(b)] for a, b in zip(u, v)]",
+    "def _proj_one(p):",
+    "    import numpy as np",
+    "    cam = _ARM['scene'].to_camera(np.array([p]))[0]",
+    "    u, v = _project(np.array([cam]))",
+    "    return [float(u[0]), float(v[0]), float(_ARM['n'].SPHERE_RADIUS / max(1e-3,",
+    "            np.linalg.norm(cam)) * F)]",
+    "def arm_frame(dt, cur_u, cur_v, radius, keep, hand):",
     "    import numpy as np",
     "    a = _ARM; s, rig, n, st = a['scene'], a['rig'], a['n'], a['st']",
-    "    links, tool, leg = _set_pose(cycle_u)",
+    "    # The sphere the planner avoids is the one the detector injected, not the",
+    "    # cursor -- they are not the same point, and the lag between them is the",
+    "    # detector's.",
+    "    sphere = (np.array(n._last_obstacle_xyz)",
+    "              if (n._obstacle_present and n._last_obstacle_xyz is not None) else None)",
+    "    leg, state, note = chase_advance(float(dt), sphere)",
+    "    links, tool = _set_pose(a['pos'])",
     "    c = arm_unproject(cur_u, cur_v) if hand else None",
     "    st.clear()",
     "    before = len(rig.detections)",
@@ -470,7 +646,10 @@
     "            int(n._obstacle_streak), bool(n._obstacle_present),",
     "            [[float(x), float(y)] for x, y in zip(lu, lv)],",
     "            (float(eef) if c is not None else -1.0),",
-    "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg]",
+    "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg,",
+    "            state, note, int(a['replans']), _proj_path(_planned_path()),",
+    "            (_proj_one(sphere) if sphere is not None else []),",
+    "            float(n.SPHERE_RADIUS)]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -687,7 +866,8 @@
   async function boot() {
     try {
       log("loading pyodide runtime…");
-      pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" });
+      // exposed so the page can be inspected from a test harness
+      window.__pyodide = pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" });
       log("pyodide " + pyodide.version, "ok");
       log("loading numpy…");
       await pyodide.loadPackage("numpy");
@@ -1119,6 +1299,27 @@
         label("tool0", tp[0] + 9, tp[1] + 4, f && f[20] ? "#ff8a5c" : "#5aa5af", 9);
       }
 
+      // the motion currently executing, as the watch loop sees it
+      if (f && f[25] && f[25].length > 1) {
+        var pre = /PREEMPT|cancelled/.test(f[22]);
+        g.strokeStyle = pre ? "#ff8a5c" : "#8b8578";
+        g.globalAlpha = pre ? 0.85 : 0.5; g.lineWidth = 1.4;
+        g.setLineDash([5, 4]);
+        g.beginPath();
+        f[25].forEach(function (p, i) { i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); });
+        g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      }
+      // the collision object the node injected, at its own SPHERE_RADIUS
+      if (f && f[26] && f[26].length) {
+        var sp = f[26];
+        g.strokeStyle = "#ff8a5c"; g.globalAlpha = 0.55; g.lineWidth = 1.4;
+        g.beginPath(); g.arc(sp[0], sp[1], Math.max(8, sp[2]), 0, 6.284); g.stroke();
+        g.globalAlpha = 0.10; g.fillStyle = "#ff8a5c"; g.fill();
+        g.globalAlpha = 1;
+        label("sphere r=" + f[27].toFixed(2), sp[0] + Math.max(8, sp[2]) + 6,
+              sp[1] + 3, "#ff8a5c", 9);
+      }
+
       if (f && have) {
         var ox = f[3], oy = f[4], orad = Math.max(6, f[5]), hit = f[6];
         if (!have) { ox = -999; }
@@ -1210,7 +1411,7 @@
         g.fillStyle = C.mut;
         g.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
         g.textAlign = "left";
-        g.fillText(f[21].toUpperCase(), X, y + 26);
+        g.fillText(f[22].toUpperCase(), X, y + 26);
         label("baseline holding at " + f[15] + " foreign points", X, y + 46, C.mut, 10);
         y += 66;
         label("frame time", X, y, C.mut, 10);
@@ -1257,11 +1458,13 @@
       if (!live) return;
       requestAnimationFrame(step);
       if (ts - lastF < 110) return;                   // a shade under the node's 20 Hz
+      // Real elapsed time, capped so a backgrounded tab does not teleport the
+      // tool past an obstacle on the frame it comes back.
+      var dt = lastF ? Math.min(0.25, (ts - lastF) / 1000) : 0.11;
       lastF = ts;
-      var u = ((ts - t0) % PERIOD) / PERIOD;
       try {
         var out = pyodide.runPython(
-          "arm_frame(" + u.toFixed(5) + "," + cur.u + "," + cur.v + "," +
+          "arm_frame(" + dt.toFixed(4) + "," + cur.u + "," + cur.v + "," +
           radius + ",2600," + (have ? "True" : "False") + ")");
         if (out) {
           f = out.toJs();
@@ -1273,14 +1476,13 @@
       readEl.textContent = !f
         ? "loading"
         : !have
-          ? f[21] + "  ·  " + f[14].toLocaleString() +
+          ? f[22] + "  ·  " + f[14].toLocaleString() +
             " foreign points  ·  no hand in the workspace  ·  " + f[10].toFixed(1) + " ms"
           : (f[20] ? "PREEMPT: obstacle inside " + meta[6].toFixed(2) + " m of the tool"
              : f[6] ? "detected" : f[9] >= 0 && f[9] < 0.11 ? "inside the self-filter"
              : "not enough foreign points") +
-            "  ·  " + f[14].toLocaleString() + " foreign points  ·  " +
-            f[9].toFixed(2) + " m from the arm  ·  " + f[19].toFixed(2) +
-            " m from the tool  ·  " + f[10].toFixed(1) + " ms";
+            "  ·  " + f[22] + (f[23] ? "  [" + f[23] + "]" : "") + "  ·  " +
+            f[9].toFixed(2) + " m from the arm  ·  " + f[10].toFixed(1) + " ms";
     }
 
     function place(clientX, clientY) {

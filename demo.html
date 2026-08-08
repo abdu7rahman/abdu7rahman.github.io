@@ -44,9 +44,9 @@
       way; then reach into a UR12e's workspace and find out where it stops seeing you.
     </p>
     <ol class="runner__toc">
-      <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT</span></li>
+      <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
-      <li><a href="#reach">Reach into the cell</a><span>RealSense pipeline</span></li>
+      <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
     </ol>
   </header>
 
@@ -60,6 +60,8 @@
           <button class="seg__btn is-on" data-planner="astar" role="radio" aria-checked="true">A*</button>
           <button class="seg__btn" data-planner="theta_star" role="radio" aria-checked="false">Theta*</button>
           <button class="seg__btn" data-planner="rrt" role="radio" aria-checked="false">RRT</button>
+          <button class="seg__btn" data-planner="smac" role="radio" aria-checked="false">SMAC</button>
+          <button class="seg__btn" data-planner="hybrid" role="radio" aria-checked="false">Hybrid</button>
         </div>
         <p class="panel__hint" id="planner-hint">8-connected grid search, octile heuristic.</p>
       </div>
@@ -162,10 +164,14 @@
         read off the node's own filter calls.
       </p>
       <p class="chase__lede">
-        <strong>Move your cursor to put a hand in the workspace.</strong> Watch the count on the
-        right while nothing is in there: a moving arm keeps revealing background it was occluding a
-        frame ago, and the self-filter has to erase all of it or every one of those points is a
-        phantom obstacle. Over a full cycle it reports zero.
+        <strong>Move your cursor to put a hand in the workspace.</strong> Put it on the dashed line
+        the tool is following and the node does what it does on the robot: injects a collision sphere
+        at <code>SPHERE_RADIUS</code>, notices a planned waypoint is inside
+        <code>SPHERE_RADIUS + PATH_CLEARANCE</code>, cancels the motion, waits
+        <code>DECEL_WAIT</code> for the arm to actually stop, and replans &mdash; lifting by
+        <code>DETOUR_HEIGHT</code> and going over, or stepping aside, whichever
+        <code>plan_arc_detour</code> picks for the direction it was travelling. Every threshold in
+        that sentence is read off the node.
       </p>
       <p class="chase__lede">
         The interesting part is where it <em>stops</em> seeing you. Walk the hand onto a link and it
