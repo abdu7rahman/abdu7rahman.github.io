@@ -105,6 +105,37 @@
     </div>
   </div>
 
+
+  <section class="chase">
+    <div class="chase__head">
+      <p class="panel__label">The whole stack, live</p>
+      <h2 class="chase__title">Chase</h2>
+      <p class="chase__lede">
+        Your cursor is the goal. <code>astar_planner.py</code> plans to it, and
+        <code>dwa_controller.py</code> tracks that plan &mdash; sampling a velocity window, rolling
+        every candidate forward, scoring them on heading, clearance and speed, and committing to
+        one, ten times a second at the node's own <code>dt</code>. Both files are the ones fetched
+        above, running unmodified.
+      </p>
+      <p class="chase__lede">
+        <strong>Click anywhere to drop an obstacle.</strong> The costmap is re-inflated, the global
+        plan is thrown away and re-run, and the controller keeps tracking whatever comes back &mdash;
+        which is the entire point of the repository.
+      </p>
+      <p class="chase__key">
+        <span><i class="kx kx--plan"></i>global plan</span>
+        <span><i class="kx kx--fan"></i>rejected rollouts</span>
+        <span><i class="kx kx--best"></i>committed trajectory</span>
+        <span><i class="kx kx--infl"></i>inflation layer</span>
+        <button class="tbtn tbtn--sm" id="chase-reset" type="button">Clear the field</button>
+      </p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="chase" width="1204" height="616" aria-label="A robot that drives toward your cursor. A* plans the route and the DWA controller from the repository follows it. Click to add obstacles and watch it re-plan."></canvas>
+      <p class="chase__read" id="chase-read">move the cursor over the field &middot; click to drop an obstacle</p>
+    </div>
+  </section>
+
   <section class="console">
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
