@@ -215,6 +215,8 @@
 .kx--fan  { background: var(--accent); opacity: .45; height: 1px; }
 .kx--best { background: var(--signal); height: 3px; border-radius: 2px; }
 .kx--infl { background: color-mix(in srgb, var(--signal) 26%, var(--paper)); height: 10px; width: 10px; }
+.kx--look { background: var(--accent); height: 8px; width: 8px; border-radius: 50%; }
+.chase__pickl { color: var(--ink-3); margin-right: -8px; }
 .tbtn--sm { padding: 6px 11px; font-size: 10.5px; margin-left: auto; }
 
 .chase__lede em { font-style: italic; color: var(--ink); }
@@ -292,4 +294,52 @@
   background: color-mix(in srgb, var(--paper) 86%, transparent);
   padding: 6px 9px; border-radius: 2px; pointer-events: none;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── reinforce it: the curriculum band ───────────────────── */
+/* Budgets differ by three orders of magnitude, so the flex ratio alone would
+   squeeze stage 0 to a sliver and clip stage 3's label. */
+.rl-stages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 22px; max-width: 960px; }
+.rl-stage {
+  flex: 1; min-width: 132px; cursor: default; outline: none;
+  border: 1px solid var(--rule-2); border-top: 2px solid var(--rule-2);
+  border-radius: 2px; padding: 10px 11px 12px;
+  font: 400 10.5px/1.4 var(--mono); color: var(--ink-3);
+  transition: border-color .16s var(--ease), background .16s var(--ease);
+}
+.rl-stage:hover, .rl-stage:focus { border-color: var(--ink-3); background: var(--paper-3); }
+.rl-stage b { display: block; color: var(--ink); font-weight: 500; letter-spacing: .02em; }
+.rl-stage .rl-steps { display: block; margin-top: 5px; }
+.rl-stage .rl-moves { display: block; margin-top: 6px; color: var(--ink-2); }
+/* the one stage RL touches */
+.rl-stage.is-rl { border-top-color: var(--signal); background: color-mix(in srgb, var(--signal) 5%, var(--paper)); }
+.rl-stage.is-rl b { color: var(--signal); }
+.rl-h { margin-top: 32px; font-size: 1.05rem; letter-spacing: -.01em; }
+.chase__read--flow { position: static; margin-top: 10px; background: none; padding: 0; }
+#rl-canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule-2); background: var(--paper);
+}
+.er-task input[type="range"] { flex: 1; accent-color: var(--signal); }
+.er-task output { flex: none; width: 46px; text-align: right; font: 400 11px/1 var(--mono); color: var(--ink); }
+
+/* ── clone the controller ────────────────────────────────── */
+.clone-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+  gap: 1px; margin-top: 22px; max-width: 960px;
+  background: var(--rule-2); border: 1px solid var(--rule-2);
+}
+.clone-stats div { background: var(--paper); padding: 12px 14px; }
+.clone-stats dt {
+  font: 400 9.5px/1.3 var(--mono); letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0;
+}
+.clone-stats dd {
+  margin: 6px 0 0; font-family: var(--serif); font-size: 1.35rem;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.clone-stats dd small { font-family: var(--mono); font-size: .62rem; color: var(--ink-3); }
+#clone-canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule-2); background: var(--paper);
 }

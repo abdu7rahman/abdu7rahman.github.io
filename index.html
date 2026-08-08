@@ -106,18 +106,20 @@
         <div class="sec__label">
           <span class="tag">02</span>
           <h2>Work</h2>
-          <p class="sec__note">Five systems worth showing. Everything else lives on GitHub.</p>
+          <p class="sec__note">Six systems worth showing. Everything else lives on GitHub.</p>
         </div>
 
         <div class="sec__body">
           <a class="tryit" href="demo.html">
             <span class="tryit__tag">Interactive</span>
             <span class="tryit__body">
-              <b>Run four of these yourself.</b> Draw a map and watch A*, Theta*, RRT, SMAC or the
-              hybrid search it; drive a TurtleBot with your cursor and throw obstacles in front of
-              it; race all five local controllers over one plan; reach into a UR12e's cell, block
-              the arm and watch it cancel and replan. Not videos &mdash; the Python is downloaded
-              from these repos and executed in your browser.
+              <b>Eight of them run in your browser.</b> Draw a map and search it with A*, Theta*,
+              RRT, SMAC or the hybrid; drive a TurtleBot with your cursor using any of five local
+              controllers; race all five over one plan; block a UR12e mid-motion and watch it
+              cancel and replan around your hand; see one action vector masked across six robot
+              morphologies; step through the GRPO curriculum and try to break the rule that keeps
+              RL off the policy; and drive a controller I cloned from the DWA node itself. Not
+              videos &mdash; the Python is downloaded from these repos and executed as you watch.
             </span>
             <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
           </a>
@@ -252,7 +254,23 @@
               </dl>
             </li>
 
-            <li>MediaPipe</li><li>MoveIt&nbsp;2</li>
+            <li class="proj">
+              <span class="proj__idx">06</span>
+              <div class="proj__main">
+                <h3 class="proj__title">
+                  <a href="https://github.com/abdu7rahman/pincher-x100-puppet-control" target="_blank" rel="noopener">
+                    PincherX100 puppet control
+                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
+                  </a>
+                </h3>
+                <p class="proj__desc">
+                  Vision-only teleoperation. Hand position maps to waist, shoulder, elbow and wrist; a
+                  thumb-index pinch drives the gripper through MoveIt 2. No headset, no controller, and
+                  not a defensible way to run a manipulator &mdash; a proof of concept for how quickly an
+                  intuitive interface can be prototyped.
+                </p>
+                <ul class="chips">
+                  <li>ROS&nbsp;2 Humble</li><li>MediaPipe</li><li>MoveIt&nbsp;2</li>
                 </ul>
                 <a class="demo" href="https://www.youtube.com/watch?v=WEzc5oIadew" target="_blank" rel="noopener">
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the demo</span></a>

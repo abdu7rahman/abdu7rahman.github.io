@@ -517,6 +517,30 @@
     "        if clear(wps):",
     "            return wps, 'side %s%+.2f' % (axis, off)",
     "    return None, 'all detours blocked'",
+    "def _grip_state():",
+    "    # run_demo()'s gripper, from the leg the queue is on. Open is 1.",
+    "    d = _ARM",
+    "    leg = d.get('leg', '')",
+    "    q = d['queue'][d['qi']] if d.get('queue') else None",
+    "    total = float(q[2]) if q else 0.0",
+    "    prog = 1.0 if total <= 0 else min(1.0, max(0.0, 1.0 - d['dwell'] / total))",
+    "    if leg == 'gripper closing': return 1.0 - prog, prog > 0.55",
+    "    if leg == 'to PLACE': return 0.0, True",
+    "    if leg == 'gripper opening': return prog, prog < 0.45",
+    "    return 1.0, False",
+    "def _payload(tip):",
+    "    # The thing being moved. It sits at PICK until the gripper closes on it,",
+    "    # rides the tool to PLACE, and stays there until the cycle comes round.",
+    "    #",
+    "    # It rides the tool the renderer drew, not the tool the queue asked for.",
+    "    # Those differ whenever the IK clamps -- a detour lifts to DETOUR_HEIGHT,",
+    "    # which can be past the two-link reach -- and drawing the box at the",
+    "    # commanded pose then leaves it hanging in the air beside the gripper.",
+    "    d = _ARM; w = arm_waypoints()",
+    "    if 'pay' not in d: d['pay'] = [float(v) for v in w['pick']]",
+    "    grip, held = _grip_state()",
+    "    if held: d['pay'] = [float(v) for v in tip]",
+    "    return d['pay'], float(grip), bool(held)",
     "def chase_reset_motion():",
     "    d = _ARM",
     "    q = chase_queue()",
@@ -567,6 +591,20 @@
     "        d['dwell'] -= dt",
     "        return d['leg'], d['leg'], d['detour_note']",
     "",
+    "    # A moved obstacle is a new problem, not a continuation of the old one.",
+    "    # The node re-injects its collision object once the thing shifts by",
+    "    # OBSTACLE_MOVE_EPS, so the recursion cap re-arms on the same threshold --",
+    "    # otherwise two detours exhaust the budget and the arm stops reacting",
+    "    # while the obstacle is still moving, which is not replanning, it is",
+    "    # having replanned.",
+    "    import numpy as _np",
+    "    if sphere is not None:",
+    "        prev = d.get('seen_at')",
+    "        if prev is None or float(_np.linalg.norm(sphere - prev)) > n.OBSTACLE_MOVE_EPS:",
+    "            d['seen_at'] = sphere.copy()",
+    "            d['replans'] = 0",
+    "    else:",
+    "        d['seen_at'] = None",
     "    # the watch loop: only worth checking once the sphere is real",
     "    if sphere is not None and d['replans'] < n.MAX_REPLAN_DEPTH:",
     "        path = _planned_path()",
@@ -585,6 +623,9 @@
     "        d['detour_wps'] = None",
     "        return d['leg'], 'PREEMPTED: ' + preempted, ''",
     "",
+    "    # Once on a detour, keep watching it. The route the arm is following is",
+    "    # what _planned_path returns, so the check above already covers it -- but",
+    "    # only while the budget allows, which is why the budget re-arms.",
     "    # move along whatever route is current",
     "    tgt = d['queue'][d['qi']][0]",
     "    route = [_v(p) for p in d['detour_wps']] if d.get('detour_wps') else [_v(tgt)]",
@@ -601,7 +642,9 @@
     "        d['dwell'] = d['queue'][d['qi']][2]",
     "        d['qi'] = (d['qi'] + 1) % len(d['queue'])",
     "        d['leg'] = d['queue'][d['qi']][1]",
-    "        if d['qi'] == 0: d['replans'] = 0        # new cycle, fresh replan budget",
+    "        if d['qi'] == 0:",
+    "            d['replans'] = 0                    # new cycle, fresh replan budget",
+    "            d['pay'] = [float(v) for v in arm_waypoints()['pick']]",
     "    return d['leg'], d['leg'], d['detour_note']",
     "def _proj_path(pts):",
     "    import numpy as np",
@@ -657,6 +700,14 @@
     "            du, dv = _project(s.to_camera(np.array([dxyz])))",
     "            det = [float(du[0]), float(dv[0])]",
     "            err = float(np.linalg.norm(dxyz - gt))",
+    "    # the payload, the gripper, and how far each joint is from the camera --",
+    "    # the renderer needs depth to make a near link thicker than a far one",
+    "    pay, grip, held = _payload(links['tool0'])",
+    "    pcam = s.to_camera(np.array([pay]))",
+    "    ppu, ppv = _project(pcam)",
+    "    pay_uv = [float(ppu[0]), float(ppv[0]), float(max(1e-3, pcam[0][2]))]",
+    "    lcam = s.to_camera(P)",
+    "    depth = [float(max(1e-3, z)) for z in lcam[:, 2]]",
     "    return [[float(x) for x in pu], [float(y) for y in pv],",
     "            [int(r) << 16 | int(g) << 8 | int(b) for r, g, b in col],",
     "            ou, ov, orad, bool(hit), det, err,",
@@ -669,7 +720,7 @@
     "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg,",
     "            state, note, int(a['replans']), _proj_path(_planned_path()),",
     "            (_proj_one(sphere) if sphere is not None else []),",
-    "            float(n.SPHERE_RADIUS)]",
+    "            float(n.SPHERE_RADIUS), pay_uv, grip, held, depth]",
     "_RACE = {}",
     "RACE_CTRL = [('pure_pursuit_controller', 'PurePursuitControllerNode'),",
     "             ('stanley_controller', 'StanleyControllerNode'),",
@@ -886,6 +937,141 @@
     "    return out",
     "def rfm_table():",
     "    return _RFM['A'].describe_coverage(_RFM['cfg'])",
+    "def rl_init():",
+    "    # The curriculum and the RL config as the package declares them. Nothing",
+    "    # here is retyped: the stage flags, the step budgets and the reward weight",
+    "    # schedule are whatever CurriculumConfig() and GRPOConfig() default to.",
+    "    S = _RFM['S']",
+    "    cur = S.CurriculumConfig(); g = S.GRPOConfig()",
+    "    stages = [[st.stage.value, int(st.max_steps),",
+    "               [bool(st.train_backbone), bool(st.train_action_expert),",
+    "                bool(st.train_dynamics), bool(st.train_reasoning),",
+    "                bool(st.train_competence)], st.notes] for st in cur.stages]",
+    "    _RFM['grpo'] = g",
+    "    return [stages,",
+    "            [[float(a), float(b), float(c)] for a, b, c in g.reward_weights_schedule],",
+    "            [int(x) for x in g.substage_steps],",
+    "            int(g.group_size), float(g.kl_coeff), float(g.clip_ratio)]",
+    "def rl_substage(step):",
+    "    # Which sub-stage a step lands in, against the schedule's own boundaries.",
+    "    g = _RFM['grpo']",
+    "    acc = 0",
+    "    for i, n in enumerate(g.substage_steps):",
+    "        acc += int(n)",
+    "        if step < acc: return i",
+    "    return len(g.substage_steps) - 1",
+    "def rl_advantage(step, scores):",
+    "    # GRPO, on the config's own numbers: weight each rollout's three reward",
+    "    # terms by the schedule at this step, then centre and scale the rewards",
+    "    # *within the group*. That is the whole trick -- the group is the baseline,",
+    "    # so there is no value network to train.",
+    "    #",
+    "    # The three component scores are the input, not the output: a real run gets",
+    "    # them from a format check, a mined answer and a frozen judge. What this",
+    "    # shows is what the staged weights do to the same group as training moves.",
+    "    import statistics",
+    "    g = _RFM['grpo']",
+    "    i = rl_substage(int(step))",
+    "    w = g.reward_weights_schedule[i]",
+    "    rs = [float(w[0]) * s[0] + float(w[1]) * s[1] + float(w[2]) * s[2] for s in scores]",
+    "    mean = statistics.fmean(rs)",
+    "    sd = statistics.pstdev(rs)",
+    "    adv = [(r - mean) / sd if sd > 1e-9 else 0.0 for r in rs]",
+    "    return [i, [float(x) for x in w], [float(r) for r in rs],",
+    "            [float(a) for a in adv], float(mean), float(sd)]",
+    "def rl_isolation(backbone, expert, dynamics):",
+    "    # Ask the schema to build a reasoning-RL stage that also trains the action",
+    "    # stack. StageConfig._rl_is_isolated is what answers, not this function.",
+    "    S = _RFM['S']",
+    "    try:",
+    "        S.StageConfig(stage=S.TrainingStage.STAGE3_REASONING_RL, max_steps=1800,",
+    "                      train_backbone=bool(backbone), train_action_expert=bool(expert),",
+    "                      train_dynamics=bool(dynamics), train_reasoning=True,",
+    "                      train_competence=False)",
+    "        return ['ok', 'the schema built it']",
+    "    except Exception as e:",
+    "        msg = str(e).replace(chr(10), ' ')",
+    "        k = msg.find('reasoning RL cannot')",
+    "        return ['refused', msg[k:k + 130] if k >= 0 else msg[:160]]",
+    "_CLONE = {}",
+    "def clone_load(ck):",
+    "    # The checkpoint tools/train_clone.py wrote. Inference is three matmuls,",
+    "    # which is the whole point of cloning a controller into a small net: the",
+    "    # thing it imitates samples a velocity window every tick, and this does",
+    "    # not.",
+    "    import numpy as np",
+    "    _CLONE['W'] = [np.array(w, dtype=np.float64) for w in ck['W']]",
+    "    _CLONE['b'] = [np.array(b, dtype=np.float64) for b in ck['b']]",
+    "    _CLONE['brg'] = [float(x) for x in ck['obs']['bearings']]",
+    "    _CLONE['rng'] = [float(x) for x in ck['obs']['ranges']]",
+    "    _CLONE['vs'] = float(ck['obs']['v_scale'])",
+    "    _CLONE['ws'] = float(ck['obs']['w_scale'])",
+    "    return [ck['arch'], ck['train']['samples'], ck['eval']]",
+    "def _clone_obs(x, y, yaw, v, w_, gx, gy):",
+    "    # Must match tools/train_clone.py's observe() exactly. If these drift the",
+    "    # policy is being fed something it was never trained on, and it will look",
+    "    # like the network is bad rather than the wiring.",
+    "    import math",
+    "    d = _DWA; c = d['c']",
+    "    g = c.costmap_data; res = d['res']",
+    "    H, W = g.shape",
+    "    dx, dy = gx - x, gy - y",
+    "    rr = math.hypot(dx, dy)",
+    "    brg = math.atan2(dy, dx) - yaw",
+    "    brg = math.atan2(math.sin(brg), math.cos(brg))",
+    "    o = [min(rr, 4.0) / 4.0, brg / math.pi, v / _CLONE['vs'], w_ / _CLONE['ws']]",
+    "    for b in _CLONE['brg']:",
+    "        clear = 1.0",
+    "        for k, dd in enumerate(_CLONE['rng']):",
+    "            px, py = x + dd * math.cos(yaw + b), y + dd * math.sin(yaw + b)",
+    "            r, cc = int(py / res), int(px / res)",
+    "            if not (0 <= r < H and 0 <= cc < W) or g[r, cc] >= 253:",
+    "                clear = k / len(_CLONE['rng'])",
+    "                break",
+    "        o.append(clear)",
+    "    return o",
+    "def clone_step(x, y, yaw, v, w_):",
+    "    # Same contract as chase_step_any, so the chase can select it like any",
+    "    # other controller. No costmap search, no rollouts -- one forward pass.",
+    "    import math, numpy as np",
+    "    d = _DWA; c = d['c']",
+    "    d['pose'] = (x, y, yaw)",
+    "    if not d['path'] or getattr(c, 'current_path', None) is None:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 3, 0, []]",
+    "    pts = d['path']",
+    "    wp = int(d.get('cwp', 0) or 0)",
+    "    while wp < len(pts) - 1:",
+    "        d0 = math.hypot(pts[wp][0] - x, pts[wp][1] - y)",
+    "        if d0 < 0.25 or math.hypot(pts[wp + 1][0] - x, pts[wp + 1][1] - y) < d0:",
+    "            wp += 1",
+    "        else:",
+    "            break",
+    "    d['cwp'] = wp",
+    "    fin = pts[-1]",
+    "    if math.hypot(fin[0] - x, fin[1] - y) < 0.15:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 1, wp, []]",
+    "    ti = min(wp + 8, len(pts) - 1)",
+    "    a = np.array([_clone_obs(x, y, yaw, v, w_, pts[ti][0], pts[ti][1])])",
+    "    for i in range(len(_CLONE['W'])):",
+    "        a = a @ _CLONE['W'][i] + _CLONE['b'][i]",
+    "        if i < len(_CLONE['W']) - 1: a = np.tanh(a)",
+    "    bv = float(np.clip(a[0][0] * _CLONE['vs'], -_CLONE['vs'], _CLONE['vs']))",
+    "    bw = float(np.clip(a[0][1] * _CLONE['ws'], -_CLONE['ws'], _CLONE['ws']))",
+    "    # the fan it actually saw, so the page can draw the observation rather",
+    "    # than a guess at it",
+    "    look = []",
+    "    for b in _CLONE['brg']:",
+    "        reach = _CLONE['rng'][-1]",
+    "        for k, dd in enumerate(_CLONE['rng']):",
+    "            px, py = x + dd * math.cos(yaw + b), y + dd * math.sin(yaw + b)",
+    "            r, cc = int(py / d['res']), int(px / d['res'])",
+    "            gg = c.costmap_data",
+    "            if not (0 <= r < gg.shape[0] and 0 <= cc < gg.shape[1]) or gg[r, cc] >= 253:",
+    "                reach = dd",
+    "                break",
+    "        look += [float(x), float(y), float(x + reach * math.cos(yaw + b)),",
+    "                 float(y + reach * math.sin(yaw + b))]",
+    "    return [bv, bw, 0, 0, [], [], [], 0, wp, ['scan'] + look]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -915,7 +1101,7 @@
     "                try: setattr(n, t.attr, ast.literal_eval(st.value))",
     "                except Exception: pass",
     "    return n",
-    "def chase_init(pmod, pcls, cmod, ccls, flat, h, w, res, radius):",
+    "def chase_init(pmod, pcls, cmod, ccls, kind, flat, h, w, res, radius):",
     "    # The whole stack, wired the way the launch file wires it: one global",
     "    # planner and one local controller sharing a costmap.",
     "    import numpy as np",
@@ -951,16 +1137,130 @@
     "    c.cmd_pub = _Sink(); c.status_pub = _Sink()",
     "    c.replan_pub = _Sink('replan')",
     "    c._record_pose = lambda *a, **k: None",
-    "    c.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None)",
+    "    c.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None, debug=lambda *a, **k: None)",
+    "    # Every publisher the node makes, read out of its own source, plus a",
+    "    # clock. Only DWA got away without these: the chase runs a transcribed",
+    "    # loop for it, while every other controller runs its real _control_loop,",
+    "    # and that publishes markers -- which need a stamp and a topic to go to.",
+    "    import re as _re",
+    "    for _nm in set(_re.findall(r'self\\.(\\w+)\\s*=\\s*self\\.create_publisher', _SRC[cmod])):",
+    "        setattr(c, _nm, _Sink())",
+    "    _stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    c.get_clock = lambda: types.SimpleNamespace(now=lambda: _stamp)",
     "    _DWA.update(p=p, c=c, res=res, h=h, w=w, path=None, pose=(0.0, 0.0, 0.0),",
     "                replan=False)",
     "    # base_link resolves to the robot; map and odom are aligned",
     "    c._get_tf = lambda tgt, src: (_DWA['pose'] if 'base_link' in (tgt, src)",
     "                                  else (0.0, 0.0, 0.0))",
     "    p._get_tf = c._get_tf",
-    "    return [c.max_vel, c.max_yawrate, c.max_accel, c.max_dyawrate, c.dt,",
-    "            c.predict_time, c.goal_tol, c.wp_tol, c.lookahead_wps,",
-    "            [int(v) for v in g.ravel()]]",
+    "    _chase_viz(c, kind)",
+    "    # Only DWA has all of these. The rest of the panel reads whatever the",
+    "    # selected controller actually declares and leaves the other slots at",
+    "    # zero, rather than crashing on the first attribute it does not have.",
+    "    return [float(getattr(c, 'max_vel', 0.5)), float(getattr(c, 'max_yawrate', 1.5)),",
+    "            float(getattr(c, 'max_accel', 0.0)), float(getattr(c, 'max_dyawrate', 0.0)),",
+    "            float(getattr(c, 'dt', 0.1) or 0.1), float(getattr(c, 'predict_time', 0.0)),",
+    "            float(getattr(c, 'goal_tol', 0.15)), float(getattr(c, 'wp_tol', 0.0)),",
+    "            int(getattr(c, 'lookahead_wps', 0)), [int(v) for v in g.ravel()]]",
+    "_CH = {}",
+    "def _chase_viz(c, kind):",
+    "    # Each controller's most informative internal, captured at the point it",
+    "    # is computed. These wrap a getter rather than a marker publisher: the",
+    "    # value is what is wanted, and the node computes it either way, so the",
+    "    # control path is untouched.",
+    "    _CH.clear(); _CH['kind'] = kind; _CH['viz'] = []",
+    "    if kind == 'pure_pursuit' and hasattr(c, '_get_lookahead_point'):",
+    "        orig = c._get_lookahead_point",
+    "        def look(rx, ry, _o=orig):",
+    "            t = _o(rx, ry)",
+    "            _CH['viz'] = ['look', float(t.x), float(t.y)] if t is not None else []",
+    "            return t",
+    "        c._get_lookahead_point = look",
+    "    elif kind == 'stanley' and hasattr(c, '_get_closest_point'):",
+    "        orig = c._get_closest_point",
+    "        def near(rx, ry, _o=orig):",
+    "            out = _o(rx, ry)",
+    "            try:",
+    "                idx, err, _yaw = out",
+    "                p = c.current_path.poses[int(idx)].pose.position",
+    "                _CH['viz'] = ['near', float(p.x), float(p.y), float(err)]",
+    "            except Exception:",
+    "                _CH['viz'] = []",
+    "            return out",
+    "        c._get_closest_point = near",
+    "    elif kind == 'mppi' and hasattr(c, '_publish_trajectories'):",
+    "        # MPPI already samples and scores a fan; it just sends it to rviz.",
+    "        # Intercepting the publish gets the real rollouts and the real costs,",
+    "        # so the chase can draw for MPPI what it draws for DWA.",
+    "        def traj(trajectories, costs, weights):",
+    "            import numpy as np",
+    "            try:",
+    "                K = int(trajectories.shape[0])",
+    "                idx = np.unique(np.linspace(0, K - 1, min(28, K)).astype(int))",
+    "                best = int(np.argmin(costs))",
+    "                _CH['fan'] = [[float(v) for v in trajectories[i, :, 0]] +",
+    "                              [float(v) for v in trajectories[i, :, 1]]",
+    "                              for i in idx if i != best]",
+    "                _CH['best'] = ([float(v) for v in trajectories[best, :, 0]],",
+    "                               [float(v) for v in trajectories[best, :, 1]])",
+    "                _CH['n'] = K",
+    "            except Exception:",
+    "                _CH['fan'] = []; _CH['best'] = None; _CH['n'] = 0",
+    "        c._publish_trajectories = traj",
+    "def chase_step_any(x, y, yaw, v, w_):",
+    "    # The node's own _control_loop, run unedited, with the pose and the",
+    "    # measured velocity fed in where the subscriptions would put them.",
+    "    #",
+    "    # DWA keeps the transcribed version above because the rollout fan is the",
+    "    # thing worth drawing and it only exists inside _score_trajectories.",
+    "    # Nothing else on this page has an equivalent, so nothing else needs it.",
+    "    import math",
+    "    d = _DWA; n = d['c']",
+    "    d['pose'] = (x, y, yaw)",
+    "    _CH['viz'] = []",
+    "    if not d['path'] or getattr(n, 'current_path', None) is None:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 3, 0, []]",
+    "    n.current_pose = types.SimpleNamespace(x=x, y=y, yaw=yaw)",
+    "    n._get_robot_pose = lambda: (x, y, yaw)",
+    "    if isinstance(getattr(n, 'current_vel', None), dict):",
+    "        n.current_vel = {'v': v, 'omega': w_}",
+    "    n.cmd_pub.last = None",
+    "    _CH['fan'] = []; _CH['best'] = None",
+    "    try:",
+    "        n._control_loop()",
+    "    except Exception as e:",
+    "        # Report it rather than returning a silent zero: a controller that",
+    "        # cannot run should say why once, not look like a stalled robot.",
+    "        import traceback",
+    "        _CH['err'] = traceback.format_exc().strip().split(chr(10))[-1]",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 5, 0, ['err', _CH['err']]]",
+    "    wp = int(getattr(n, '_wp_idx', getattr(n, 'wp_idx', 0)) or 0)",
+    "    if getattr(n, 'goal_reached', False):",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 1, wp, []]",
+    "    m = n.cmd_pub.last",
+    "    bv = float(getattr(m.linear, 'x', 0.0)) if m is not None else 0.0",
+    "    bw = float(getattr(m.angular, 'z', 0.0)) if m is not None else 0.0",
+    "    viz = _CH.get('viz') or []",
+    "    if _CH.get('kind') == 'teb':",
+    "        # TEB keeps its elastic band on the node, already in world metres.",
+    "        band = getattr(n, 'band', None) or []",
+    "        viz = ['band'] + [float(q) for pt in band for q in list(pt)[:2]]",
+    "    fan = _CH.get('fan') or []",
+    "    bst = _CH.get('best')",
+    "    return [bv, bw, int(_CH.get('n', 0) or 0), 0,",
+    "            (bst[0] if bst else []), (bst[1] if bst else []), fan, 0, wp, viz]",
+    "def chase_adopt_path(flat):",
+    "    # A path planned somewhere else, handed to this controller the way /plan",
+    "    # would. Used when the controller runs in a worker but the planner does",
+    "    # not: A* is two milliseconds and belongs where it can draw immediately.",
+    "    d = _DWA; c = d['c']",
+    "    pts = [(float(flat[i]), float(flat[i + 1])) for i in range(0, len(flat) - 1, 2)]",
+    "    d['path'] = pts or None",
+    "    if pts:",
+    "        c._path_cb(_as_path(pts))",
+    "    else:",
+    "        c.current_path = None",
+    "    return len(pts)",
     "def chase_remap(flat):",
     "    # An obstacle appeared. Re-inflate and hand both nodes the new costmap,",
     "    # which is all a fresh /local_costmap message does on the robot.",
@@ -1137,6 +1437,11 @@
         if (RACERS[i].file === DWA.file) continue;
         var rs = await fetchSource(RACERS[i].file);
         raceSrc[RACERS[i].file.replace(".py", "")] = rs.text;
+        // Also loaded here, not just handed to the worker: the chase lets you
+        // drive with any of these on the main thread.
+        pyodide.globals.set("__src", rs.text);
+        pyodide.globals.set("__name_", RACERS[i].file.replace(".py", ""));
+        pyodide.runPython("load_module(__name_, __src)");
         log(RACERS[i].file + "  " + rs.text.length.toLocaleString() + " bytes from " + rs.branch, "ok");
       }
       race.ready(BOOTSTRAP, raceSrc);
@@ -1157,9 +1462,22 @@
           pyodide.runPython("arm_write(__path, __src)");
         }
         embDemo.ready();
+        rlDemo.ready();
         fmDemo.ready();
       } catch (e) {
         log("action space unavailable: " + String(e && e.message ? e.message : e), "err");
+      }
+
+      // the checkpoint trained by tools/train_clone.py
+      try {
+        var ckr = await fetch("assets/dwa_clone.json", { cache: "no-store" });
+        if (!ckr.ok) throw new Error("assets/dwa_clone.json -> " + ckr.status);
+        var ckj = await ckr.json();
+        pyodide.globals.set("__ck", ckj);
+        pyodide.runPython("clone_load(__ck.to_py() if hasattr(__ck,'to_py') else __ck)");
+        cloneDemo.ready(ckj);
+      } catch (e) {
+        log("clone checkpoint unavailable: " + String(e && e.message ? e.message : e), "err");
       }
 
       ready = true;
@@ -1244,7 +1562,7 @@
     var goal = { x: bot.x, y: bot.y }, have = false;
     var plan = [], fan = [], best = null, live = false;
     var lastCtl = 0, lastFrame = 0, lastPlan = 0, lastGate = 0, gate = 0;
-    var nTraj = 0, state = 3;
+    var nTraj = 0, state = 3, viz = [];
     var planMs = 0, planned = { x: 1e9, y: 1e9 }, drops = 0, dirty = false, broke = false;
     var CTL_MS = 100;                                 // overwritten with the node's own dt
 
@@ -1319,6 +1637,60 @@
         g.beginPath(); g.arc(tip[0], tip[1], 2.6, 0, 6.284); g.fill();
       }
 
+      // What the selected controller is actually looking at. Each one exposes
+      // something different and it is the most informative thing it has:
+      // the point Pure Pursuit is steering at, the point Stanley measures its
+      // cross-track error from, or the band TEB is deforming.
+      if (viz && viz.length) {
+        if (viz[0] === "look") {
+          var lp = toPx(viz[1], viz[2]);
+          var bp = toPx(bot.x, bot.y);
+          g.strokeStyle = C.accent; g.globalAlpha = 0.5; g.lineWidth = 1.2;
+          g.setLineDash([4, 4]);
+          g.beginPath(); g.moveTo(bp[0], bp[1]); g.lineTo(lp[0], lp[1]); g.stroke();
+          g.setLineDash([]); g.globalAlpha = 1;
+          g.strokeStyle = C.accent; g.lineWidth = 2;
+          g.beginPath(); g.arc(lp[0], lp[1], 6, 0, 6.284); g.stroke();
+        } else if (viz[0] === "near") {
+          var np = toPx(viz[1], viz[2]);
+          var rp = toPx(bot.x, bot.y);
+          g.strokeStyle = C.accent; g.globalAlpha = 0.75; g.lineWidth = 1.6;
+          g.beginPath(); g.moveTo(rp[0], rp[1]); g.lineTo(np[0], np[1]); g.stroke();
+          g.globalAlpha = 1;
+          g.fillStyle = C.accent;
+          g.beginPath(); g.arc(np[0], np[1], 3.4, 0, 6.284); g.fill();
+        } else if (viz[0] === "scan" && viz.length > 4) {
+          // the observation, not a decoration: these are the ranges that went
+          // into the network this tick
+          g.strokeStyle = C.accent; g.globalAlpha = 0.45; g.lineWidth = 1;
+          g.beginPath();
+          for (var q = 1; q + 3 < viz.length; q += 4) {
+            var a0 = toPx(viz[q], viz[q + 1]), a1 = toPx(viz[q + 2], viz[q + 3]);
+            g.moveTo(a0[0], a0[1]); g.lineTo(a1[0], a1[1]);
+          }
+          g.stroke(); g.globalAlpha = 1;
+          g.fillStyle = C.accent;
+          for (var q2 = 1; q2 + 3 < viz.length; q2 += 4) {
+            var e2 = toPx(viz[q2 + 2], viz[q2 + 3]);
+            g.beginPath(); g.arc(e2[0], e2[1], 1.8, 0, 6.284); g.fill();
+          }
+        } else if (viz[0] === "band" && viz.length > 4) {
+          g.strokeStyle = C.accent; g.globalAlpha = 0.8; g.lineWidth = 2;
+          g.beginPath();
+          for (var b = 1; b + 1 < viz.length; b += 2) {
+            var q2 = toPx(viz[b], viz[b + 1]);
+            b === 1 ? g.moveTo(q2[0], q2[1]) : g.lineTo(q2[0], q2[1]);
+          }
+          g.stroke();
+          g.fillStyle = C.accent;
+          for (var b2 = 1; b2 + 1 < viz.length; b2 += 2) {
+            var q3 = toPx(viz[b2], viz[b2 + 1]);
+            g.beginPath(); g.arc(q3[0], q3[1], 2.4, 0, 6.284); g.fill();
+          }
+          g.globalAlpha = 1;
+        }
+      }
+
       if (have) {                                     // goal crosshair at the cursor
         var gp = toPx(goal.x, goal.y);
         g.strokeStyle = state === 1 ? C.accent : C.signal; g.lineWidth = 1.4;
@@ -1378,17 +1750,44 @@
         } catch (e) { plan = []; }
       }
 
+      // A remote controller is asked on the same cadence, but asynchronously:
+      // one request in flight at a time, and the base keeps integrating on the
+      // last command while the worker thinks. That is what a real base does
+      // when its controller is slow, and here the lag is legible.
+      if (chaser.remote) {
+        // The plan is computed above, on this thread, and only the path is
+        // shipped -- A* is two milliseconds and belongs where it can be drawn
+        // the instant it changes. Only the controller is slow enough to exile.
+        if (remoteReady && plan !== sentPlan) {
+          sentPlan = plan;
+          race.send({ type: "chase_path", pts: plan });
+        }
+        if (remoteReady && !inflight && ts - lastCtl >= CTL_MS) {
+          lastCtl = ts; inflight = true;
+          race.send({ type: "chase_tick", seq: ++seq, x: bot.x, y: bot.y, yaw: bot.yaw,
+                      v: bot.v, w: bot.w });
+        }
+      } else
       // ...and run the controller at its own rate
       if (ts - lastCtl >= CTL_MS) {
         lastCtl = ts;
         try {
+          // DWA runs the transcribed loop, because that is where the fan is.
+          // Everything else runs its own _control_loop untouched.
+          var fn = chaser.cloned ? "clone_step"
+                 : chaser.key === "dwa" ? "chase_step" : "chase_step_any";
           var out = pyodide.runPython(
-            "chase_step(" + bot.x + "," + bot.y + "," + bot.yaw + "," +
+            fn + "(" + bot.x + "," + bot.y + "," + bot.yaw + "," +
             bot.v + "," + bot.w + ")").toJs();
           bot.v = out[0]; bot.w = out[1]; nTraj = out[2]; state = out[7];
           best = [out[4], out[5]]; fan = out[6];
+          viz = out.length > 9 ? out[9] : [];
+          if (viz && viz[0] === "err" && !broke) {
+            broke = true;
+            log("chase controller " + chaser.file + ".py: " + viz[1], "err");
+          }
         } catch (e) {
-          bot.v = 0; bot.w = 0; fan = []; best = null; state = 5;
+          bot.v = 0; bot.w = 0; fan = []; best = null; viz = []; state = 5;
           if (!broke) {                              // once, not sixty times a second
             broke = true;
             log("controller stopped: " + String(e && e.message || e)
@@ -1400,7 +1799,7 @@
       var cr = Math.floor(bot.y / RES), cc = Math.floor(bot.x / RES);
       if (cr < 1 || cc < 1 || cr >= CH - 1 || cc >= CW - 1 || occ[cr * CW + cc]) {
         bot.x = CW * RES * 0.15; bot.y = CH * RES * 0.5;
-        bot.yaw = 0; bot.v = bot.w = 0; fan = []; best = null; plan = []; dirty = true;
+        bot.yaw = 0; bot.v = bot.w = 0; fan = []; best = null; viz = []; plan = []; dirty = true;
       }
 
       paint();
@@ -1419,7 +1818,11 @@
                 : state === 5
                   ? "controller stopped  ·  see the console below"
                   : "A* " + (plan.length / 2 | 0) + " pts in " + planMs.toFixed(1) +
-                    " ms  ·  DWA scoring " + nTraj + " rollouts  ·  v " +
+                    " ms  ·  " + (nTraj ? chase.current().label + " scoring " +
+                                              nTraj.toLocaleString() + " rollouts"
+                                            : chase.current().label +
+                                              (ctlMs > 40 ? " thinking " + Math.round(ctlMs) + " ms a tick" : "")) +
+                    "  ·  v " +
                     bot.v.toFixed(2) + " m/s  w " + (bot.w >= 0 ? "+" : "") +
                     bot.w.toFixed(2) + " rad/s  ·  " + d.toFixed(2) + " m out";
     }
@@ -1449,6 +1852,9 @@
       pyodide.globals.set("__occ", Array.from(occ));
       cost = pyodide.runPython("chase_remap(list(__occ.to_py()) if " +
                                "hasattr(__occ,'to_py') else list(__occ))").toJs();
+      // The worker keeps its own costmap when it is driving, so it needs the
+      // same obstacle -- otherwise it plans around a field it cannot see.
+      if (chaser.remote) race.send({ type: "chase_remap", occ: Array.from(occ) });
       dirty = true;                                    // force an immediate re-plan
       log("obstacle dropped, costmap re-inflated, global plan invalidated");
     }
@@ -1460,15 +1866,130 @@
     }, { passive: false });
     cvc.addEventListener("mouseleave", function () { have = false; });
 
-    return {
-      start: function () {
+    // Which controller is driving. MPPI is deliberately absent: one tick is
+    // ~580 ms and the chase runs its controller on the main thread at the
+    // node's own rate, so it would freeze the cursor rather than track it.
+    // It is in the race instead, where a worker absorbs the cost.
+    var CHASERS = [
+      { key: "dwa", file: "dwa_controller", cls: "DWAControllerNode", label: "DWA" },
+      { key: "pure_pursuit", file: "pure_pursuit_controller", cls: "PurePursuitControllerNode", label: "Pure Pursuit" },
+      { key: "stanley", file: "stanley_controller", cls: "StanleyControllerNode", label: "Stanley" },
+      { key: "teb", file: "teb_controller", cls: "TEBControllerNode", label: "TEB" },
+      // MPPI is ~580 ms a tick, which is a single indivisible Python call. It
+      // runs in the race's worker instead, so the cursor stays at 60 fps and
+      // the robot does what a real base does when its planner is slow: keeps
+      // moving on the last command until a new one lands.
+      { key: "mppi", file: "mppi_controller", cls: "MPPIControllerNode", label: "MPPI", remote: true },
+      // Not from the repo: a network trained here, on the repo's own DWA. It
+      // is wired in as a controller because that is exactly what it is -- the
+      // page can then let you drive with the imitation and the original and
+      // feel the difference.
+      { key: "clone", file: "dwa_clone", cls: "-", label: "Clone", cloned: true }
+    ];
+    var chaser = CHASERS[0];
+    var inflight = false, seq = 0, ctlMs = 0, remoteReady = false, pendingRemote = null;
+    var sentPlan = null;
+
+    function initController() {
+      if (chaser.cloned) {
+        // Reuse the DWA wiring for the costmap and the plan, then drive with
+        // the net instead of the node. Same costmap, same A*, same waypoint
+        // rule -- only the thing choosing the twist changes.
         pyodide.globals.set("__occ", Array.from(occ));
-        var meta = pyodide.runPython(
+        var m0 = pyodide.runPython(
           "chase_init('astar_planner','" + MODULES.astar.cls + "','dwa_controller','" +
-          DWA.cls + "', list(__occ.to_py()) if hasattr(__occ,'to_py') else list(__occ), " +
-          CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
-        CTL_MS = Math.round(meta[4] * 1000);           // the node's own dt
-        cost = meta[9];
+          DWA.cls + "','dwa', list(__occ.to_py()) if hasattr(__occ,'to_py') " +
+          "else list(__occ), " + CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
+        cost = m0[9];
+        CTL_MS = 100;
+        pyodide.runPython("_DWA['cwp'] = 0");
+        return m0;
+      }
+      if (chaser.remote) {
+        remoteReady = false; inflight = false;
+        race.send({ type: "chase_init", pcls: MODULES.astar.cls, cmod: chaser.file,
+                    ccls: chaser.cls, kind: chaser.key, occ: Array.from(occ),
+                    h: CH, w: CW, res: RES, inflate: INFLATE });
+        CTL_MS = 100;
+        return null;                       // meta arrives on the worker reply
+      }
+      pyodide.globals.set("__occ", Array.from(occ));
+      var meta = pyodide.runPython(
+        "chase_init('astar_planner','" + MODULES.astar.cls + "','" + chaser.file + "','" +
+        chaser.cls + "','" + chaser.key + "', list(__occ.to_py()) if hasattr(__occ,'to_py') " +
+        "else list(__occ), " + CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
+      CTL_MS = Math.round(meta[4] * 1000) || 100;      // the node's own dt
+      cost = meta[9];
+      return meta;
+    }
+
+    return {
+      CHASERS: CHASERS,
+      // Swapping controller rebuilds it against the current costmap and forces
+      // a fresh plan, because the new one has its own idea of where it is on
+      // the path and inheriting the old index would start it mid-route.
+      select: function (key) {
+        var next = CHASERS.filter(function (c) { return c.key === key; })[0];
+        if (!next || next === chaser) return null;
+        if (next.remote && !race.isArmed()) {
+          // The worker takes ~30 s to bring up its own pyodide. Remember the
+          // request instead of dropping it, so an early click is a wait rather
+          // than a button that does nothing.
+          pendingRemote = key;
+          readEl.textContent = "the worker runtime is still loading · " +
+            next.label + " will start as soon as it is up";
+          return null;
+        }
+        chaser = next;
+        var meta = initController();
+        plan = []; fan = []; best = null; viz = []; dirty = true;
+        bot.v = bot.w = 0;
+        // A remote controller has no meta yet; the worker sends it back.
+        return meta || [0, 0, 0, 0, 0.1, 0, 0, 0, 0, null];
+      },
+      current: function () { return chaser; },
+      // The worker replies for the chase land here. Registered once, after the
+      // race module has created the worker.
+      wireRemote: function () {
+        race.hook("__ready", function () {
+          if (!pendingRemote) return;
+          var k = pendingRemote; pendingRemote = null;
+          var btn = document.querySelector('[data-chaser="' + k + '"]');
+          if (btn) btn.click();               // the normal path, including the chip state
+        });
+        race.hook("chase_init", function (msg) {
+          var m = msg.meta;
+          if (m && m.length) {
+            CTL_MS = Math.round(m[4] * 1000) || 100;
+            cost = m[9];
+          }
+          remoteReady = true; inflight = false; sentPlan = null;
+          log("chase controller: " + chaser.file + ".py in the worker at " +
+              Math.round(1000 / CTL_MS) + " Hz  (v_max " + (m && m[0] ? m[0].toFixed(2) : "?") +
+              " m/s)", "ok");
+        });
+        race.hook("chase_remap", function () { dirty = true; });
+        race.hook("chase_tick", function (msg) {
+          inflight = false;
+          ctlMs = msg.ms;
+          var out = msg.out || [];
+          if (!out.length) return;
+          bot.v = out[0]; bot.w = out[1]; state = out[7];
+          // MPPI hands back its sampled rollouts in the same slots DWA uses,
+          // so the fan draws with no extra case -- but they have to be copied
+          // across, which is what was missing.
+          nTraj = out[2];
+          best = [out[4], out[5]];
+          fan = out[6] || [];
+          viz = out.length > 9 ? out[9] : [];
+          if (viz && viz[0] === "err" && !broke) {
+            broke = true;
+            log("chase controller " + chaser.file + ".py: " + viz[1], "err");
+          }
+        });
+      },
+      start: function () {
+        var meta = initController();
         live = true; paint(); requestAnimationFrame(step);
         return meta;
       },
@@ -1490,6 +2011,19 @@
       var rb = document.getElementById("chase-reset");
       if (rb) rb.addEventListener("click", function () {
         chase.reset(); log("field cleared");
+      });
+      chase.wireRemote();
+      document.querySelectorAll("[data-chaser]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var key = b.getAttribute("data-chaser");
+          var cm = chase.select(key);
+          if (!cm) return;
+          document.querySelectorAll("[data-chaser]").forEach(function (o) {
+            o.classList.toggle("is-on", o === b);
+          });
+          log("chase controller: " + chase.current().file + ".py at " +
+              Math.round(1 / cm[4]) + " Hz  (v_max " + cm[0].toFixed(2) + " m/s)", "ok");
+        });
       });
     } catch (e) { log("chase unavailable: " + e.message, "err"); }
   }
@@ -1518,6 +2052,9 @@
     var occ = new Uint8Array(CW * CH);
     var plan = [], trails = [], rows = [], live = false, armed = false, raf2 = 0;
     var worker = null;
+    // The chase borrows this worker for MPPI rather than starting a third
+    // pyodide. Its messages are namespaced chase_*, so they demux here.
+    var hooks = {};
     var frames = 0;
 
     // The course: two walls staggered so the route has to come off one end and
@@ -1719,13 +2256,18 @@
     }
 
     return {
+      // The chase runs MPPI through this worker; these are how it talks to it.
+      send: function (m) { if (worker) worker.postMessage(m); },
+      hook: function (t, fn) { hooks[t] = fn; },
+      isArmed: function () { return armed; },
       // Called once the main thread has fetched the sources, so the worker
       // gets them by message rather than downloading everything a second time.
       ready: function (bootstrap, sources) {
         worker = new Worker("race-worker.js");
         worker.onmessage = function (e) {
           var msg = e.data;
-          if (msg.type === "ready") { armed = true; readyRead(); }
+          if (hooks[msg.type]) return hooks[msg.type](msg);
+          if (msg.type === "ready") { armed = true; readyRead(); if (hooks.__ready) hooks.__ready(); }
           else if (msg.type === "init") onInit(msg);
           else if (msg.type === "step") onStep(msg);
           else if (msg.type === "error") {
@@ -1806,20 +2348,100 @@
         }
       }
 
-      // the arm chain, moving, so the self-filter has something to track
+      // The arm, drawn as an arm rather than as a wireframe: each link is a
+      // tapered shell between two joint housings, and the housings get a
+      // highlight so the chain reads as solid. Widths come from the joint
+      // depths the frame returns, so a link nearer the camera is thicker --
+      // without that a projected chain looks flat and toy-like.
       if (links.length) {
-        g.strokeStyle = "#5aa5af"; g.globalAlpha = 0.5; g.lineWidth = 2;
-        g.lineCap = "round";
-        g.beginPath();
-        chain.forEach(function (s) {
-          g.moveTo(links[s[0]][0], links[s[0]][1]);
-          g.lineTo(links[s[1]][0], links[s[1]][1]);
+        // 28 payload uv+z, 29 gripper opening, 30 held, 31 per-joint depth --
+        // the frame array is positional and these live past SPHERE_RADIUS.
+        var dep = f && f[31] ? f[31] : null;
+        var SHELL = "#3f5f66", EDGE = "#7fc3cd", HI = "#a9dbe2";
+        // A real arm tapers from a fat shoulder to a slim wrist, so the width
+        // comes mostly from position in the chain. Depth only nudges it, and
+        // is clamped: straight 1/z made a near joint thirty pixels across and
+        // a far one two, which draws a funnel rather than an arm.
+        var TAPER = [13, 12.5, 11, 9, 7, 6, 5.2, 4.4];
+        var NOMINAL = 1.9;                       // m, roughly plate centre
+        var rAt = function (i) {
+          var base = TAPER[Math.min(i, TAPER.length - 1)];
+          if (!dep) return base;
+          var k = NOMINAL / Math.max(0.35, dep[i]);
+          return base * Math.max(0.72, Math.min(1.35, k));
+        };
+        // payload first when it is behind the gripper, so the hand covers it
+        var pay = f && f[28] ? f[28] : null, held = !!(f && f[30]);
+
+        chain.forEach(function (sg) {
+          var a = links[sg[0]], b = links[sg[1]];
+          var ra = rAt(sg[0]) * 0.9, rb = rAt(sg[1]) * 0.9;
+          var dx = b[0] - a[0], dy = b[1] - a[1];
+          var L = Math.hypot(dx, dy) || 1;
+          var nx = -dy / L, ny = dx / L;
+          g.beginPath();
+          g.moveTo(a[0] + nx * ra, a[1] + ny * ra);
+          g.lineTo(b[0] + nx * rb, b[1] + ny * rb);
+          g.lineTo(b[0] - nx * rb, b[1] - ny * rb);
+          g.lineTo(a[0] - nx * ra, a[1] - ny * ra);
+          g.closePath();
+          g.fillStyle = SHELL; g.globalAlpha = 0.92; g.fill();
+          g.globalAlpha = 1; g.strokeStyle = EDGE; g.lineWidth = 1.1; g.stroke();
+          // a highlight down one side, which is what stops it reading as a bar
+          g.beginPath();
+          g.moveTo(a[0] + nx * ra * 0.45, a[1] + ny * ra * 0.45);
+          g.lineTo(b[0] + nx * rb * 0.45, b[1] + ny * rb * 0.45);
+          g.strokeStyle = HI; g.globalAlpha = 0.30; g.lineWidth = 1.4; g.stroke();
+          g.globalAlpha = 1;
         });
-        g.stroke();
-        g.fillStyle = "#5aa5af";
-        links.forEach(function (p) {
-          g.beginPath(); g.arc(p[0], p[1], 2.6, 0, 6.284); g.fill();
+        links.forEach(function (p, i) {
+          var r = rAt(i);
+          g.beginPath(); g.arc(p[0], p[1], r, 0, 6.284);
+          g.fillStyle = SHELL; g.fill();
+          g.strokeStyle = EDGE; g.lineWidth = 1.2; g.stroke();
+          g.beginPath(); g.arc(p[0] - r * 0.25, p[1] - r * 0.25, r * 0.34, 0, 6.284);
+          g.fillStyle = HI; g.globalAlpha = 0.4; g.fill(); g.globalAlpha = 1;
         });
+
+        // The gripper: two fingers on the wrist axis, opening with f[26].
+        var tp0 = links[links.length - 1], wp = links[links.length - 2] || tp0;
+        var gdx = tp0[0] - wp[0], gdy = tp0[1] - wp[1];
+        var gl = Math.hypot(gdx, gdy) || 1;
+        var ux = gdx / gl, uy = gdy / gl, px = -uy, py = ux;
+        var open = f && typeof f[29] === "number" ? f[29] : 1;
+        var rT = rAt(links.length - 1);
+        var span = rT * (0.55 + 1.15 * open), fl = rT * 1.9;
+        g.strokeStyle = EDGE; g.lineWidth = Math.max(2, rT * 0.42); g.lineCap = "round";
+        [1, -1].forEach(function (sgn) {
+          var bx = tp0[0] + px * span * sgn, by = tp0[1] + py * span * sgn;
+          g.beginPath();
+          g.moveTo(tp0[0] + px * span * sgn * 0.35, tp0[1] + py * span * sgn * 0.35);
+          g.lineTo(bx, by);
+          g.lineTo(bx + ux * fl, by + uy * fl);
+          g.stroke();
+        });
+        g.lineCap = "butt";
+
+        // the thing it is moving, drawn last so the gripper does not bury it
+        var drawPayload = function () {
+        if (pay && pay.length) {
+          // Sized against the drawn gripper rather than off its true metres:
+          // the links are drawn to a taper, so a physically-scaled box comes
+          // out four times the wrist and reads as a crate on a toy arm.
+          var pr = Math.max(3.5, rAt(links.length - 1) * 1.45);
+          g.beginPath();
+          g.rect(pay[0] - pr, pay[1] - pr, pr * 2, pr * 2);
+          g.fillStyle = held ? "#e0a03a" : "#c98a2e";
+          g.globalAlpha = 0.95; g.fill(); g.globalAlpha = 1;
+          g.strokeStyle = "#f0c979"; g.lineWidth = 1.2; g.stroke();
+          if (!held) {
+            g.globalAlpha = 0.35; g.strokeStyle = "#f0c979";
+            g.beginPath(); g.ellipse(pay[0], pay[1] + pr * 1.1, pr * 1.3, pr * 0.42, 0, 0, 6.284);
+            g.stroke(); g.globalAlpha = 1;
+          }
+        }
+        };
+
         // the tool, and the radius inside which the node cancels and replans
         var tp = links[links.length - 1];
         g.globalAlpha = f && f[20] ? 0.9 : 0.34;
@@ -1829,6 +2451,7 @@
         g.setLineDash([]); g.globalAlpha = 1;
         g.fillStyle = f && f[20] ? "#ff8a5c" : "#5aa5af";
         g.beginPath(); g.arc(tp[0], tp[1], 4.2, 0, 6.284); g.fill();
+        drawPayload();
         label("tool0", tp[0] + 9, tp[1] + 4, f && f[20] ? "#ff8a5c" : "#5aa5af", 9);
       }
 
@@ -2898,6 +3521,298 @@
         drawChunk();
         say(server ? "server: " + server + " · press ask"
                    : "no policy server configured · see below");
+      }
+    };
+  })();
+
+  /* ---------- reinforce it: the curriculum, and GRPO ---------------------
+     The same vendored package as the action space, a different corner of it.
+     Everything drawn here is read off CurriculumConfig() and GRPOConfig() --
+     stage budgets, which parameter groups move, group size, KL, and the reward
+     weight schedule. The only invented numbers are the three component scores
+     per rollout, and the copy says so: a real run gets those from a format
+     check, a mined answer and a frozen judge.
+     ------------------------------------------------------------------- */
+  var rlDemo = (function () {
+    var sec = document.getElementById("rl");
+    if (!sec) return { ready: function () {} };
+    var cv = document.getElementById("rl-canvas");
+    var g = cv.getContext("2d");
+    var readEl = document.getElementById("rl-read");
+    var stagesEl = document.getElementById("rl-stages");
+    var noteEl = document.getElementById("rl-stage-note");
+    var isoEl = document.getElementById("rl-iso");
+    var stepEl = document.getElementById("rl-step");
+    var stepV = document.getElementById("rl-stepv");
+    var stages = [], sched = [], subs = [], G = 8, kl = 0, clip = 0;
+    var iso = { backbone: false, expert: false, dynamics: false };
+    var GROUPS = ["backbone", "action expert", "dynamics", "reasoning", "competence"];
+
+    // One fixed group of rollouts. They never change; only the weights do,
+    // which is the entire point of dragging the step.
+    // Chosen so the winner actually moves as the weights do -- that is the
+    // claim the section makes, and a group where one rollout dominates every
+    // sub-stage would quietly disprove it.
+    var ROLLOUTS = [
+      { tag: "clean format, wrong answer",      s: [1.00, 0.05, 0.20] },
+      { tag: "right answer, ragged format",     s: [0.20, 1.00, 0.60] },
+      { tag: "right, and the trace entails it", s: [0.55, 0.95, 0.95] },
+      { tag: "right answer, trace unrelated",   s: [0.45, 1.00, 0.05] },
+      { tag: "no think block at all",           s: [0.00, 0.55, 0.00] },
+      { tag: "hedged, half right",              s: [0.70, 0.45, 0.55] },
+      { tag: "confident and wrong",             s: [0.90, 0.00, 0.80] },
+      { tag: "right, terse trace",              s: [0.35, 1.00, 0.40] }
+    ];
+
+    function drawStages() {
+      var total = stages.reduce(function (a, s) { return a + s[1]; }, 0);
+      stagesEl.innerHTML = "";
+      stages.forEach(function (st, i) {
+        var d = document.createElement("div");
+        d.className = "rl-stage" + (st[2][3] ? " is-rl" : "");
+        d.style.flex = String(Math.max(0.6, st[1] / total * 10));
+        var moves = GROUPS.filter(function (_, k) { return st[2][k]; });
+        d.innerHTML =
+          '<b>' + st[0].replace(/^stage(\d)_/, "$1 · ").replace(/_/g, " ") + '</b>' +
+          '<span class="rl-steps">' + st[1].toLocaleString() + ' steps</span>' +
+          '<span class="rl-moves">' + (moves.length ? moves.join(", ") : "nothing") + '</span>';
+        d.addEventListener("mouseenter", function () { noteEl.textContent = st[3] || ""; });
+        d.addEventListener("focus", function () { noteEl.textContent = st[3] || ""; });
+        d.tabIndex = 0;
+        stagesEl.appendChild(d);
+      });
+      noteEl.textContent = "hover a stage for why it exists · the highlighted one is the only stage RL touches";
+    }
+
+    function draw() {
+      var step = parseInt(stepEl.value, 10);
+      var out;
+      try {
+        pyodide.globals.set("__sc", ROLLOUTS.map(function (r) { return r.s; }));
+        out = pyodide.runPython(
+          "rl_advantage(" + step + ", [list(x) for x in __sc.to_py()] " +
+          "if hasattr(__sc,'to_py') else __sc)").toJs();
+      } catch (e) {
+        readEl.textContent = "advantage failed: " + (e && e.message ? e.message : e);
+        return;
+      }
+      var sub = out[0], w = out[1], rs = out[2], adv = out[3], mean = out[4], sd = out[5];
+
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      // The label column has to clear the longest tag and the reward number
+      // before the bars start, or a full-width negative advantage runs its
+      // value straight into them.
+      var L = 400, R = cv.width - 150, T = 76, rowH = (cv.height - T - 54) / ROLLOUTS.length;
+      g.font = "500 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.fillText("sub-stage " + (sub + 1) + " of " + sched.length +
+                 "   weights  format " + w[0].toFixed(1) +
+                 " · accuracy " + w[1].toFixed(1) + " · consistency " + w[2].toFixed(1), 20, 26);
+      g.fillText("group of " + G + "   ·   baseline is the group mean " + mean.toFixed(3) +
+                 ", scaled by " + sd.toFixed(3) + "   ·   KL " + kl + "   clip " + clip, 20, 46);
+      g.fillText("rollout", 20, T - 14);
+      g.fillText("reward", L - 74, T - 14);
+      g.textAlign = "center";
+      g.fillText("group-relative advantage", (L + R) / 2, T - 14);
+
+      var zero = (L + R) / 2, half = (R - L) / 2;
+      var span = Math.max(1.2, Math.max.apply(null, adv.map(Math.abs)));
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(zero, T - 4); g.lineTo(zero, cv.height - 44); g.stroke();
+
+      ROLLOUTS.forEach(function (r, i) {
+        var y = T + i * rowH + rowH / 2;
+        g.textAlign = "left"; g.fillStyle = C.ink;
+        g.font = "400 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(r.tag, 20, y + 4);
+        g.fillStyle = C.mut;
+        g.font = "400 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(rs[i].toFixed(3), L - 74, y + 4);
+        var wpx = adv[i] / span * half;
+        g.fillStyle = adv[i] >= 0 ? C.accent : C.signal;
+        g.globalAlpha = 0.85;
+        var h = Math.min(rowH * 0.56, 22);
+        g.fillRect(Math.min(zero, zero + wpx), y - h / 2, Math.abs(wpx), h);
+        g.globalAlpha = 1;
+        // A full-width bar would push its own value into the reward column, so
+        // once the bar is long enough to hold the number, the number goes in it.
+        var lbl = (adv[i] >= 0 ? "+" : "") + adv[i].toFixed(2);
+        var inside = Math.abs(wpx) > 52;
+        g.textAlign = inside ? (adv[i] >= 0 ? "right" : "left")
+                             : (adv[i] >= 0 ? "left" : "right");
+        g.fillStyle = inside ? C.paper : C.ink;
+        g.fillText(lbl, zero + wpx + (adv[i] >= 0 ? (inside ? -7 : 7)
+                                                  : (inside ? 7 : -7)), y + 4);
+      });
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.font = "400 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.fillText("reinforced", zero + 8, cv.height - 22);
+      g.textAlign = "right";
+      g.fillText("suppressed", zero - 8, cv.height - 22);
+
+      var best = adv.indexOf(Math.max.apply(null, adv));
+      readEl.textContent = "step " + step + " · sub-stage " + (sub + 1) +
+        " · weights " + w.map(function (x) { return x.toFixed(1); }).join(":") +
+        " · most reinforced: " + ROLLOUTS[best].tag;
+    }
+
+    function runIso() {
+      var out;
+      try {
+        out = pyodide.runPython("rl_isolation(" +
+          (iso.backbone ? "True" : "False") + "," + (iso.expert ? "True" : "False") + "," +
+          (iso.dynamics ? "True" : "False") + ")").toJs();
+      } catch (e) { isoEl.textContent = String(e && e.message ? e.message : e); return; }
+      var on = Object.keys(iso).filter(function (k) { return iso[k]; });
+      isoEl.textContent =
+        "StageConfig(stage=STAGE3_REASONING_RL, train_reasoning=True" +
+        (on.length ? ", " + on.map(function (k) {
+          return (k === "expert" ? "train_action_expert" : "train_" + k) + "=True";
+        }).join(", ") : "") + ")\n\n" +
+        (out[0] === "ok"
+          ? "accepted — nothing else is being trained, so RL cannot regress the action stack."
+          : "ValidationError\n  " + out[1]);
+    }
+
+    return {
+      ready: function () {
+        var meta;
+        try { meta = pyodide.runPython("rl_init()").toJs(); }
+        catch (e) { readEl.textContent = "curriculum unavailable"; return; }
+        stages = meta[0]; sched = meta[1]; subs = meta[2];
+        G = meta[3]; kl = meta[4]; clip = meta[5];
+        var total = subs.reduce(function (a, b) { return a + b; }, 0);
+        stepEl.max = String(total - 1);
+        drawStages();
+        stepEl.addEventListener("input", function () { stepV.textContent = stepEl.value; draw(); });
+        document.querySelectorAll("[data-iso]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var k = b.getAttribute("data-iso");
+            iso[k] = !iso[k];
+            b.classList.toggle("is-on", iso[k]);
+          });
+        });
+        document.getElementById("rl-iso-run").addEventListener("click", runIso);
+        stepV.textContent = stepEl.value;
+        draw();
+        log("curriculum: " + stages.length + " stages, " +
+            total.toLocaleString() + " GRPO steps over " + sched.length +
+            " reward sub-stages  (group " + G + ", KL " + kl + ")", "ok");
+      }
+    };
+  })();
+
+  /* ---------- clone the controller -------------------------------------
+     The one model on the page that was fitted here. tools/train_clone.py
+     drives the repo's own dwa_controller.py over generated maps, records the
+     observation and the twist it committed to, and fits an MLP. This section
+     loads that checkpoint, reports what it scored, and the chase above lets
+     you drive with it.
+
+     The interesting number is not the fit. It is the gap between the fit and
+     the driving, which is what behaviour cloning always has and what DAgger
+     exists to close.
+     ------------------------------------------------------------------- */
+  var cloneDemo = (function () {
+    var sec = document.getElementById("clone");
+    if (!sec) return { ready: function () {} };
+    var cv = document.getElementById("clone-canvas");
+    var g = cv.getContext("2d");
+    var statsEl = document.getElementById("clone-stats");
+    var noteEl = document.getElementById("clone-note");
+    var readEl = document.getElementById("clone-read");
+    var ck = null;
+
+    function stat(label, value, sub) {
+      var d = document.createElement("div");
+      d.innerHTML = "<dt>" + label + "</dt><dd>" + value +
+        (sub ? " <small>" + sub + "</small>" : "") + "</dd>";
+      statsEl.appendChild(d);
+    }
+
+    function draw() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      if (!ck) return;
+      var curve = ck.curve || [], rounds = (ck.eval && ck.eval.rounds) || [];
+      // room under the axis for three rows of label plus the status overlay
+      var L = 74, MID = cv.width * 0.52, R = cv.width - 40, T = 44, B = cv.height - 96;
+      g.font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left"; g.fillStyle = C.mut;
+
+      // left: the fit
+      g.fillText("training loss  (mse on the expert's twist)", L, 24);
+      if (curve.length > 1) {
+        var lo = Math.min.apply(null, curve), hi = Math.max.apply(null, curve);
+        var xs = function (i) { return L + (MID - 70 - L) * i / (curve.length - 1); };
+        var ys = function (v) { return B - (B - T) * (Math.log(v + 1e-9) - Math.log(lo + 1e-9)) /
+                                       (Math.log(hi + 1e-9) - Math.log(lo + 1e-9) || 1); };
+        g.strokeStyle = C.rule; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(L, T); g.lineTo(L, B); g.lineTo(MID - 70, B); g.stroke();
+        g.strokeStyle = C.accent; g.lineWidth = 2; g.beginPath();
+        curve.forEach(function (v, i) { i ? g.lineTo(xs(i), ys(v)) : g.moveTo(xs(i), ys(v)); });
+        g.stroke();
+        g.fillStyle = C.mut; g.textAlign = "right";
+        g.fillText(hi.toExponential(1), L - 8, T + 4);
+        g.fillText(lo.toExponential(1), L - 8, B);
+        g.textAlign = "left";
+        g.fillText("epochs", L, B + 18);
+      }
+
+      // right: what that fit is worth when it has to drive
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.fillText("closed loop  (fraction of fresh courses finished)", MID, 24);
+      var bw = 46, gap = 26, x0 = MID + 30;
+      var maxr = 1;
+      rounds.forEach(function (r, i) {
+        var frac = r.tried ? r.reached / r.tried : 0;
+        var h = (B - T) * frac / maxr;
+        var x = x0 + i * (bw + gap);
+        var isPick = ck.eval && ck.eval.picked === r.stage;
+        g.fillStyle = isPick ? C.signal : C.accent;
+        g.globalAlpha = isPick ? 0.9 : 0.42;
+        g.fillRect(x, B - h, bw, h);
+        g.globalAlpha = 1;
+        g.fillStyle = C.ink; g.textAlign = "center";
+        g.font = "500 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(Math.round(frac * 100) + "%", x + bw / 2, B - h - 7);
+        g.fillStyle = C.mut;
+        g.font = "400 9.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(r.stage.replace("dagger", "DAgger "), x + bw / 2, B + 15);
+        g.fillText(r.reached + "/" + r.tried, x + bw / 2, B + 29);
+      });
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(MID + 10, B + 0.5); g.lineTo(R, B + 0.5); g.stroke();
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.font = "400 9.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.fillText("filled bar is the checkpoint this page loads", MID + 10, B + 48);
+    }
+
+    return {
+      ready: function (checkpoint, meta) {
+        ck = checkpoint;
+        var e = ck.eval || {}, t = ck.train || {};
+        stat("samples", (t.samples || 0).toLocaleString(), "from " + (t.maps || 0) + " maps");
+        stat("network", (ck.arch || []).join("&#8239;&rarr;&#8239;"), "tanh, " +
+             ((ck.arch || []).reduce(function (a, n, i, A) {
+               return i ? a + A[i - 1] * n + n : a; }, 0)).toLocaleString() + " params");
+        stat("held-out error", (e.v_mae != null ? e.v_mae.toFixed(4) : "—"),
+             "m/s &middot; " + (e.w_mae != null ? e.w_mae.toFixed(3) : "—") + " rad/s");
+        stat("finishes", (e.closed_loop_tried
+              ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) + "%" : "—"),
+             (e.closed_loop_reached || 0) + " of " + (e.closed_loop_tried || 0) + " courses");
+        noteEl.textContent =
+          "the shipped checkpoint is " + (e.picked || "bc") +
+          " · pick “Clone” in the chase above to drive with it";
+        readEl.textContent =
+          "open loop it predicts the expert to " + (e.v_mae != null ? e.v_mae.toFixed(4) : "?") +
+          " m/s; closed loop it finishes " +
+          (e.closed_loop_tried ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) : 0) +
+          "% — that gap is the whole lesson";
+        draw();
+        log("clone: " + (t.samples || 0).toLocaleString() + " states from " + (t.maps || 0) +
+            " maps, " + (ck.arch || []).join("-") + ", finishing " +
+            (e.closed_loop_tried ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) : 0) +
+            "% of fresh courses", "ok");
       }
     };
   })();
