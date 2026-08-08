@@ -44,7 +44,7 @@
       way; then reach into a UR12e's workspace and find out where it stops seeing you.
     </p>
     <ol class="runner__toc">
-      <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT</span></li>
+      <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#reach">Reach into the cell</a><span>RealSense pipeline</span></li>
     </ol>
@@ -60,6 +60,8 @@
           <button class="seg__btn is-on" data-planner="astar" role="radio" aria-checked="true">A*</button>
           <button class="seg__btn" data-planner="theta_star" role="radio" aria-checked="false">Theta*</button>
           <button class="seg__btn" data-planner="rrt" role="radio" aria-checked="false">RRT</button>
+          <button class="seg__btn" data-planner="smac" role="radio" aria-checked="false">SMAC</button>
+          <button class="seg__btn" data-planner="hybrid" role="radio" aria-checked="false">Hybrid</button>
         </div>
         <p class="panel__hint" id="planner-hint">8-connected grid search, octile heuristic.</p>
       </div>

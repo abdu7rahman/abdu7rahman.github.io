@@ -9,7 +9,11 @@
   var MODULES = {
     astar:      { file: "astar_planner.py",      cls: "AStarPlannerNode",      call: "_astar" },
     theta_star: { file: "theta_star_planner.py", cls: "ThetaStarPlannerNode",  call: "_theta_star" },
-    rrt:        { file: "rrt_planner.py",        cls: "RRTPlannerNode",        call: "_rrt" }
+    rrt:        { file: "rrt_planner.py",        cls: "RRTPlannerNode",        call: "_rrt" },
+    // SE2 planners: they carry a heading and a 0.22 m turning radius, so they
+    // are given the start and goal in world coordinates rather than cells
+    smac:       { file: "smac_planner.py",       cls: "SmacPlannerNode",       call: "_hybrid_astar", se2: true },
+    hybrid:     { file: "rrt_smac_hybrid_planner.py", cls: "HybridRRTSMACPlannerNode", call: "_plan_hybrid_unified", se2: true }
   };
   var DWA = { file: "dwa_controller.py", cls: "DWAControllerNode" };
   // The arm's detector comes from a different repo, and it ships a headless
@@ -25,7 +29,9 @@
   var HINTS = {
     astar: "8-connected grid search, octile heuristic. Expands in cost order.",
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
-    rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards."
+    rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards.",
+    smac: "Hybrid A* over an SE2 lattice. Every expansion is an arc the robot can actually drive, so the path obeys a 0.22 m turning radius instead of cutting a grid corner.",
+    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking."
   };
 
   var COLS = 96, ROWS = 64;
@@ -269,6 +275,18 @@
     "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
     "        path = [w2g(p) for p in out.get('path', [])]",
     "        expl = [w2g(p) for p in out.get('tree', [])]",
+    "    elif kind in ('smac', 'hybrid'):",
+    "        sw = ((sc + 0.5) * 0.05, (sr + 0.5) * 0.05)",
+    "        gw = ((gc + 0.5) * 0.05, (gr + 0.5) * 0.05)",
+    "        import random as _r; _r.seed(7)",
+    "        fn = node._hybrid_astar if kind == 'smac' else node._plan_hybrid_unified",
+    "        out = (fn((sw[0], sw[1], 0.0), (gw[0], gw[1], 0.0)) if kind == 'smac'",
+    "               else fn(sw[0], sw[1], 0.0, gw[0], gw[1], 0.0))",
+    "        ms = (time.perf_counter() - t0) * 1000.0",
+    "        pts = out[0] if isinstance(out, tuple) else out",
+    "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
+    "        path = [w2g(p) for p in (pts or [])]",
+    "        expl = []",
     "    else:",
     "        res = getattr(node, '_astar' if kind == 'astar' else '_theta_star')((sr, sc), (gr, gc))",
     "        ms = (time.perf_counter() - t0) * 1000.0",
