@@ -274,7 +274,13 @@
 
 
 
-.chase__stage { position: relative; }
+/* Figures sit a little wider than the reading column, not twice as wide.
+   The text measures 74ch (~724px) and the runner is 1320px, so a canvas at
+   width:100% came out at 1208px -- 1.7x the column it sits under, which reads
+   as a mistake rather than as emphasis. The map in the first demo is 896px and
+   looks right, so the rest are brought to the same order. */
+.chase__stage { position: relative; max-width: 960px; }
+.log--raw { max-width: 960px; }
 #chase, #arm {
   display: block; width: 100%; height: auto;
   border: 1px solid var(--rule-2); background: var(--paper);
