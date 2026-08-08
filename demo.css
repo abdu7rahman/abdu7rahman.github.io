@@ -295,3 +295,30 @@
   padding: 6px 9px; border-radius: 2px; pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── reinforce it: the curriculum band ───────────────────── */
+/* Budgets differ by three orders of magnitude, so the flex ratio alone would
+   squeeze stage 0 to a sliver and clip stage 3's label. */
+.rl-stages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 22px; max-width: 960px; }
+.rl-stage {
+  flex: 1; min-width: 132px; cursor: default; outline: none;
+  border: 1px solid var(--rule-2); border-top: 2px solid var(--rule-2);
+  border-radius: 2px; padding: 10px 11px 12px;
+  font: 400 10.5px/1.4 var(--mono); color: var(--ink-3);
+  transition: border-color .16s var(--ease), background .16s var(--ease);
+}
+.rl-stage:hover, .rl-stage:focus { border-color: var(--ink-3); background: var(--paper-3); }
+.rl-stage b { display: block; color: var(--ink); font-weight: 500; letter-spacing: .02em; }
+.rl-stage .rl-steps { display: block; margin-top: 5px; }
+.rl-stage .rl-moves { display: block; margin-top: 6px; color: var(--ink-2); }
+/* the one stage RL touches */
+.rl-stage.is-rl { border-top-color: var(--signal); background: color-mix(in srgb, var(--signal) 5%, var(--paper)); }
+.rl-stage.is-rl b { color: var(--signal); }
+.rl-h { margin-top: 32px; font-size: 1.05rem; letter-spacing: -.01em; }
+.chase__read--flow { position: static; margin-top: 10px; background: none; padding: 0; }
+#rl-canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule-2); background: var(--paper);
+}
+.er-task input[type="range"] { flex: 1; accent-color: var(--signal); }
+.er-task output { flex: none; width: 46px; text-align: right; font: 400 11px/1 var(--mono); color: var(--ink); }

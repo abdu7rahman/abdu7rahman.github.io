@@ -854,6 +854,62 @@
     "    return out",
     "def rfm_table():",
     "    return _RFM['A'].describe_coverage(_RFM['cfg'])",
+    "def rl_init():",
+    "    # The curriculum and the RL config as the package declares them. Nothing",
+    "    # here is retyped: the stage flags, the step budgets and the reward weight",
+    "    # schedule are whatever CurriculumConfig() and GRPOConfig() default to.",
+    "    S = _RFM['S']",
+    "    cur = S.CurriculumConfig(); g = S.GRPOConfig()",
+    "    stages = [[st.stage.value, int(st.max_steps),",
+    "               [bool(st.train_backbone), bool(st.train_action_expert),",
+    "                bool(st.train_dynamics), bool(st.train_reasoning),",
+    "                bool(st.train_competence)], st.notes] for st in cur.stages]",
+    "    _RFM['grpo'] = g",
+    "    return [stages,",
+    "            [[float(a), float(b), float(c)] for a, b, c in g.reward_weights_schedule],",
+    "            [int(x) for x in g.substage_steps],",
+    "            int(g.group_size), float(g.kl_coeff), float(g.clip_ratio)]",
+    "def rl_substage(step):",
+    "    # Which sub-stage a step lands in, against the schedule's own boundaries.",
+    "    g = _RFM['grpo']",
+    "    acc = 0",
+    "    for i, n in enumerate(g.substage_steps):",
+    "        acc += int(n)",
+    "        if step < acc: return i",
+    "    return len(g.substage_steps) - 1",
+    "def rl_advantage(step, scores):",
+    "    # GRPO, on the config's own numbers: weight each rollout's three reward",
+    "    # terms by the schedule at this step, then centre and scale the rewards",
+    "    # *within the group*. That is the whole trick -- the group is the baseline,",
+    "    # so there is no value network to train.",
+    "    #",
+    "    # The three component scores are the input, not the output: a real run gets",
+    "    # them from a format check, a mined answer and a frozen judge. What this",
+    "    # shows is what the staged weights do to the same group as training moves.",
+    "    import statistics",
+    "    g = _RFM['grpo']",
+    "    i = rl_substage(int(step))",
+    "    w = g.reward_weights_schedule[i]",
+    "    rs = [float(w[0]) * s[0] + float(w[1]) * s[1] + float(w[2]) * s[2] for s in scores]",
+    "    mean = statistics.fmean(rs)",
+    "    sd = statistics.pstdev(rs)",
+    "    adv = [(r - mean) / sd if sd > 1e-9 else 0.0 for r in rs]",
+    "    return [i, [float(x) for x in w], [float(r) for r in rs],",
+    "            [float(a) for a in adv], float(mean), float(sd)]",
+    "def rl_isolation(backbone, expert, dynamics):",
+    "    # Ask the schema to build a reasoning-RL stage that also trains the action",
+    "    # stack. StageConfig._rl_is_isolated is what answers, not this function.",
+    "    S = _RFM['S']",
+    "    try:",
+    "        S.StageConfig(stage=S.TrainingStage.STAGE3_REASONING_RL, max_steps=1800,",
+    "                      train_backbone=bool(backbone), train_action_expert=bool(expert),",
+    "                      train_dynamics=bool(dynamics), train_reasoning=True,",
+    "                      train_competence=False)",
+    "        return ['ok', 'the schema built it']",
+    "    except Exception as e:",
+    "        msg = str(e).replace(chr(10), ' ')",
+    "        k = msg.find('reasoning RL cannot')",
+    "        return ['refused', msg[k:k + 130] if k >= 0 else msg[:160]]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -1209,6 +1265,7 @@
           pyodide.runPython("arm_write(__path, __src)");
         }
         embDemo.ready();
+        rlDemo.ready();
       } catch (e) {
         log("action space unavailable: " + String(e && e.message ? e.message : e), "err");
       }
@@ -2867,6 +2924,183 @@
         drawChunk();
         say(server ? "server: " + server + " · press ask"
                    : "no policy server configured · see below");
+      }
+    };
+  })();
+
+  /* ---------- reinforce it: the curriculum, and GRPO ---------------------
+     The same vendored package as the action space, a different corner of it.
+     Everything drawn here is read off CurriculumConfig() and GRPOConfig() --
+     stage budgets, which parameter groups move, group size, KL, and the reward
+     weight schedule. The only invented numbers are the three component scores
+     per rollout, and the copy says so: a real run gets those from a format
+     check, a mined answer and a frozen judge.
+     ------------------------------------------------------------------- */
+  var rlDemo = (function () {
+    var sec = document.getElementById("rl");
+    if (!sec) return { ready: function () {} };
+    var cv = document.getElementById("rl-canvas");
+    var g = cv.getContext("2d");
+    var readEl = document.getElementById("rl-read");
+    var stagesEl = document.getElementById("rl-stages");
+    var noteEl = document.getElementById("rl-stage-note");
+    var isoEl = document.getElementById("rl-iso");
+    var stepEl = document.getElementById("rl-step");
+    var stepV = document.getElementById("rl-stepv");
+    var stages = [], sched = [], subs = [], G = 8, kl = 0, clip = 0;
+    var iso = { backbone: false, expert: false, dynamics: false };
+    var GROUPS = ["backbone", "action expert", "dynamics", "reasoning", "competence"];
+
+    // One fixed group of rollouts. They never change; only the weights do,
+    // which is the entire point of dragging the step.
+    // Chosen so the winner actually moves as the weights do -- that is the
+    // claim the section makes, and a group where one rollout dominates every
+    // sub-stage would quietly disprove it.
+    var ROLLOUTS = [
+      { tag: "clean format, wrong answer",      s: [1.00, 0.05, 0.20] },
+      { tag: "right answer, ragged format",     s: [0.20, 1.00, 0.60] },
+      { tag: "right, and the trace entails it", s: [0.55, 0.95, 0.95] },
+      { tag: "right answer, trace unrelated",   s: [0.45, 1.00, 0.05] },
+      { tag: "no think block at all",           s: [0.00, 0.55, 0.00] },
+      { tag: "hedged, half right",              s: [0.70, 0.45, 0.55] },
+      { tag: "confident and wrong",             s: [0.90, 0.00, 0.80] },
+      { tag: "right, terse trace",              s: [0.35, 1.00, 0.40] }
+    ];
+
+    function drawStages() {
+      var total = stages.reduce(function (a, s) { return a + s[1]; }, 0);
+      stagesEl.innerHTML = "";
+      stages.forEach(function (st, i) {
+        var d = document.createElement("div");
+        d.className = "rl-stage" + (st[2][3] ? " is-rl" : "");
+        d.style.flex = String(Math.max(0.6, st[1] / total * 10));
+        var moves = GROUPS.filter(function (_, k) { return st[2][k]; });
+        d.innerHTML =
+          '<b>' + st[0].replace(/^stage(\d)_/, "$1 · ").replace(/_/g, " ") + '</b>' +
+          '<span class="rl-steps">' + st[1].toLocaleString() + ' steps</span>' +
+          '<span class="rl-moves">' + (moves.length ? moves.join(", ") : "nothing") + '</span>';
+        d.addEventListener("mouseenter", function () { noteEl.textContent = st[3] || ""; });
+        d.addEventListener("focus", function () { noteEl.textContent = st[3] || ""; });
+        d.tabIndex = 0;
+        stagesEl.appendChild(d);
+      });
+      noteEl.textContent = "hover a stage for why it exists · the highlighted one is the only stage RL touches";
+    }
+
+    function draw() {
+      var step = parseInt(stepEl.value, 10);
+      var out;
+      try {
+        pyodide.globals.set("__sc", ROLLOUTS.map(function (r) { return r.s; }));
+        out = pyodide.runPython(
+          "rl_advantage(" + step + ", [list(x) for x in __sc.to_py()] " +
+          "if hasattr(__sc,'to_py') else __sc)").toJs();
+      } catch (e) {
+        readEl.textContent = "advantage failed: " + (e && e.message ? e.message : e);
+        return;
+      }
+      var sub = out[0], w = out[1], rs = out[2], adv = out[3], mean = out[4], sd = out[5];
+
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      // The label column has to clear the longest tag and the reward number
+      // before the bars start, or a full-width negative advantage runs its
+      // value straight into them.
+      var L = 400, R = cv.width - 150, T = 76, rowH = (cv.height - T - 54) / ROLLOUTS.length;
+      g.font = "500 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.fillText("sub-stage " + (sub + 1) + " of " + sched.length +
+                 "   weights  format " + w[0].toFixed(1) +
+                 " · accuracy " + w[1].toFixed(1) + " · consistency " + w[2].toFixed(1), 20, 26);
+      g.fillText("group of " + G + "   ·   baseline is the group mean " + mean.toFixed(3) +
+                 ", scaled by " + sd.toFixed(3) + "   ·   KL " + kl + "   clip " + clip, 20, 46);
+      g.fillText("rollout", 20, T - 14);
+      g.fillText("reward", L - 74, T - 14);
+      g.textAlign = "center";
+      g.fillText("group-relative advantage", (L + R) / 2, T - 14);
+
+      var zero = (L + R) / 2, half = (R - L) / 2;
+      var span = Math.max(1.2, Math.max.apply(null, adv.map(Math.abs)));
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(zero, T - 4); g.lineTo(zero, cv.height - 44); g.stroke();
+
+      ROLLOUTS.forEach(function (r, i) {
+        var y = T + i * rowH + rowH / 2;
+        g.textAlign = "left"; g.fillStyle = C.ink;
+        g.font = "400 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(r.tag, 20, y + 4);
+        g.fillStyle = C.mut;
+        g.font = "400 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(rs[i].toFixed(3), L - 74, y + 4);
+        var wpx = adv[i] / span * half;
+        g.fillStyle = adv[i] >= 0 ? C.accent : C.signal;
+        g.globalAlpha = 0.85;
+        var h = Math.min(rowH * 0.56, 22);
+        g.fillRect(Math.min(zero, zero + wpx), y - h / 2, Math.abs(wpx), h);
+        g.globalAlpha = 1;
+        // A full-width bar would push its own value into the reward column, so
+        // once the bar is long enough to hold the number, the number goes in it.
+        var lbl = (adv[i] >= 0 ? "+" : "") + adv[i].toFixed(2);
+        var inside = Math.abs(wpx) > 52;
+        g.textAlign = inside ? (adv[i] >= 0 ? "right" : "left")
+                             : (adv[i] >= 0 ? "left" : "right");
+        g.fillStyle = inside ? C.paper : C.ink;
+        g.fillText(lbl, zero + wpx + (adv[i] >= 0 ? (inside ? -7 : 7)
+                                                  : (inside ? 7 : -7)), y + 4);
+      });
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.font = "400 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.fillText("reinforced", zero + 8, cv.height - 22);
+      g.textAlign = "right";
+      g.fillText("suppressed", zero - 8, cv.height - 22);
+
+      var best = adv.indexOf(Math.max.apply(null, adv));
+      readEl.textContent = "step " + step + " · sub-stage " + (sub + 1) +
+        " · weights " + w.map(function (x) { return x.toFixed(1); }).join(":") +
+        " · most reinforced: " + ROLLOUTS[best].tag;
+    }
+
+    function runIso() {
+      var out;
+      try {
+        out = pyodide.runPython("rl_isolation(" +
+          (iso.backbone ? "True" : "False") + "," + (iso.expert ? "True" : "False") + "," +
+          (iso.dynamics ? "True" : "False") + ")").toJs();
+      } catch (e) { isoEl.textContent = String(e && e.message ? e.message : e); return; }
+      var on = Object.keys(iso).filter(function (k) { return iso[k]; });
+      isoEl.textContent =
+        "StageConfig(stage=STAGE3_REASONING_RL, train_reasoning=True" +
+        (on.length ? ", " + on.map(function (k) {
+          return (k === "expert" ? "train_action_expert" : "train_" + k) + "=True";
+        }).join(", ") : "") + ")\n\n" +
+        (out[0] === "ok"
+          ? "accepted — nothing else is being trained, so RL cannot regress the action stack."
+          : "ValidationError\n  " + out[1]);
+    }
+
+    return {
+      ready: function () {
+        var meta;
+        try { meta = pyodide.runPython("rl_init()").toJs(); }
+        catch (e) { readEl.textContent = "curriculum unavailable"; return; }
+        stages = meta[0]; sched = meta[1]; subs = meta[2];
+        G = meta[3]; kl = meta[4]; clip = meta[5];
+        var total = subs.reduce(function (a, b) { return a + b; }, 0);
+        stepEl.max = String(total - 1);
+        drawStages();
+        stepEl.addEventListener("input", function () { stepV.textContent = stepEl.value; draw(); });
+        document.querySelectorAll("[data-iso]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var k = b.getAttribute("data-iso");
+            iso[k] = !iso[k];
+            b.classList.toggle("is-on", iso[k]);
+          });
+        });
+        document.getElementById("rl-iso-run").addEventListener("click", runIso);
+        stepV.textContent = stepEl.value;
+        draw();
+        log("curriculum: " + stages.length + " stages, " +
+            total.toLocaleString() + " GRPO steps over " + sched.length +
+            " reward sub-stages  (group " + G + ", KL " + kl + ")", "ok");
       }
     };
   })();
