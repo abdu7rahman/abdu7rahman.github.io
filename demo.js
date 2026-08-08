@@ -1988,8 +1988,259 @@
   });
   runBtn.addEventListener("click", run);
 
+  /* ---------- ask a robot model ----------------------------------------
+     The only thing on this page that leaves the browser, and the only thing
+     that is not my code. Gemini Robotics-ER is an embodied-reasoning model:
+     given an image and a task it returns image coordinates -- where to point,
+     what to grasp, in what order. That is the layer above a VLA, which is why
+     it is worth having next to the planners rather than instead of them.
+
+     A static site cannot hold an API key, so it does not: the request goes to
+     a Cloudflare Worker that holds the key and forwards it. worker/ has the
+     whole thing, and it is a proxy rather than a backend -- it re-serialises
+     nothing and parses nothing, so the raw answer printed under the canvas is
+     the model's, byte for byte.
+     ------------------------------------------------------------------- */
+  var ER = {
+    // The Worker's URL lives in the markup, on <section id="policy"
+    // data-proxy="...">, so configuring it is an HTML edit rather than a
+    // hunt through this file. Empty means the demo says so plainly instead of
+    // failing at the network.
+    proxy: (function () {
+      var el = document.getElementById("policy");
+      var fromDom = (el && el.getAttribute("data-proxy")) || "";
+      // A local override, for developing against a Worker running on
+      // `wrangler dev`. Restricted to loopback so the deployed page cannot be
+      // pointed at someone else's endpoint with a link.
+      var loopback = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      var q = new URLSearchParams(location.search).get("er");
+      return (loopback && q) ? q : fromDom;
+    })(),
+    // ER returns points normalised to this, not to the image size.
+    NORM: 1000
+  };
+
+  var erDemo = (function () {
+    var cv = document.getElementById("er-canvas");
+    if (!cv) return { init: function () {} };
+    var g = cv.getContext("2d");
+    var readEl = document.getElementById("er-read");
+    var rawEl = document.getElementById("er-raw");
+    var askBtn = document.getElementById("er-ask");
+    var promptEl = document.getElementById("er-prompt");
+    var fileEl = document.getElementById("er-file");
+    var source = "arm", img = null, busy = false, stream = null, video = null;
+
+    function say(t) { readEl.textContent = t; }
+
+    function fit() {
+      // Letterbox whatever we were given into the canvas, and remember the
+      // transform: the model answers in image coordinates, so drawing its
+      // answer means undoing exactly this.
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      if (!img) return null;
+      var iw = img.width || img.videoWidth, ih = img.height || img.videoHeight;
+      if (!iw || !ih) return null;
+      var s = Math.min(cv.width / iw, cv.height / ih);
+      var w = iw * s, h = ih * s, x = (cv.width - w) / 2, y = (cv.height - h) / 2;
+      g.drawImage(img, x, y, w, h);
+      return { x: x, y: y, w: w, h: h };
+    }
+
+    function label(t, x, y, col, size) {
+      g.font = "500 " + (size || 11) + "px ui-monospace, SFMono-Regular, Menlo, monospace";
+      var pad = 4, tw = g.measureText(t).width;
+      g.fillStyle = C.paper; g.globalAlpha = 0.85;
+      g.fillRect(x - pad, y - (size || 11) - pad + 2, tw + pad * 2, (size || 11) + pad * 2 - 2);
+      g.globalAlpha = 1; g.fillStyle = col;
+      g.fillText(t, x, y);
+    }
+
+    function drawPoints(pts, box) {
+      pts.forEach(function (p, i) {
+        // ER gives [y, x], normalised 0-1000, which is the opposite order to
+        // everything else on this page. Getting it backwards puts every point
+        // on the mirror of where the model meant, so it is worth being loud
+        // about: p.point is [row, col].
+        var py = box.y + (p.point[0] / ER.NORM) * box.h;
+        var px = box.x + (p.point[1] / ER.NORM) * box.w;
+        g.strokeStyle = C.signal; g.lineWidth = 2;
+        g.beginPath(); g.arc(px, py, 9, 0, 6.284); g.stroke();
+        g.beginPath(); g.moveTo(px - 14, py); g.lineTo(px - 4, py);
+        g.moveTo(px + 4, py); g.lineTo(px + 14, py);
+        g.moveTo(px, py - 14); g.lineTo(px, py - 4);
+        g.moveTo(px, py + 4); g.lineTo(px, py + 14); g.stroke();
+        label(String(p.label || ("#" + i)), px + 16, py + 4, C.ink, 11);
+      });
+    }
+
+    function snapshot() {
+      // Whatever the source is, the model gets a JPEG. The arm canvas is
+      // already a canvas; the camera is a live frame; a file is an <img>.
+      var tmp = document.createElement("canvas");
+      var src = img;
+      var iw = src.width || src.videoWidth, ih = src.height || src.videoHeight;
+      var s = Math.min(1, 1024 / Math.max(iw, ih));      // keep the body small
+      tmp.width = Math.round(iw * s); tmp.height = Math.round(ih * s);
+      tmp.getContext("2d").drawImage(src, 0, 0, tmp.width, tmp.height);
+      return tmp.toDataURL("image/jpeg", 0.85).split(",")[1];
+    }
+
+    function useArm() {
+      var armCv = document.getElementById("arm");
+      if (!armCv) { say("the arm demo is not on this page"); return; }
+      // Copy it: the arm canvas keeps redrawing, and sending a moving target
+      // means the points come back for a frame that is already gone.
+      var tmp = document.createElement("canvas");
+      tmp.width = armCv.width; tmp.height = armCv.height;
+      tmp.getContext("2d").drawImage(armCv, 0, 0);
+      img = tmp; stopCam(); fit();
+      say("the arm cell, frozen · press ask");
+    }
+
+    function stopCam() {
+      if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+      if (video) { video.pause(); video = null; }
+    }
+
+    async function useCam() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      } catch (e) {
+        say("no camera: " + (e && e.name ? e.name : "denied"));
+        return;
+      }
+      video = document.createElement("video");
+      video.srcObject = stream; video.playsInline = true; video.muted = true;
+      await video.play();
+      img = video;
+      say("live camera · press ask to send one frame");
+      (function tick() {
+        if (!video) return;
+        fit();
+        requestAnimationFrame(tick);
+      })();
+    }
+
+    function useFile(f) {
+      var url = URL.createObjectURL(f);
+      var im = new Image();
+      im.onload = function () {
+        img = im; stopCam(); fit(); URL.revokeObjectURL(url);
+        say(f.name + " · press ask");
+      };
+      im.onerror = function () { say("could not read that file"); };
+      im.src = url;
+    }
+
+    function parsePoints(text) {
+      // The model answers with JSON in a text part, sometimes fenced. Pull the
+      // first array out rather than trusting the whole string to parse.
+      var t = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      var a = t.indexOf("["), b = t.lastIndexOf("]");
+      if (a < 0 || b <= a) return [];
+      var arr;
+      try { arr = JSON.parse(t.slice(a, b + 1)); } catch (e) { return []; }
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (p) {
+        return p && Array.isArray(p.point) && p.point.length >= 2 &&
+               isFinite(p.point[0]) && isFinite(p.point[1]);
+      });
+    }
+
+    async function ask() {
+      if (busy) return;
+      if (!ER.proxy) {
+        say("the proxy is not configured yet");
+        rawEl.textContent =
+          "ER.proxy in demo.js is empty, so there is nowhere to send this.\n\n" +
+          "Deploy worker/ (see worker/README.md):\n" +
+          "  cd worker && wrangler secret put GEMINI_API_KEY && wrangler deploy\n\n" +
+          "then set ER.proxy to the URL it prints.";
+        return;
+      }
+      // The arm canvas is still animating, so grab it now rather than reusing
+      // whatever frame was current when the chip was clicked.
+      if (source === "arm") useArm();
+      if (!img) { say("pick a source first"); return; }
+      busy = true; askBtn.textContent = "Asking…";
+      say("sending one frame to the model…");
+      var box = fit();
+      var t0 = performance.now();
+      try {
+        var res = await fetch(ER.proxy, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inline_data: { mime_type: "image/jpeg", data: snapshot() } },
+                { text: promptEl.value.trim() +
+                  "\nReturn a JSON array. Each entry must be " +
+                  '{"point": [y, x], "label": "<name>"} with y and x normalised 0-1000. ' +
+                  "Return only the JSON." }
+              ]
+            }],
+            generationConfig: { temperature: 0.2 }
+          })
+        });
+        var body = await res.text();
+        rawEl.textContent = body.length > 4000 ? body.slice(0, 4000) + "\n…" : body;
+        if (!res.ok) {
+          say("the model returned " + res.status);
+          busy = false; askBtn.textContent = "Ask it"; return;
+        }
+        var json = JSON.parse(body);
+        var text = ((((json.candidates || [])[0] || {}).content || {}).parts || [])
+          .map(function (p) { return p.text || ""; }).join("");
+        var pts = parsePoints(text);
+        box = fit();
+        if (box && pts.length) drawPoints(pts, box);
+        var ms = Math.round(performance.now() - t0);
+        say(pts.length
+          ? pts.length + (pts.length === 1 ? " point" : " points") + " back in " + ms + " ms · " +
+            pts.map(function (p) { return p.label; }).filter(Boolean).slice(0, 6).join(", ")
+          : "the model answered but returned no points in " + ms + " ms · see the raw response");
+      } catch (e) {
+        say("request failed: " + (e && e.message ? e.message : e));
+        rawEl.textContent = String(e && e.stack ? e.stack : e);
+      }
+      busy = false; askBtn.textContent = "Ask it";
+    }
+
+    function pick(which) {
+      source = which;
+      ["arm", "cam", "file"].forEach(function (k) {
+        var b = document.getElementById("er-src-" + k);
+        if (b) b.classList.toggle("is-on", k === which);
+      });
+      if (which === "arm") useArm();
+      else if (which === "cam") useCam();
+      else fileEl.click();
+    }
+
+    return {
+      init: function () {
+        document.getElementById("er-src-arm").addEventListener("click", function () { pick("arm"); });
+        document.getElementById("er-src-cam").addEventListener("click", function () { pick("cam"); });
+        document.getElementById("er-src-file").addEventListener("click", function () { pick("file"); });
+        fileEl.addEventListener("change", function (e) {
+          if (e.target.files && e.target.files[0]) { source = "file"; useFile(e.target.files[0]); }
+        });
+        askBtn.addEventListener("click", ask);
+        promptEl.addEventListener("keydown", function (e) { if (e.key === "Enter") ask(); });
+        // The arm chip starts selected, so start with the arm cell actually
+        // loaded rather than an empty canvas under a lit-up button.
+        useArm();
+        say(ER.proxy ? "the arm cell · press ask"
+                     : "the arm cell · the proxy is not configured yet");
+      }
+    };
+  })();
+
   PRESETS.rooms();
   draw();
   logEl.textContent = "reactive_autonomous_nav / browser runtime";
+  erDemo.init();
   boot();
 })();
