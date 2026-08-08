@@ -1988,259 +1988,443 @@
   });
   runBtn.addEventListener("click", run);
 
-  /* ---------- ask a robot model ----------------------------------------
-     The only thing on this page that leaves the browser, and the only thing
-     that is not my code. Gemini Robotics-ER is an embodied-reasoning model:
-     given an image and a task it returns image coordinates -- where to point,
-     what to grasp, in what order. That is the layer above a VLA, which is why
-     it is worth having next to the planners rather than instead of them.
+  /* ---------- pi0.5, over a policy server -------------------------------
+     The one thing here that does not run in the tab, and cannot: pi0.5 is a
+     3B-parameter VLA and its base checkpoint is 12.44 GB. Physical
+     Intelligence's own answer is to run it on a GPU behind a policy server and
+     query that from whatever is holding the robot, so this page is that
+     client.
 
-     A static site cannot hold an API key, so it does not: the request goes to
-     a Cloudflare Worker that holds the key and forwards it. worker/ has the
-     whole thing, and it is a proxy rather than a backend -- it re-serialises
-     nothing and parses nothing, so the raw answer printed under the canvas is
-     the model's, byte for byte.
+     The protocol is openpi's: a websocket, msgpack-numpy on the wire, a
+     metadata frame on connect, one observation dict up, one action chunk back.
+     The observation is the one examples/droid/main.py builds -- two 224x224
+     uint8 views, 7 joint positions, 1 gripper, and a language instruction --
+     and the reply is [10, 8]: ten steps of seven joint velocities plus a
+     gripper command.
      ------------------------------------------------------------------- */
-  var ER = {
-    // The Worker's URL lives in the markup, on <section id="policy"
-    // data-proxy="...">, so configuring it is an HTML edit rather than a
-    // hunt through this file. Empty means the demo says so plainly instead of
-    // failing at the network.
-    proxy: (function () {
-      var el = document.getElementById("policy");
-      var fromDom = (el && el.getAttribute("data-proxy")) || "";
-      // A local override, for developing against a Worker running on
-      // `wrangler dev`. Restricted to loopback so the deployed page cannot be
-      // pointed at someone else's endpoint with a link.
-      var loopback = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-      var q = new URLSearchParams(location.search).get("er");
-      return (loopback && q) ? q : fromDom;
-    })(),
-    // ER returns points normalised to this, not to the image size.
-    NORM: 1000
-  };
 
-  var erDemo = (function () {
-    var cv = document.getElementById("er-canvas");
-    if (!cv) return { init: function () {} };
+  // msgpack, only as much of it as this protocol needs.
+  //
+  // Written out rather than pulled from a CDN for one specific reason:
+  // msgpack-numpy identifies an array by *bytes* keys -- it tests `b'nd' in
+  // obj` -- while the dtype string beside them has to stay a msgpack str.
+  // Distinguishing bin from str is the whole job here, and @msgpack/msgpack
+  // encodes a JS Map as 0x80, an empty map, which the server receives as an
+  // observation with nothing in it. So: a map is written as an explicit list
+  // of [key, value] pairs, and a key is a string or a Uint8Array depending on
+  // which side of that line it belongs on.
+  var mp = (function () {
+    var enc = new TextEncoder(), dec = new TextDecoder();
+
+    function Writer() { this.b = new Uint8Array(1024); this.n = 0; }
+    Writer.prototype.need = function (k) {
+      if (this.n + k <= this.b.length) return;
+      var cap = this.b.length;
+      while (cap < this.n + k) cap *= 2;
+      var nb = new Uint8Array(cap); nb.set(this.b.subarray(0, this.n)); this.b = nb;
+    };
+    Writer.prototype.u8 = function (v) { this.need(1); this.b[this.n++] = v; };
+    Writer.prototype.raw = function (a) { this.need(a.length); this.b.set(a, this.n); this.n += a.length; };
+    Writer.prototype.be = function (v, k) {
+      this.need(k);
+      for (var i = k - 1; i >= 0; i--) { this.b[this.n + i] = v & 0xff; v = Math.floor(v / 256); }
+      this.n += k;
+    };
+    Writer.prototype.out = function () { return this.b.subarray(0, this.n); };
+
+    function hdr(w, small, h8, h16, h32, len) {
+      if (small !== null && len < small.max) w.u8(small.base | len);
+      else if (len < 256 && h8 !== null) { w.u8(h8); w.be(len, 1); }
+      else if (len < 65536) { w.u8(h16); w.be(len, 2); }
+      else { w.u8(h32); w.be(len, 4); }
+    }
+
+    function write(w, v) {
+      if (v === null || v === undefined) { w.u8(0xc0); return; }
+      if (v === true) { w.u8(0xc3); return; }
+      if (v === false) { w.u8(0xc2); return; }
+      if (typeof v === "number") {
+        if (Number.isInteger(v) && v >= 0 && v < 128) { w.u8(v); return; }
+        if (Number.isInteger(v) && v < 0 && v >= -32) { w.u8(0x100 + v); return; }
+        if (Number.isInteger(v) && v >= 0 && v < 4294967296) { w.u8(0xce); w.be(v, 4); return; }
+        if (Number.isInteger(v) && v < 0 && v >= -2147483648) { w.u8(0xd2); w.be(v >>> 0, 4); return; }
+        w.u8(0xcb);                                    // float64
+        var d = new DataView(new ArrayBuffer(8)); d.setFloat64(0, v);
+        w.raw(new Uint8Array(d.buffer));
+        return;
+      }
+      if (typeof v === "string") {
+        var s = enc.encode(v);
+        hdr(w, { base: 0xa0, max: 32 }, 0xd9, 0xda, 0xdb, s.length);
+        w.raw(s); return;
+      }
+      if (v instanceof Uint8Array) {                   // bin, never str
+        hdr(w, null, 0xc4, 0xc5, 0xc6, v.length);
+        w.raw(v); return;
+      }
+      if (Array.isArray(v)) {
+        hdr(w, { base: 0x90, max: 16 }, null, 0xdc, 0xdd, v.length);
+        for (var i = 0; i < v.length; i++) write(w, v[i]);
+        return;
+      }
+      if (v && v.__map) {                              // [[k, v], ...]
+        hdr(w, { base: 0x80, max: 16 }, null, 0xde, 0xdf, v.__map.length);
+        for (var j = 0; j < v.__map.length; j++) {
+          write(w, v.__map[j][0]); write(w, v.__map[j][1]);
+        }
+        return;
+      }
+      throw new Error("msgpack: cannot encode " + Object.prototype.toString.call(v));
+    }
+
+    function Reader(b) { this.b = b; this.d = new DataView(b.buffer, b.byteOffset, b.byteLength); this.i = 0; }
+    Reader.prototype.read = function () {
+      var c = this.b[this.i++];
+      if (c < 0x80) return c;
+      if (c >= 0xe0) return c - 256;
+      if ((c & 0xf0) === 0x80) return this.map(c & 0x0f);
+      if ((c & 0xf0) === 0x90) return this.arr(c & 0x0f);
+      if ((c & 0xe0) === 0xa0) return this.str(c & 0x1f);
+      switch (c) {
+        case 0xc0: return null;
+        case 0xc2: return false;
+        case 0xc3: return true;
+        case 0xc4: return this.bin(this.uint(1));
+        case 0xc5: return this.bin(this.uint(2));
+        case 0xc6: return this.bin(this.uint(4));
+        case 0xca: { var f = this.d.getFloat32(this.i); this.i += 4; return f; }
+        case 0xcb: { var g2 = this.d.getFloat64(this.i); this.i += 8; return g2; }
+        case 0xcc: return this.uint(1);
+        case 0xcd: return this.uint(2);
+        case 0xce: return this.uint(4);
+        case 0xcf: return this.uint(8);
+        case 0xd0: { var v0 = this.d.getInt8(this.i); this.i += 1; return v0; }
+        case 0xd1: { var v1 = this.d.getInt16(this.i); this.i += 2; return v1; }
+        case 0xd2: { var v2 = this.d.getInt32(this.i); this.i += 4; return v2; }
+        case 0xd9: return this.str(this.uint(1));
+        case 0xda: return this.str(this.uint(2));
+        case 0xdb: return this.str(this.uint(4));
+        case 0xdc: return this.arr(this.uint(2));
+        case 0xdd: return this.arr(this.uint(4));
+        case 0xde: return this.map(this.uint(2));
+        case 0xdf: return this.map(this.uint(4));
+      }
+      throw new Error("msgpack: unsupported byte 0x" + c.toString(16));
+    };
+    Reader.prototype.uint = function (k) {
+      var v = 0;
+      for (var i = 0; i < k; i++) v = v * 256 + this.b[this.i + i];
+      this.i += k; return v;
+    };
+    Reader.prototype.str = function (n) { var s = dec.decode(this.b.subarray(this.i, this.i + n)); this.i += n; return s; };
+    Reader.prototype.bin = function (n) { var s = this.b.subarray(this.i, this.i + n); this.i += n; return s; };
+    Reader.prototype.arr = function (n) { var a = []; for (var i = 0; i < n; i++) a.push(this.read()); return a; };
+    Reader.prototype.map = function (n) {
+      // A Map, so that bytes keys survive as bytes -- a plain object would
+      // stringify them and lose the distinction the format depends on.
+      var m = new Map();
+      for (var i = 0; i < n; i++) { var k = this.read(); m.set(typeof k === "string" ? k : dec.decode(k), this.read()); }
+      return m;
+    };
+
+    return {
+      map: function (pairs) { return { __map: pairs }; },
+      bytes: function (s) { return enc.encode(s); },
+      encode: function (v) { var w = new Writer(); write(w, v); return w.out(); },
+      decode: function (b) { return new Reader(b).read(); }
+    };
+  })();
+
+  // msgpack-numpy's array convention, on top of that.
+  var mpn = (function () {
+    function arr(typed, shape, dtypeStr) {
+      return mp.map([
+        [mp.bytes("nd"), true],
+        [mp.bytes("type"), dtypeStr],          // a str: '|u1', '<f4'
+        [mp.bytes("kind"), new Uint8Array(0)], // b'', anything but a void dtype
+        [mp.bytes("shape"), shape],
+        [mp.bytes("data"), new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength)]
+      ]);
+    }
+    return {
+      u8: function (a, shape) { return arr(a, shape, "|u1"); },
+      f32: function (a, shape) { return arr(a, shape, "<f4"); },
+      toArray: function (m) {
+        if (!(m instanceof Map) || !m.has("data")) return null;
+        var type = m.get("type"), shape = m.get("shape"), data = m.get("data");
+        if (type instanceof Uint8Array) type = new TextDecoder().decode(type);
+        if (!type || !shape || !data) return null;
+        var buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        var flat = /f4$/.test(type) ? new Float32Array(buf)
+                 : /f8$/.test(type) ? new Float64Array(buf)
+                 : /u1$/.test(type) ? new Uint8Array(buf) : null;
+        return flat ? { data: flat, shape: shape.map(Number) } : null;
+      }
+    };
+  })();
+
+  var pi05 = (function () {
+    var sec = document.getElementById("policy");
+    if (!sec) return { init: function () {} };
+    var cv = document.getElementById("pi-canvas");
     var g = cv.getContext("2d");
-    var readEl = document.getElementById("er-read");
-    var rawEl = document.getElementById("er-raw");
-    var askBtn = document.getElementById("er-ask");
-    var promptEl = document.getElementById("er-prompt");
-    var fileEl = document.getElementById("er-file");
-    var source = "arm", img = null, busy = false, stream = null, video = null;
+    var readEl = document.getElementById("pi-read");
+    var rawEl = document.getElementById("pi-raw");
+    var askBtn = document.getElementById("pi-ask");
+    var promptEl = document.getElementById("pi-prompt");
+    var fileEl = document.getElementById("pi-file");
+    var server = sec.getAttribute("data-server") || "";
+    var loopback = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    var q = new URLSearchParams(location.search).get("pi");
+    if (loopback && q) server = q;
+
+    var ws = null, meta = null, busy = false, chunk = null, scene = null;
+    // A plausible DROID rest pose. It is a starting point to perturb, not a
+    // measurement of anything.
+    var joints = [0.0, -0.35, 0.0, -2.2, 0.0, 2.0, 0.79], gripper = 0.0;
 
     function say(t) { readEl.textContent = t; }
 
-    function fit() {
-      // Letterbox whatever we were given into the canvas, and remember the
-      // transform: the model answers in image coordinates, so drawing its
-      // answer means undoing exactly this.
+    function sceneImage() {
+      // 224x224 uint8 RGB, which is what resize_with_pad produces upstream.
+      var t = document.createElement("canvas");
+      t.width = t.height = 224;
+      var c = t.getContext("2d");
+      c.fillStyle = "#000"; c.fillRect(0, 0, 224, 224);
+      if (scene) {
+        var iw = scene.width || scene.videoWidth, ih = scene.height || scene.videoHeight;
+        var s = Math.min(224 / iw, 224 / ih);          // pad, do not stretch
+        var w = iw * s, h = ih * s;
+        c.drawImage(scene, (224 - w) / 2, (224 - h) / 2, w, h);
+      }
+      var d = c.getImageData(0, 0, 224, 224).data;     // RGBA
+      var out = new Uint8Array(224 * 224 * 3);
+      for (var i = 0, j = 0; i < d.length; i += 4) {
+        out[j++] = d[i]; out[j++] = d[i + 1]; out[j++] = d[i + 2];
+      }
+      return out;
+    }
+
+    function observation() {
+      var img = sceneImage();
+      // str keys, because that is what openpi's server reads them as.
+      return mp.map([
+        ["observation/exterior_image_1_left", mpn.u8(img, [224, 224, 3])],
+        ["observation/wrist_image_left", mpn.u8(img, [224, 224, 3])],
+        ["observation/joint_position", mpn.f32(new Float32Array(joints), [7])],
+        ["observation/gripper_position", mpn.f32(new Float32Array([gripper]), [1])],
+        ["prompt", promptEl.value.trim()]
+      ]);
+    }
+
+    function drawChunk() {
       g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
-      if (!img) return null;
-      var iw = img.width || img.videoWidth, ih = img.height || img.videoHeight;
-      if (!iw || !ih) return null;
-      var s = Math.min(cv.width / iw, cv.height / ih);
-      var w = iw * s, h = ih * s, x = (cv.width - w) / 2, y = (cv.height - h) / 2;
-      g.drawImage(img, x, y, w, h);
-      return { x: x, y: y, w: w, h: h };
-    }
+      // Bottom margin clears the status line, which is overlaid on the canvas
+      // and would otherwise sit on top of the step numbers.
+      var L = 78, R = cv.width - 150, T = 34, B = cv.height - 68;
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(L, T); g.lineTo(L, B); g.lineTo(R, B); g.stroke();
+      g.font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.fillStyle = C.mut; g.textAlign = "left";
+      if (!chunk) {
+        g.fillText("the action chunk will be plotted here", L + 10, (T + B) / 2);
+        return;
+      }
+      var H = chunk.shape[0], D = chunk.shape[1];
+      var lo = Infinity, hi = -Infinity;
+      for (var i = 0; i < chunk.data.length; i++) {
+        lo = Math.min(lo, chunk.data[i]); hi = Math.max(hi, chunk.data[i]);
+      }
+      if (!(hi > lo)) { hi = lo + 1; }
+      var pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+      var x = function (k) { return L + (R - L) * (H === 1 ? 0.5 : k / (H - 1)); };
+      var y = function (v) { return B - (B - T) * ((v - lo) / (hi - lo)); };
 
-    function label(t, x, y, col, size) {
-      g.font = "500 " + (size || 11) + "px ui-monospace, SFMono-Regular, Menlo, monospace";
-      var pad = 4, tw = g.measureText(t).width;
-      g.fillStyle = C.paper; g.globalAlpha = 0.85;
-      g.fillRect(x - pad, y - (size || 11) - pad + 2, tw + pad * 2, (size || 11) + pad * 2 - 2);
-      g.globalAlpha = 1; g.fillStyle = col;
-      g.fillText(t, x, y);
-    }
+      // zero line, because a joint velocity chunk is read against zero
+      if (lo < 0 && hi > 0) {
+        g.strokeStyle = C.rule; g.setLineDash([3, 4]);
+        g.beginPath(); g.moveTo(L, y(0)); g.lineTo(R, y(0)); g.stroke(); g.setLineDash([]);
+      }
+      g.fillStyle = C.mut; g.textAlign = "right";
+      g.fillText(hi.toFixed(2), L - 8, T + 4);
+      g.fillText(lo.toFixed(2), L - 8, B);
+      if (lo < 0 && hi > 0) g.fillText("0", L - 8, y(0) + 3);
+      g.textAlign = "center";
+      for (var k = 0; k < H; k++) g.fillText(String(k), x(k), B + 16);
+      g.textAlign = "left";
+      g.fillText("step in the chunk", L, T - 14);
 
-    function drawPoints(pts, box) {
-      pts.forEach(function (p, i) {
-        // ER gives [y, x], normalised 0-1000, which is the opposite order to
-        // everything else on this page. Getting it backwards puts every point
-        // on the mirror of where the model meant, so it is worth being loud
-        // about: p.point is [row, col].
-        var py = box.y + (p.point[0] / ER.NORM) * box.h;
-        var px = box.x + (p.point[1] / ER.NORM) * box.w;
-        g.strokeStyle = C.signal; g.lineWidth = 2;
-        g.beginPath(); g.arc(px, py, 9, 0, 6.284); g.stroke();
-        g.beginPath(); g.moveTo(px - 14, py); g.lineTo(px - 4, py);
-        g.moveTo(px + 4, py); g.lineTo(px + 14, py);
-        g.moveTo(px, py - 14); g.lineTo(px, py - 4);
-        g.moveTo(px, py + 4); g.lineTo(px, py + 14); g.stroke();
-        label(String(p.label || ("#" + i)), px + 16, py + 4, C.ink, 11);
+      var COL = ["#9a4a26", "#3f6b57", "#d6b27c", "#5a7d8c", "#8a6a94",
+                 "#b06a3b", "#6d8f7a", "#c0894f"];
+      var ends = [];
+      for (var d2 = 0; d2 < D; d2++) {
+        g.strokeStyle = COL[d2 % COL.length];
+        g.lineWidth = d2 === D - 1 ? 2.4 : 1.6;
+        if (d2 === D - 1) g.setLineDash([5, 3]);
+        g.beginPath();
+        for (var k2 = 0; k2 < H; k2++) {
+          var v = chunk.data[k2 * D + d2];
+          k2 ? g.lineTo(x(k2), y(v)) : g.moveTo(x(k2), y(v));
+        }
+        g.stroke(); g.setLineDash([]);
+        ends.push({ d: d2, y: y(chunk.data[(H - 1) * D + d2]) });
+      }
+      // Where traces converge the end labels land on top of each other, so
+      // push them apart before drawing. The leader line keeps each one tied
+      // to the trace it belongs to.
+      ends.sort(function (a, b) { return a.y - b.y; });
+      var MINGAP = 13;
+      for (var i2 = 1; i2 < ends.length; i2++) {
+        if (ends[i2].y - ends[i2 - 1].y < MINGAP) ends[i2].y = ends[i2 - 1].y + MINGAP;
+      }
+      var over = ends.length ? ends[ends.length - 1].y - B : 0;
+      if (over > 0) for (var i3 = 0; i3 < ends.length; i3++) ends[i3].y -= over;
+      ends.forEach(function (e) {
+        var trueY = y(chunk.data[(H - 1) * D + e.d]);
+        g.strokeStyle = COL[e.d % COL.length]; g.globalAlpha = 0.45; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(R, trueY); g.lineTo(R + 8, e.y - 3); g.stroke();
+        g.globalAlpha = 1;
+        g.fillStyle = COL[e.d % COL.length]; g.textAlign = "left";
+        g.fillText(e.d === D - 1 ? "gripper" : "joint " + (e.d + 1) + " vel", R + 11, e.y);
       });
     }
 
-    function snapshot() {
-      // Whatever the source is, the model gets a JPEG. The arm canvas is
-      // already a canvas; the camera is a live frame; a file is an <img>.
-      var tmp = document.createElement("canvas");
-      var src = img;
-      var iw = src.width || src.videoWidth, ih = src.height || src.videoHeight;
-      var s = Math.min(1, 1024 / Math.max(iw, ih));      // keep the body small
-      tmp.width = Math.round(iw * s); tmp.height = Math.round(ih * s);
-      tmp.getContext("2d").drawImage(src, 0, 0, tmp.width, tmp.height);
-      return tmp.toDataURL("image/jpeg", 0.85).split(",")[1];
-    }
-
-    function useArm() {
-      var armCv = document.getElementById("arm");
-      if (!armCv) { say("the arm demo is not on this page"); return; }
-      // Copy it: the arm canvas keeps redrawing, and sending a moving target
-      // means the points come back for a frame that is already gone.
-      var tmp = document.createElement("canvas");
-      tmp.width = armCv.width; tmp.height = armCv.height;
-      tmp.getContext("2d").drawImage(armCv, 0, 0);
-      img = tmp; stopCam(); fit();
-      say("the arm cell, frozen · press ask");
-    }
-
-    function stopCam() {
-      if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-      if (video) { video.pause(); video = null; }
-    }
-
-    async function useCam() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      } catch (e) {
-        say("no camera: " + (e && e.name ? e.name : "denied"));
-        return;
-      }
-      video = document.createElement("video");
-      video.srcObject = stream; video.playsInline = true; video.muted = true;
-      await video.play();
-      img = video;
-      say("live camera · press ask to send one frame");
-      (function tick() {
-        if (!video) return;
-        fit();
-        requestAnimationFrame(tick);
-      })();
-    }
-
-    function useFile(f) {
-      var url = URL.createObjectURL(f);
-      var im = new Image();
-      im.onload = function () {
-        img = im; stopCam(); fit(); URL.revokeObjectURL(url);
-        say(f.name + " · press ask");
-      };
-      im.onerror = function () { say("could not read that file"); };
-      im.src = url;
-    }
-
-    function parsePoints(text) {
-      // The model answers with JSON in a text part, sometimes fenced. Pull the
-      // first array out rather than trusting the whole string to parse.
-      var t = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-      var a = t.indexOf("["), b = t.lastIndexOf("]");
-      if (a < 0 || b <= a) return [];
-      var arr;
-      try { arr = JSON.parse(t.slice(a, b + 1)); } catch (e) { return []; }
-      if (!Array.isArray(arr)) return [];
-      return arr.filter(function (p) {
-        return p && Array.isArray(p.point) && p.point.length >= 2 &&
-               isFinite(p.point[0]) && isFinite(p.point[1]);
+    function connect() {
+      return new Promise(function (resolve, reject) {
+        if (ws && ws.readyState === 1) return resolve(ws);
+        var sock;
+        try { sock = new WebSocket(server); } catch (e) { return reject(e); }
+        sock.binaryType = "arraybuffer";
+        var got = false;
+        sock.onopen = function () { say("connected, waiting for the server's metadata…"); };
+        sock.onmessage = function (ev) {
+          if (got) return;                       // the first frame is metadata
+          got = true;
+          try {
+            var m = mp.decode(new Uint8Array(ev.data));
+            meta = {};
+            if (m instanceof Map) m.forEach(function (v, k) { meta[k] = v; });
+          } catch (e) { meta = null; }
+          ws = sock; resolve(sock);
+        };
+        sock.onerror = function () { reject(new Error("could not reach " + server)); };
+        sock.onclose = function () { if (!got) reject(new Error("server closed the connection")); ws = null; };
       });
     }
 
     async function ask() {
       if (busy) return;
-      if (!ER.proxy) {
-        say("the proxy is not configured yet");
+      if (!server) {
+        say("no policy server configured");
         rawEl.textContent =
-          "ER.proxy in demo.js is empty, so there is nowhere to send this.\n\n" +
-          "Deploy worker/ (see worker/README.md):\n" +
-          "  cd worker && wrangler secret put GEMINI_API_KEY && wrangler deploy\n\n" +
-          "then set ER.proxy to the URL it prints.";
+          "data-server on <section id=\"policy\"> is empty, so there is nowhere to send this.\n\n" +
+          "Point it at an openpi policy server:\n" +
+          "  uv run scripts/serve_policy.py --env DROID\n\n" +
+          "or, to build against the protocol without a GPU:\n" +
+          "  python3 tools/stub_policy_server.py --port 8000\n" +
+          "  data-server=\"ws://127.0.0.1:8000\"";
         return;
       }
-      // The arm canvas is still animating, so grab it now rather than reusing
-      // whatever frame was current when the chip was clicked.
-      if (source === "arm") useArm();
-      if (!img) { say("pick a source first"); return; }
       busy = true; askBtn.textContent = "Asking…";
-      say("sending one frame to the model…");
-      var box = fit();
-      var t0 = performance.now();
       try {
-        var res = await fetch(ER.proxy, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { inline_data: { mime_type: "image/jpeg", data: snapshot() } },
-                { text: promptEl.value.trim() +
-                  "\nReturn a JSON array. Each entry must be " +
-                  '{"point": [y, x], "label": "<name>"} with y and x normalised 0-1000. ' +
-                  "Return only the JSON." }
-              ]
-            }],
-            generationConfig: { temperature: 0.2 }
-          })
+        say("connecting to " + server + "…");
+        var sock = await connect();
+        say("sending one observation…");
+        var t0 = performance.now();
+        var reply = await new Promise(function (resolve, reject) {
+          var timer = setTimeout(function () { reject(new Error("no reply in 30 s")); }, 30000);
+          sock.onmessage = function (ev) { clearTimeout(timer); resolve(ev.data); };
+          sock.onerror = function () { clearTimeout(timer); reject(new Error("socket error")); };
+          sock.send(mp.encode(observation()));
         });
-        var body = await res.text();
-        rawEl.textContent = body.length > 4000 ? body.slice(0, 4000) + "\n…" : body;
-        if (!res.ok) {
-          say("the model returned " + res.status);
-          busy = false; askBtn.textContent = "Ask it"; return;
-        }
-        var json = JSON.parse(body);
-        var text = ((((json.candidates || [])[0] || {}).content || {}).parts || [])
-          .map(function (p) { return p.text || ""; }).join("");
-        var pts = parsePoints(text);
-        box = fit();
-        if (box && pts.length) drawPoints(pts, box);
         var ms = Math.round(performance.now() - t0);
-        say(pts.length
-          ? pts.length + (pts.length === 1 ? " point" : " points") + " back in " + ms + " ms · " +
-            pts.map(function (p) { return p.label; }).filter(Boolean).slice(0, 6).join(", ")
-          : "the model answered but returned no points in " + ms + " ms · see the raw response");
+        if (typeof reply === "string") {          // the server's error channel
+          say("the server rejected it");
+          rawEl.textContent = reply;
+          busy = false; askBtn.textContent = "Ask π0.5"; return;
+        }
+        var decoded = mp.decode(new Uint8Array(reply));
+        var actions = (decoded instanceof Map) ? mpn.toArray(decoded.get("actions")) : null;
+        if (!actions) {
+          say("the reply had no actions array");
+          rawEl.textContent = "decoded keys: " + Array.from(decoded.keys()).map(String).join(", ");
+          busy = false; askBtn.textContent = "Ask π0.5"; return;
+        }
+        chunk = actions;
+        drawChunk();
+        var H = actions.shape[0], D = actions.shape[1];
+        say("action chunk [" + H + ", " + D + "] back in " + ms + " ms" +
+            (meta && meta.note ? " · " + meta.note : ""));
+        var lines = [];
+        if (meta) lines.push("server metadata: " + JSON.stringify(meta));
+        lines.push("actions shape [" + H + ", " + D + "], first three steps:");
+        for (var r = 0; r < Math.min(3, H); r++) {
+          var row = [];
+          for (var c = 0; c < D; c++) row.push(actions.data[r * D + c].toFixed(4));
+          lines.push("  [" + row.join(", ") + "]");
+        }
+        rawEl.textContent = lines.join("\n");
       } catch (e) {
-        say("request failed: " + (e && e.message ? e.message : e));
+        say("failed: " + (e && e.message ? e.message : e));
         rawEl.textContent = String(e && e.stack ? e.stack : e);
       }
-      busy = false; askBtn.textContent = "Ask it";
+      busy = false; askBtn.textContent = "Ask π0.5";
     }
 
-    function pick(which) {
-      source = which;
-      ["arm", "cam", "file"].forEach(function (k) {
-        var b = document.getElementById("er-src-" + k);
-        if (b) b.classList.toggle("is-on", k === which);
+    function useArm() {
+      var armCv = document.getElementById("arm");
+      if (!armCv) return;
+      var t = document.createElement("canvas");
+      t.width = armCv.width; t.height = armCv.height;
+      t.getContext("2d").drawImage(armCv, 0, 0);
+      scene = t;
+    }
+
+    function useFile(f) {
+      var url = URL.createObjectURL(f);
+      var im = new Image();
+      im.onload = function () { scene = im; URL.revokeObjectURL(url); say(f.name + " · press ask"); };
+      im.onerror = function () { say("could not read that file"); };
+      im.src = url;
+    }
+
+    function slider(i, el, out) {
+      el.addEventListener("input", function () {
+        var v = parseFloat(el.value);
+        if (i < 7) joints[i] = v; else gripper = v;
+        out.textContent = v.toFixed(2);
       });
-      if (which === "arm") useArm();
-      else if (which === "cam") useCam();
-      else fileEl.click();
     }
 
     return {
       init: function () {
-        document.getElementById("er-src-arm").addEventListener("click", function () { pick("arm"); });
-        document.getElementById("er-src-cam").addEventListener("click", function () { pick("cam"); });
-        document.getElementById("er-src-file").addEventListener("click", function () { pick("file"); });
+        for (var i = 0; i < 8; i++) {
+          var el = document.getElementById("pi-j" + i);
+          var out = document.getElementById("pi-jv" + i);
+          if (!el) continue;
+          el.value = i < 7 ? joints[i] : gripper;
+          out.textContent = parseFloat(el.value).toFixed(2);
+          slider(i, el, out);
+        }
+        document.getElementById("pi-src-arm").addEventListener("click", function () {
+          useArm(); say("the arm cell · press ask");
+        });
+        document.getElementById("pi-src-file").addEventListener("click", function () { fileEl.click(); });
         fileEl.addEventListener("change", function (e) {
-          if (e.target.files && e.target.files[0]) { source = "file"; useFile(e.target.files[0]); }
+          if (e.target.files && e.target.files[0]) useFile(e.target.files[0]);
         });
         askBtn.addEventListener("click", ask);
-        promptEl.addEventListener("keydown", function (e) { if (e.key === "Enter") ask(); });
-        // The arm chip starts selected, so start with the arm cell actually
-        // loaded rather than an empty canvas under a lit-up button.
         useArm();
-        say(ER.proxy ? "the arm cell · press ask"
-                     : "the arm cell · the proxy is not configured yet");
+        drawChunk();
+        say(server ? "server: " + server + " · press ask"
+                   : "no policy server configured · see below");
       }
     };
   })();
 
   PRESETS.rooms();
   draw();
+  pi05.init();
   logEl.textContent = "reactive_autonomous_nav / browser runtime";
-  erDemo.init();
   boot();
 })();

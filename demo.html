@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=e966796f">
+<link rel="stylesheet" href="demo.css?v=e0173276">
 </head>
 <body class="runner-page">
 
@@ -43,14 +43,15 @@
       touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
       way; race all five of the package's local controllers over one plan; reach into a UR12e's
       workspace and find out where it stops seeing you. The fifth is not mine and does not run here
-      &mdash; it asks Gemini Robotics-ER what it sees, over the network, and draws the answer.
+      &mdash; &pi;0.5 is a 12&nbsp;GB checkpoint, so the page is the client and the model runs on a
+      GPU somewhere else.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
-      <li><a href="#policy">Ask a robot model</a><span>Gemini Robotics-ER, over the network</span></li>
+      <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
   </header>
 
@@ -229,54 +230,67 @@
     </div>
   </section>
 
-  <!-- data-proxy is the Worker `wrangler deploy` prints. See worker/README.md.
-       Leave it empty and the section says so rather than failing silently. -->
-  <section class="chase" id="policy" data-proxy="">
+  <!-- data-server is an openpi policy server's websocket. Empty means the
+       section explains how to start one rather than failing at the network.
+       See tools/stub_policy_server.py to develop against the protocol. -->
+  <section class="chase" id="policy" data-server="">
     <div class="chase__head">
-      <p class="panel__label">A real policy, live</p>
-      <h2 class="chase__title">Ask a robot model</h2>
+      <p class="panel__label">The one that does not run here</p>
+      <h2 class="chase__title">Ask &pi;0.5</h2>
       <p class="chase__lede">
-        Everything above this point is my code, running locally. This one is not mine and does not run
-        here: it is <a class="inline" href="https://ai.google.dev/gemini-api/docs/robotics-overview" target="_blank" rel="noopener">Gemini
-        Robotics-ER</a>, Google DeepMind's embodied-reasoning model, answering over the network about
-        an image you give it. Show it a scene and it returns image coordinates &mdash; where to point,
-        what to grasp, what order to do things in. That is the layer above a VLA: it decides
-        <em>where</em> and <em>what</em>, and something like &pi;0.5 turns that into joint commands.
+        Everything above runs in this tab. This cannot.
+        <a class="inline" href="https://github.com/Physical-Intelligence/openpi" target="_blank" rel="noopener">&pi;0.5</a>
+        is a 3B-parameter vision-language-action model and its base checkpoint is
+        <strong>12.44&nbsp;GB</strong> &mdash; I counted the bucket. Physical Intelligence's own answer
+        is to run it on a GPU behind a policy server and query that from whatever is holding the
+        robot. So this page is the thing holding the robot.
       </p>
       <p class="chase__lede">
-        <strong>Give it the arm cell above, your camera, or a file.</strong> The points come back
-        normalised to 0&ndash;1000 and get drawn where the model put them. The raw response is printed
-        underneath, so you can see it is the model's answer and not mine.
+        It speaks openpi's protocol: a websocket, msgpack-numpy on the wire, a metadata frame on
+        connect, one observation up and one action chunk back. The observation is the one
+        <code>examples/droid/main.py</code> builds &mdash; two 224&times;224 uint8 views, seven joint
+        positions, a gripper, and a language instruction. The reply is <code>[10, 8]</code>: ten steps
+        of seven joint velocities plus a gripper command, plotted below.
       </p>
       <p class="chase__lede chase__lede--note">
-        This is the one thing on the page that leaves your browser. The image and prompt go to a
-        Cloudflare Worker that holds the API key and forwards to Google &mdash; a static site has
-        nowhere safe to keep a key, so it does not have one.
-        <a class="inline" href="https://github.com/abdu7rahman/portfolio/tree/main/worker" target="_blank" rel="noopener">The
-        Worker is 90 lines and in the repo</a>; it pins one model, locks to this origin and caps the
-        body size. Nothing is stored. If you would rather not, skip this section &mdash; nothing else
-        on the page sends anything anywhere.
+        <strong>You need a server for this one.</strong> On a GPU box,
+        <code>uv run scripts/serve_policy.py --env DROID</code> and point <code>data-server</code> at
+        it. With no GPU, <code>python3 tools/stub_policy_server.py</code> speaks the same protocol
+        with synthetic actions, so the client can be checked without one &mdash; it says so in its
+        metadata and this page prints that, because a plot of made-up numbers should not be able to
+        pass for a policy. Note the joint state below is a plausible rest pose to perturb, not a
+        measurement, and the two camera views are the same image, which a real DROID cell would not
+        send.
       </p>
-      <p class="chase__key" id="policy-key">
-        <button class="tbtn tbtn--sm er-src is-on" id="er-src-arm" type="button">The arm cell</button>
-        <button class="tbtn tbtn--sm er-src" id="er-src-cam" type="button">My camera</button>
-        <button class="tbtn tbtn--sm er-src" id="er-src-file" type="button">A file</button>
-        <input type="file" id="er-file" accept="image/*" hidden>
-        <button class="tbtn tbtn--sm" id="er-ask" type="button">Ask it</button>
+      <p class="chase__key">
+        <button class="tbtn tbtn--sm er-src is-on" id="pi-src-arm" type="button">The arm cell</button>
+        <button class="tbtn tbtn--sm er-src" id="pi-src-file" type="button">A file</button>
+        <input type="file" id="pi-file" accept="image/*" hidden>
+        <button class="tbtn tbtn--sm" id="pi-ask" type="button">Ask &pi;0.5</button>
       </p>
       <p class="chase__key">
         <label class="er-task">
-          <span>Task</span>
-          <input type="text" id="er-prompt" value="Point at every object a robot arm could pick up."
-                 aria-label="What to ask the model">
+          <span>Instruction</span>
+          <input type="text" id="pi-prompt" value="pick up the object and place it in the bin"
+                 aria-label="The language instruction sent to the policy">
         </label>
       </p>
+      <div class="joints" id="pi-joints">
+        <label><span>j1</span><input type="range" id="pi-j0" min="-2.9" max="2.9" step="0.01"><output id="pi-jv0">0.00</output></label>
+        <label><span>j2</span><input type="range" id="pi-j1" min="-1.8" max="1.8" step="0.01"><output id="pi-jv1">0.00</output></label>
+        <label><span>j3</span><input type="range" id="pi-j2" min="-2.9" max="2.9" step="0.01"><output id="pi-jv2">0.00</output></label>
+        <label><span>j4</span><input type="range" id="pi-j3" min="-3.0" max="0.0" step="0.01"><output id="pi-jv3">0.00</output></label>
+        <label><span>j5</span><input type="range" id="pi-j4" min="-2.9" max="2.9" step="0.01"><output id="pi-jv4">0.00</output></label>
+        <label><span>j6</span><input type="range" id="pi-j5" min="-0.1" max="3.7" step="0.01"><output id="pi-jv5">0.00</output></label>
+        <label><span>j7</span><input type="range" id="pi-j6" min="-2.9" max="2.9" step="0.01"><output id="pi-jv6">0.00</output></label>
+        <label><span>grip</span><input type="range" id="pi-j7" min="0" max="1" step="0.01"><output id="pi-jv7">0.00</output></label>
+      </div>
     </div>
     <div class="chase__stage">
-      <canvas id="er-canvas" width="1204" height="560" aria-label="An image with the points Gemini Robotics-ER returned drawn on it."></canvas>
-      <p class="chase__read" id="er-read">pick a source and ask</p>
+      <canvas id="pi-canvas" width="1204" height="460" aria-label="The action chunk returned by the policy server, plotted as seven joint velocity traces and a gripper command over the ten steps of the chunk."></canvas>
+      <p class="chase__read" id="pi-read">no policy server configured</p>
     </div>
-    <pre id="er-raw" class="log log--raw" aria-live="polite">the model's raw response will appear here</pre>
+    <pre id="pi-raw" class="log log--raw" aria-live="polite">the server's metadata and the first rows of the action chunk will appear here</pre>
   </section>
 
   <section class="console">
@@ -284,9 +298,9 @@
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
       The four demos run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
-      and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask a robot
-      model</a>, which has to reach Google to reach the model, and only when you press the button.
-      The source shown in the log is fetched live from
+      and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask &pi;0.5</a>,
+      which sends one observation to whatever policy server it is pointed at, and only when you press
+      the button. The source shown in the log is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page.
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
         Read the source <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a>
@@ -302,6 +316,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=f0e882b0" defer></script>
+<script src="demo.js?v=b80482ee" defer></script>
 </body>
 </html>
