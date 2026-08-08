@@ -149,10 +149,14 @@
       <p class="panel__label">Different repo, same idea</p>
       <h2 class="chase__title">Reach in</h2>
       <p class="chase__lede">
-        This is the UR12e bin-picking cell from
+        This is the UR12e cell from
         <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>,
-        seen down the RealSense. The arm is running a pick-and-place cycle &mdash; its joints are
-        solved each frame, not played back &mdash; and <code>_cloud_cb</code> runs on every frame of
+        seen down the RealSense. The arm runs the node's own cycle &mdash; open, <em>PICK</em>,
+        close, <em>PLACE</em>, open, then park while the baseline rebuilds &mdash; and its joints are
+        solved each frame rather than played back. The pick and place are not coordinates I picked:
+        <code>_build_poses()</code> offsets the home pose by <code>pick_z_offset</code> and
+        <code>place_y_offset</code>, and those two numbers are read out of the fetched source, so
+        retuning the node retunes this. <code>_cloud_cb</code> runs on every frame of
         it: the depth gate, the workspace box, the colour mask that drops robot-coloured points, and
         the geometric self-filter that erases the arm from its own view. Every count on the right is
         read off the node's own filter calls.

@@ -276,53 +276,84 @@
     "        path = [[int(a), int(b)] for a, b in (p or [])]",
     "        expl = [[int(a), int(b)] for a, b in (e or [])]",
     "    return [path, expl, ms]",
-    "# \u2500\u2500 link geometry, measured off tests/scene.py's pose \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-    "L_BASE_Z = 0.18                 # base -> shoulder, straight up",
-    "L1, L2, L3 = 0.27, 0.34, 0.25   # shoulder -> upper_arm -> forearm -> wrist_1",
-    "WRIST = ((0.0, 0.0, -0.098), (0.0, 0.0, -0.063), (0.0, 0.0, -0.054))",
-    "L_WRIST = 0.215                 # wrist_1 down to tool0",
-    "BIN_A = (-0.52, -0.26, 0.30)",
-    "BIN_B = (-0.52, 0.38, 0.30)",
-    "LIFT_Z = 0.46",
+    "# \u2500\u2500 chain, measured off tests/scene.py \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    "# The second link carries a marker at the forearm and continues to wrist_1,",
+    "# so the solve stays a two-link problem while every published link length",
+    "# is exactly what the repo's own pose has.",
+    "L_BASE_Z = 0.180                # base -> shoulder",
+    "L1 = 0.271                      # shoulder -> upper_arm",
+    "L2_MID = 0.337                  # upper_arm -> forearm, along the second link",
+    "L2 = 0.588                      # upper_arm -> wrist_1",
+    "WRIST = (0.098, 0.063, 0.054)   # wrist_1 -> wrist_2 -> wrist_3 -> tool0",
+    "L_WRIST = 0.215",
+    "# The browser has no MoveIt, so the pose FK would return at HOME_JOINTS is",
+    "# stood in for. Chosen to sit inside the node's own workspace box with both",
+    "# derived poses reachable; everything downstream comes from the repo.",
+    "HOME_EEF = (-0.48, -0.28, 0.48)",
+    "PICK_DZ, PLACE_DY = -0.25, 0.75          # overwritten from the fetched source",
+    "def arm_offsets_from_source(src):",
+    "    # declare_parameter('pick_z_offset', -0.25) -- read them rather than",
+    "    # copy them, so retuning the node retunes this.",
+    "    import ast",
+    "    global PICK_DZ, PLACE_DY",
+    "    for node in ast.walk(ast.parse(src)):",
+    "        if (isinstance(node, ast.Call) and getattr(node.func, 'attr', '') == 'declare_parameter'",
+    "                and len(node.args) == 2 and isinstance(node.args[0], ast.Constant)):",
+    "            try: val = ast.literal_eval(node.args[1])",
+    "            except Exception: continue",
+    "            if node.args[0].value == 'pick_z_offset': PICK_DZ = float(val)",
+    "            elif node.args[0].value == 'place_y_offset': PLACE_DY = float(val)",
+    "    return [PICK_DZ, PLACE_DY]",
+    "def arm_waypoints():",
+    "    # _build_poses(): pick is home offset in z, place is home offset in y,",
+    "    # both keeping the home orientation.",
+    "    h = HOME_EEF",
+    "    return {'home': h,",
+    "            'pick': (h[0], h[1], h[2] + PICK_DZ),",
+    "            'place': (h[0], h[1] + PLACE_DY, h[2])}",
     "def _lerp(a, b, t):",
     "    return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))",
     "def _ease(t):",
     "    return t * t * (3.0 - 2.0 * t)",
+    "# run_demo()'s cycle, with the dwells it actually takes: the gripper opens and",
+    "# closes, and the last leg parks so the baseline can rebuild.",
     "def eef_target(u):",
-    "    # One pick-and-place loop, u in [0,1). Descend, grip, lift, traverse,",
-    "    # descend, release, return -- the cycle the node drives on the robot.",
-    "    A, B = BIN_A, BIN_B",
-    "    hiA = (A[0], A[1], LIFT_Z); hiB = (B[0], B[1], LIFT_Z)",
-    "    legs = ((0.00, 0.14, hiA, A), (0.14, 0.24, A, A), (0.24, 0.38, A, hiA),",
-    "            (0.38, 0.58, hiA, hiB), (0.58, 0.72, hiB, B), (0.72, 0.82, B, B),",
-    "            (0.82, 1.00, hiB, hiA))",
-    "    for t0, t1, p, q in legs:",
+    "    w = arm_waypoints()",
+    "    H, P, Q = w['home'], w['pick'], w['place']",
+    "    legs = ((0.00, 0.16, H, P, 'to PICK'), (0.16, 0.24, P, P, 'gripper closing'),",
+    "            (0.24, 0.46, P, Q, 'to PLACE'), (0.46, 0.54, Q, Q, 'gripper opening'),",
+    "            (0.54, 0.72, Q, H, 'to home'), (0.72, 1.00, H, H, 'parked, baseline rebuilding'))",
+    "    for t0, t1, p, q, lbl in legs:",
     "        if t0 <= u < t1:",
-    "            return _lerp(p, q, _ease((u - t0) / (t1 - t0))), (t0, t1)",
-    "    return hiA, (0.0, 1.0)",
+    "            return _lerp(p, q, _ease((u - t0) / (t1 - t0))), lbl",
+    "    return H, 'parked, baseline rebuilding'",
     "def arm_pose(u):",
-    "    # Three-link planar solve in the vertical plane through the base and the",
-    "    # target, so the chain stays connected and the joint limits stay sane.",
+    "    # Two-link solve in the vertical plane through the base and the target.",
+    "    # Every position below is placed from the solved angles, so the links",
+    "    # cannot stretch to cover an unreachable target.",
     "    import math, numpy as np",
     "    tool, leg = eef_target(u)",
     "    S = np.array([0.0, 0.0, L_BASE_Z])",
-    "    W = np.array([tool[0], tool[1], tool[2] + L_WRIST])       # wrist_1",
-    "    F = W + np.array([0.0, 0.0, L3])                          # forearm, L3 hangs down",
-    "    d = F - S",
+    "    Wt = np.array([tool[0], tool[1], tool[2] + L_WRIST])       # wrist_1 target",
+    "    d = Wt - S",
     "    r = math.hypot(d[0], d[1]); dz = d[2]",
-    "    reach = math.hypot(r, dz)",
-    "    reach = min(max(reach, abs(L1 - L2) + 1e-3), L1 + L2 - 1e-3)",
-    "    ca = (reach * reach + L1 * L1 - L2 * L2) / (2.0 * L1 * reach)",
-    "    a1 = math.atan2(dz, r) + math.acos(min(1.0, max(-1.0, ca)))",
     "    yaw = math.atan2(d[1], d[0])",
-    "    A = S + np.array([math.cos(a1) * math.cos(yaw) * L1,",
-    "                      math.cos(a1) * math.sin(yaw) * L1,",
-    "                      math.sin(a1) * L1])                     # upper_arm",
+    "    reach = math.hypot(r, dz)",
+    "    span = min(max(reach, abs(L1 - L2) + 1e-4), L1 + L2 - 1e-4)",
+    "    ca = (span * span + L1 * L1 - L2 * L2) / (2.0 * L1 * span)",
+    "    a1 = math.atan2(dz, r) + math.acos(min(1.0, max(-1.0, ca)))",
+    "    cb = (L1 * L1 + L2 * L2 - span * span) / (2.0 * L1 * L2)",
+    "    a2 = a1 + math.acos(min(1.0, max(-1.0, cb))) - math.pi",
+    "    u1 = np.array([math.cos(a1) * math.cos(yaw), math.cos(a1) * math.sin(yaw), math.sin(a1)])",
+    "    u2 = np.array([math.cos(a2) * math.cos(yaw), math.cos(a2) * math.sin(yaw), math.sin(a2)])",
+    "    A = S + L1 * u1                       # upper_arm",
+    "    Fm = A + L2_MID * u2                  # forearm, a marker along the second link",
+    "    W = A + L2 * u2                       # wrist_1, where the solve actually puts it",
     "    links = {'base_link': np.zeros(3), 'shoulder_link': S, 'upper_arm_link': A,",
-    "             'forearm_link': F, 'wrist_1_link': W}",
+    "             'forearm_link': Fm, 'wrist_1_link': W}",
     "    p = W",
     "    for name, off in zip(('wrist_2_link', 'wrist_3_link', 'tool0'), WRIST):",
-    "        p = p + np.array(off); links[name] = p",
+    "        p = p + np.array([0.0, 0.0, -off]); links[name] = p",
     "    return links, np.array(tool), leg",
     "_ARM = {}",
     "def arm_write(path, src):",
@@ -338,6 +369,7 @@
     "    if '/rr/tests' not in sys.path: sys.path.insert(0, '/rr/tests')",
     "    import harness, scene",
     "    cls = harness.load_node_class()",
+    "    arm_offsets_from_source(open('/rr/reactive_replanning_ur12e/reactive_replanning.py').read())",
     "    rig = harness.Rig(cls)",
     "    n = rig.node",
     "    st = {}",
@@ -367,7 +399,7 @@
     "            int(n._baseline_count or 0), float(n.PREEMPT_DIST),",
     "            int(len(n._arm_pos_history.maxlen and [0] * n._arm_pos_history.maxlen)),",
     "            [[list(scene.LINKS).index(a), list(scene.LINKS).index(b)]",
-    "             for a, b in scene.CHAIN]]",
+    "             for a, b in scene.CHAIN], PICK_DZ, PLACE_DY]",
     "def _set_pose(u):",
     "    # One pose, handed to both the renderer and the node's TF, so the point",
     "    # cloud and the self-filter cannot disagree about where the arm is.",
@@ -376,8 +408,8 @@
     "    s.LINKS = links",
     "    a['rig'].node.tf_buffer.links = links",
     "    a['tool'] = tool",
-    "    return links, tool",
-    "F, CX, CY = 481.0, 504.0, 346.0     # fitted to the arm over a whole cycle",
+    "    return links, tool, leg",
+    "F, CX, CY = 565.0, 533.0, 295.0     # fitted to the arm over a whole cycle",
     "PLANE_Y = 0.08",
     "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))",
     "def _project(p):",
@@ -395,7 +427,7 @@
     "def arm_frame(cycle_u, cur_u, cur_v, radius, keep, hand):",
     "    import numpy as np",
     "    a = _ARM; s, rig, n, st = a['scene'], a['rig'], a['n'], a['st']",
-    "    links, tool = _set_pose(cycle_u)",
+    "    links, tool, leg = _set_pose(cycle_u)",
     "    c = arm_unproject(cur_u, cur_v) if hand else None",
     "    st.clear()",
     "    before = len(rig.detections)",
@@ -438,7 +470,7 @@
     "            int(n._obstacle_streak), bool(n._obstacle_present),",
     "            [[float(x), float(y)] for x, y in zip(lu, lv)],",
     "            (float(eef) if c is not None else -1.0),",
-    "            bool(c is not None and hit and eef < n.PREEMPT_DIST)]",
+    "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -1109,10 +1141,11 @@
       }
       // plate label
       label("CAMERA  /  depth + color points", 16, 24, "#8b8578", 10);
-      label("arm chain", 16, 44, "#5aa5af", 9.5);
-      if (have) label("your hand", 82, 44, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
-      label(meta ? meta[0].toFixed(1) + "-" + meta[1].toFixed(1) + " m depth gate" : "",
-            16, cvn.height - 14, "#6e6a5c", 10);
+      label(meta ? "pick_z_offset " + meta[9] + "  ·  place_y_offset " + meta[10] +
+            "  ·  read from the node" : "", 16, 40, "#8b8578", 9.5);
+      label("arm chain", 16, 58, "#5aa5af", 9.5);
+      if (have) label("your hand", 82, 58, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
+
       g.restore();
       g.strokeStyle = C.rule; g.lineWidth = 1;
       g.strokeRect(0.5, 0.5, VIEW - 1, cvn.height - 1);
@@ -1177,7 +1210,7 @@
         g.fillStyle = C.mut;
         g.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
         g.textAlign = "left";
-        g.fillText("ARM WORKING", X, y + 26);
+        g.fillText(f[21].toUpperCase(), X, y + 26);
         label("baseline holding at " + f[15] + " foreign points", X, y + 46, C.mut, 10);
         y += 66;
         label("frame time", X, y, C.mut, 10);
@@ -1240,7 +1273,7 @@
       readEl.textContent = !f
         ? "loading"
         : !have
-          ? "arm running its cycle  ·  " + f[14].toLocaleString() +
+          ? f[21] + "  ·  " + f[14].toLocaleString() +
             " foreign points  ·  no hand in the workspace  ·  " + f[10].toFixed(1) + " ms"
           : (f[20] ? "PREEMPT: obstacle inside " + meta[6].toFixed(2) + " m of the tool"
              : f[6] ? "detected" : f[9] >= 0 && f[9] < 0.11 ? "inside the self-filter"
