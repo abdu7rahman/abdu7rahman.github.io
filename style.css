@@ -4,32 +4,44 @@
    ============================================================ */
 
 :root {
+  /* Warm sand, warm ink, one clay signal and one pine accent.
+     Checked, not eyeballed: ink 11.7:1, ink-2 7.5:1, ink-3 5.4:1 and signal
+     5.1:1 on paper, and signal-to-accent holds dE 59 in normal vision, 62
+     under deuteranopia, 48 under protanopia. */
+
   /* surfaces */
-  --paper:    #f4f2ed;
-  --paper-2:  #eae7df;   /* recessed band */
-  --paper-3:  #fbfaf7;   /* raised, used sparingly */
+  --paper:    #efe7d6;
+  --paper-2:  #e3d9c4;   /* recessed band */
+  --paper-3:  #f6efe0;   /* raised, used sparingly */
 
   /* ink */
-  --ink:      #14140f;
-  --ink-2:    #45433a;
-  --ink-3:    #6e6a5c;
+  --ink:      #2c2a23;
+  --ink-2:    #3d4a47;
+  --ink-3:    #565f5a;
 
-  /* structure */
-  --rule:     #d9d4c8;
-  --rule-2:   #c6c0b1;
+  /* structure — the ink hairline at 8% and 14% over paper, precomputed */
+  --rule:     #e1d8c7;
+  --rule-2:   #d6cdbc;
 
   /* dominant + accent */
-  --signal:   #b4380f;
-  --signal-w: #f0dcd3;   /* signal at 12% over paper, precomputed */
-  --accent:   #00897b;   /* validated against --signal for CVD separation */
+  --signal:   #9a4a26;
+  --signal-w: #ecdccb;   /* signal at 12% over paper, precomputed */
+  --accent:   #3f6b57;
+  --sun:      #d6b27c;   /* a warm fill, never text */
+
+  /* the one dark surface: the console, and the demo's camera plate */
+  --night:     #0f1a18;
+  --night-2:   #172420;
+  --night-ink: #cdc5b8;
+  --night-mut: #9ba59f;
 
   --rail-w:   232px;
   --gutter:   28px;
   --maxw:     1180px;
 
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --serif: "Newsreader", Georgia, "Times New Roman", serif;
-  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   --ease: cubic-bezier(.2, .7, .2, 1);
 }
@@ -53,7 +65,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3 { font-family: var(--serif); font-weight: 400; margin: 0; letter-spacing: -.015em; }
+/* Fraunces carries an optical-size axis and a WONK axis that swaps in the
+   splayed leg forms. Both are worth spending at display sizes and worth
+   turning off at small ones, so they are set per level rather than globally. */
+h1, h2, h3 {
+  font-family: var(--serif); font-weight: 400; margin: 0;
+  letter-spacing: -.018em;
+  font-variation-settings: "opsz" 96, "SOFT" 24, "WONK" 1;
+}
+h3 { font-variation-settings: "opsz" 28, "SOFT" 12, "WONK" 0; letter-spacing: -.01em; }
 p { margin: 0; }
 a { color: inherit; }
 
