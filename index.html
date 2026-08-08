@@ -254,31 +254,33 @@
               </dl>
             </li>
 
+
             <li class="proj">
               <span class="proj__idx">06</span>
               <div class="proj__main">
-                <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/pincher-x100-puppet-control" target="_blank" rel="noopener">
-                    PincherX100 puppet control
-                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
-                  </a>
-                </h3>
+                <h3 class="proj__title">Robot foundation model</h3>
                 <p class="proj__desc">
-                  Vision-only teleoperation. Hand position maps to waist, shoulder, elbow and wrist; a
-                  thumb-index pinch drives the gripper through MoveIt 2. No headset, no controller, and
-                  not a defensible way to run a manipulator &mdash; a proof of concept for how quickly an
-                  intuitive interface can be prototyped.
+                  A flow-matching VLA, a latent world model and an RL-tuned reasoner on one backbone,
+                  with an orchestration layer above it that never touches the weights &mdash;
+                  <code>models/</code> does not import <code>orchestration/</code>, which is what keeps
+                  two philosophies from being stapled together. Every robot writes into one 32-D action
+                  space with a per-embodiment mask, and a competence head exports abstention so the
+                  layer above can ask &ldquo;can you do this?&rdquo; in a forward pass instead of a
+                  rollout. <strong>It is an architecture, not a result:</strong> no trained weights, no
+                  rollouts, no simulator. What it has produced is a list of the ways it could lie to me
+                  and the bugs that found &mdash; a tokenizer that was never assigned, pinning a loss at
+                  exactly zero while 410M parameters trained on nothing behind a healthy-looking curve.
                 </p>
                 <ul class="chips">
-                  <li>ROS&nbsp;2 Humble</li><li>MediaPipe</li><li>MoveIt&nbsp;2</li>
+                  <li>PyTorch</li><li>Flow&nbsp;matching</li><li>GRPO</li><li>Pydantic</li><li>RDT-style&nbsp;action&nbsp;space</li>
                 </ul>
-                <a class="demo" href="https://www.youtube.com/watch?v=WEzc5oIadew" target="_blank" rel="noopener">
-                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the demo</span></a>
+                <a class="demo" href="demo.html#embodiment">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-arrow"/></svg><span>Run two pieces of it</span></a>
               </div>
               <dl class="proj__stats">
-                <div><dt>Tracking rate</dt><dd>30<span class="unit">fps</span></dd></div>
-                <div><dt>Hand-to-motion</dt><dd>~200<span class="unit">ms</span></dd></div>
-                <div><dt>Mapped joints</dt><dd>4</dd></div>
+                <div><dt>Action space</dt><dd>32<span class="unit">-D</span></dd></div>
+                <div><dt>Embodiments</dt><dd>6</dd></div>
+                <div><dt>Failure modes watched</dt><dd>9</dd></div>
               </dl>
             </li>
 
