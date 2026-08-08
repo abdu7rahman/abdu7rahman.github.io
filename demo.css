@@ -173,7 +173,7 @@
 .console { margin-top: clamp(36px, 5vh, 60px); }
 .log {
   margin: 0; padding: 18px 20px;
-  background: #14140f; color: #d7d3c6;
+  background: var(--night); color: var(--night-ink);
   border-radius: 2px;
   font: 400 12px/1.7 var(--mono);
   max-height: 240px; overflow: auto;
