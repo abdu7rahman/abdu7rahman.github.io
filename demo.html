@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=2c027f69">
+<link rel="stylesheet" href="demo.css?v=d5906305">
 </head>
 <body class="runner-page">
 
@@ -53,6 +53,7 @@
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
       <li><a href="#embodiment">One vector, six robots</a><span>cross-embodiment action masks</span></li>
+      <li><a href="#rl">Reinforce it</a><span>GRPO, and a curriculum that will not let RL touch the policy</span></li>
       <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
   </header>
@@ -294,6 +295,67 @@
       is, is a real design decision with real consequences you can see above.
     </p>
 
+  <section class="chase" id="rl">
+    <div class="chase__head">
+      <p class="panel__label">How the reasoner is trained</p>
+      <h2 class="chase__title">Reinforce it</h2>
+      <p class="chase__lede">
+        Same vendored package as above, a different part of it. Training a model that both reasons
+        and acts has an obvious failure mode &mdash; the RL that sharpens the reasoning quietly
+        wrecks the policy underneath it. The curriculum answers that by separating stages
+        <em>by parameter set</em>, not just by time, and the schema enforces it.
+      </p>
+      <p class="chase__lede">
+        <strong>Every number below is read out of <code>CurriculumConfig()</code> and
+        <code>GRPOConfig()</code>.</strong> The stage budgets, which parameter groups each stage
+        unfreezes, the group size, the KL coefficient and the reward weight schedule are the
+        package's defaults, not values retyped into this page.
+      </p>
+      <div class="rl-stages" id="rl-stages"></div>
+      <p class="chase__read chase__read--flow" id="rl-stage-note">&nbsp;</p>
+
+      <h3 class="rl-h">Try to break the isolation</h3>
+      <p class="chase__lede">
+        <code>StageConfig</code> carries a validator, <code>_rl_is_isolated</code>, that refuses a
+        reasoning-RL stage which also trains the action stack. Switch any of these on and ask the
+        schema to build that stage &mdash; the answer below is pydantic's, not mine.
+      </p>
+      <p class="chase__key" id="rl-iso-key">
+        <button class="tbtn tbtn--sm er-src" data-iso="backbone" type="button">train_backbone</button>
+        <button class="tbtn tbtn--sm er-src" data-iso="expert" type="button">train_action_expert</button>
+        <button class="tbtn tbtn--sm er-src" data-iso="dynamics" type="button">train_dynamics</button>
+        <button class="tbtn tbtn--sm" id="rl-iso-run" type="button">Build the stage</button>
+      </p>
+      <pre id="rl-iso" class="log log--raw">press build &mdash; train_reasoning is always on, because this is the RL stage</pre>
+
+      <h3 class="rl-h">What the schedule does to a group</h3>
+      <p class="chase__lede">
+        GRPO has no value network. It samples <code>group_size</code> rollouts for one prompt,
+        scores each, and uses <em>the group itself</em> as the baseline: the advantage is the
+        reward centred and scaled within the group. So what decides which rollout gets reinforced
+        is the reward weighting &mdash; and that moves on a schedule, from format first, to
+        correctness, to punishing traces that do not entail their own answer.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        The three component scores per rollout are the <em>input</em> here, and they are made up:
+        a real run gets them from a format check, a mined answer, and a frozen judge re-deriving
+        the answer from the trace. The weights, the group size and the advantage arithmetic are the
+        package's. Drag the step and watch which rollout wins change without any score changing.
+      </p>
+      <p class="chase__key">
+        <label class="er-task">
+          <span>Step</span>
+          <input type="range" id="rl-step" min="0" max="1799" step="1" value="60">
+          <output id="rl-stepv">60</output>
+        </label>
+      </p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="rl-canvas" width="1204" height="620" aria-label="Eight sampled rollouts scored on format, accuracy and consistency, with the group-relative advantage GRPO would assign each one at the current training step."></canvas>
+      <p class="chase__read" id="rl-read">loading the curriculum</p>
+    </div>
+  </section>
+
   <section class="chase" id="policy" data-server="">
     <div class="chase__head">
       <p class="panel__label">The one that does not run here</p>
@@ -380,6 +442,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=5adc6ecf" defer></script>
+<script src="demo.js?v=02936956" defer></script>
 </body>
 </html>
