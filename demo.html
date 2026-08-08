@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Run the planners — Mohammed Abdul Rahman</title>
-<meta name="description" content="Draw a map and run the global planners from reactive_autonomous_nav in your browser. The source is fetched from GitHub and executed unmodified.">
-<meta property="og:title" content="Run the planners in your browser">
-<meta property="og:description" content="A*, Theta* and RRT fetched from the repo and executed on a map you draw.">
+<title>Run my robots — Mohammed Abdul Rahman</title>
+<meta name="description" content="Three of my robotics repos, running in your browser. Draw a map and search it, drive a TurtleBot with your cursor, or reach into a UR12e's workspace. The source is fetched from GitHub and executed unmodified.">
+<meta property="og:title" content="Run my robots in your browser">
+<meta property="og:description" content="A*, Theta* and RRT on a map you draw; a DWA-tracked robot chasing your cursor; and a UR12e's obstacle detector deciding whether it can see your hand.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,17 +32,25 @@
   <header class="runner__head">
     <a class="runner__back" href="./"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg><span>Back</span></a>
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
-    <h1 class="runner__title">Run the planners</h1>
+    <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      This page downloads <code>astar_planner.py</code>, <code>theta_star_planner.py</code> and
-      <code>rrt_planner.py</code> straight from
-      <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">the repository</a>
-      and executes them here, unmodified. ROS is stubbed at the import boundary — the search itself is
-      the same code that runs on the robot. Draw some walls, drop a start and a goal, and watch it think.
+      Three things on this page, and none of them are a recording. Your browser downloads the Python
+      straight from
+      <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
+      and
+      <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>
+      and executes it here, unmodified — ROS is stubbed at the import boundary and nothing below it is
+      touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
+      way; then reach into a UR12e's workspace and find out where it stops seeing you.
     </p>
+    <ol class="runner__toc">
+      <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT</span></li>
+      <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
+      <li><a href="#reach">Reach into the cell</a><span>RealSense pipeline</span></li>
+    </ol>
   </header>
 
-  <div class="runner__grid">
+  <div class="runner__grid" id="plan">
 
     <!-- controls -->
     <aside class="panel">
@@ -106,7 +114,7 @@
   </div>
 
 
-  <section class="chase">
+  <section class="chase" id="drive">
     <div class="chase__head">
       <p class="panel__label">The whole stack, live</p>
       <h2 class="chase__title">Chase</h2>
@@ -136,7 +144,7 @@
     </div>
   </section>
 
-  <section class="chase">
+  <section class="chase" id="reach">
     <div class="chase__head">
       <p class="panel__label">Different repo, same idea</p>
       <h2 class="chase__title">Reach in</h2>
