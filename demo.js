@@ -961,6 +961,85 @@
     "        msg = str(e).replace(chr(10), ' ')",
     "        k = msg.find('reasoning RL cannot')",
     "        return ['refused', msg[k:k + 130] if k >= 0 else msg[:160]]",
+    "_CLONE = {}",
+    "def clone_load(ck):",
+    "    # The checkpoint tools/train_clone.py wrote. Inference is three matmuls,",
+    "    # which is the whole point of cloning a controller into a small net: the",
+    "    # thing it imitates samples a velocity window every tick, and this does",
+    "    # not.",
+    "    import numpy as np",
+    "    _CLONE['W'] = [np.array(w, dtype=np.float64) for w in ck['W']]",
+    "    _CLONE['b'] = [np.array(b, dtype=np.float64) for b in ck['b']]",
+    "    _CLONE['brg'] = [float(x) for x in ck['obs']['bearings']]",
+    "    _CLONE['rng'] = [float(x) for x in ck['obs']['ranges']]",
+    "    _CLONE['vs'] = float(ck['obs']['v_scale'])",
+    "    _CLONE['ws'] = float(ck['obs']['w_scale'])",
+    "    return [ck['arch'], ck['train']['samples'], ck['eval']]",
+    "def _clone_obs(x, y, yaw, v, w_, gx, gy):",
+    "    # Must match tools/train_clone.py's observe() exactly. If these drift the",
+    "    # policy is being fed something it was never trained on, and it will look",
+    "    # like the network is bad rather than the wiring.",
+    "    import math",
+    "    d = _DWA; c = d['c']",
+    "    g = c.costmap_data; res = d['res']",
+    "    H, W = g.shape",
+    "    dx, dy = gx - x, gy - y",
+    "    rr = math.hypot(dx, dy)",
+    "    brg = math.atan2(dy, dx) - yaw",
+    "    brg = math.atan2(math.sin(brg), math.cos(brg))",
+    "    o = [min(rr, 4.0) / 4.0, brg / math.pi, v / _CLONE['vs'], w_ / _CLONE['ws']]",
+    "    for b in _CLONE['brg']:",
+    "        clear = 1.0",
+    "        for k, dd in enumerate(_CLONE['rng']):",
+    "            px, py = x + dd * math.cos(yaw + b), y + dd * math.sin(yaw + b)",
+    "            r, cc = int(py / res), int(px / res)",
+    "            if not (0 <= r < H and 0 <= cc < W) or g[r, cc] >= 253:",
+    "                clear = k / len(_CLONE['rng'])",
+    "                break",
+    "        o.append(clear)",
+    "    return o",
+    "def clone_step(x, y, yaw, v, w_):",
+    "    # Same contract as chase_step_any, so the chase can select it like any",
+    "    # other controller. No costmap search, no rollouts -- one forward pass.",
+    "    import math, numpy as np",
+    "    d = _DWA; c = d['c']",
+    "    d['pose'] = (x, y, yaw)",
+    "    if not d['path'] or getattr(c, 'current_path', None) is None:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 3, 0, []]",
+    "    pts = d['path']",
+    "    wp = int(d.get('cwp', 0) or 0)",
+    "    while wp < len(pts) - 1:",
+    "        d0 = math.hypot(pts[wp][0] - x, pts[wp][1] - y)",
+    "        if d0 < 0.25 or math.hypot(pts[wp + 1][0] - x, pts[wp + 1][1] - y) < d0:",
+    "            wp += 1",
+    "        else:",
+    "            break",
+    "    d['cwp'] = wp",
+    "    fin = pts[-1]",
+    "    if math.hypot(fin[0] - x, fin[1] - y) < 0.15:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 1, wp, []]",
+    "    ti = min(wp + 8, len(pts) - 1)",
+    "    a = np.array([_clone_obs(x, y, yaw, v, w_, pts[ti][0], pts[ti][1])])",
+    "    for i in range(len(_CLONE['W'])):",
+    "        a = a @ _CLONE['W'][i] + _CLONE['b'][i]",
+    "        if i < len(_CLONE['W']) - 1: a = np.tanh(a)",
+    "    bv = float(np.clip(a[0][0] * _CLONE['vs'], -_CLONE['vs'], _CLONE['vs']))",
+    "    bw = float(np.clip(a[0][1] * _CLONE['ws'], -_CLONE['ws'], _CLONE['ws']))",
+    "    # the fan it actually saw, so the page can draw the observation rather",
+    "    # than a guess at it",
+    "    look = []",
+    "    for b in _CLONE['brg']:",
+    "        reach = _CLONE['rng'][-1]",
+    "        for k, dd in enumerate(_CLONE['rng']):",
+    "            px, py = x + dd * math.cos(yaw + b), y + dd * math.sin(yaw + b)",
+    "            r, cc = int(py / d['res']), int(px / d['res'])",
+    "            gg = c.costmap_data",
+    "            if not (0 <= r < gg.shape[0] and 0 <= cc < gg.shape[1]) or gg[r, cc] >= 253:",
+    "                reach = dd",
+    "                break",
+    "        look += [float(x), float(y), float(x + reach * math.cos(yaw + b)),",
+    "                 float(y + reach * math.sin(yaw + b))]",
+    "    return [bv, bw, 0, 0, [], [], [], 0, wp, ['scan'] + look]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -1356,6 +1435,18 @@
         log("action space unavailable: " + String(e && e.message ? e.message : e), "err");
       }
 
+      // the checkpoint trained by tools/train_clone.py
+      try {
+        var ckr = await fetch("assets/dwa_clone.json", { cache: "no-store" });
+        if (!ckr.ok) throw new Error("assets/dwa_clone.json -> " + ckr.status);
+        var ckj = await ckr.json();
+        pyodide.globals.set("__ck", ckj);
+        pyodide.runPython("clone_load(__ck.to_py() if hasattr(__ck,'to_py') else __ck)");
+        cloneDemo.ready(ckj);
+      } catch (e) {
+        log("clone checkpoint unavailable: " + String(e && e.message ? e.message : e), "err");
+      }
+
       ready = true;
       runBtn.disabled = false;
       runLabel.textContent = "Run planner";
@@ -1535,6 +1626,21 @@
           g.globalAlpha = 1;
           g.fillStyle = C.accent;
           g.beginPath(); g.arc(np[0], np[1], 3.4, 0, 6.284); g.fill();
+        } else if (viz[0] === "scan" && viz.length > 4) {
+          // the observation, not a decoration: these are the ranges that went
+          // into the network this tick
+          g.strokeStyle = C.accent; g.globalAlpha = 0.45; g.lineWidth = 1;
+          g.beginPath();
+          for (var q = 1; q + 3 < viz.length; q += 4) {
+            var a0 = toPx(viz[q], viz[q + 1]), a1 = toPx(viz[q + 2], viz[q + 3]);
+            g.moveTo(a0[0], a0[1]); g.lineTo(a1[0], a1[1]);
+          }
+          g.stroke(); g.globalAlpha = 1;
+          g.fillStyle = C.accent;
+          for (var q2 = 1; q2 + 3 < viz.length; q2 += 4) {
+            var e2 = toPx(viz[q2 + 2], viz[q2 + 3]);
+            g.beginPath(); g.arc(e2[0], e2[1], 1.8, 0, 6.284); g.fill();
+          }
         } else if (viz[0] === "band" && viz.length > 4) {
           g.strokeStyle = C.accent; g.globalAlpha = 0.8; g.lineWidth = 2;
           g.beginPath();
@@ -1635,7 +1741,8 @@
         try {
           // DWA runs the transcribed loop, because that is where the fan is.
           // Everything else runs its own _control_loop untouched.
-          var fn = chaser.key === "dwa" ? "chase_step" : "chase_step_any";
+          var fn = chaser.cloned ? "clone_step"
+                 : chaser.key === "dwa" ? "chase_step" : "chase_step_any";
           var out = pyodide.runPython(
             fn + "(" + bot.x + "," + bot.y + "," + bot.yaw + "," +
             bot.v + "," + bot.w + ")").toJs();
@@ -1739,13 +1846,32 @@
       // runs in the race's worker instead, so the cursor stays at 60 fps and
       // the robot does what a real base does when its planner is slow: keeps
       // moving on the last command until a new one lands.
-      { key: "mppi", file: "mppi_controller", cls: "MPPIControllerNode", label: "MPPI", remote: true }
+      { key: "mppi", file: "mppi_controller", cls: "MPPIControllerNode", label: "MPPI", remote: true },
+      // Not from the repo: a network trained here, on the repo's own DWA. It
+      // is wired in as a controller because that is exactly what it is -- the
+      // page can then let you drive with the imitation and the original and
+      // feel the difference.
+      { key: "clone", file: "dwa_clone", cls: "-", label: "Clone", cloned: true }
     ];
     var chaser = CHASERS[0];
     var inflight = false, seq = 0, ctlMs = 0, remoteReady = false, pendingRemote = null;
     var sentPlan = null;
 
     function initController() {
+      if (chaser.cloned) {
+        // Reuse the DWA wiring for the costmap and the plan, then drive with
+        // the net instead of the node. Same costmap, same A*, same waypoint
+        // rule -- only the thing choosing the twist changes.
+        pyodide.globals.set("__occ", Array.from(occ));
+        var m0 = pyodide.runPython(
+          "chase_init('astar_planner','" + MODULES.astar.cls + "','dwa_controller','" +
+          DWA.cls + "','dwa', list(__occ.to_py()) if hasattr(__occ,'to_py') " +
+          "else list(__occ), " + CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
+        cost = m0[9];
+        CTL_MS = 100;
+        pyodide.runPython("_DWA['cwp'] = 0");
+        return m0;
+      }
       if (chaser.remote) {
         remoteReady = false; inflight = false;
         race.send({ type: "chase_init", pcls: MODULES.astar.cls, cmod: chaser.file,
@@ -3366,6 +3492,121 @@
         log("curriculum: " + stages.length + " stages, " +
             total.toLocaleString() + " GRPO steps over " + sched.length +
             " reward sub-stages  (group " + G + ", KL " + kl + ")", "ok");
+      }
+    };
+  })();
+
+  /* ---------- clone the controller -------------------------------------
+     The one model on the page that was fitted here. tools/train_clone.py
+     drives the repo's own dwa_controller.py over generated maps, records the
+     observation and the twist it committed to, and fits an MLP. This section
+     loads that checkpoint, reports what it scored, and the chase above lets
+     you drive with it.
+
+     The interesting number is not the fit. It is the gap between the fit and
+     the driving, which is what behaviour cloning always has and what DAgger
+     exists to close.
+     ------------------------------------------------------------------- */
+  var cloneDemo = (function () {
+    var sec = document.getElementById("clone");
+    if (!sec) return { ready: function () {} };
+    var cv = document.getElementById("clone-canvas");
+    var g = cv.getContext("2d");
+    var statsEl = document.getElementById("clone-stats");
+    var noteEl = document.getElementById("clone-note");
+    var readEl = document.getElementById("clone-read");
+    var ck = null;
+
+    function stat(label, value, sub) {
+      var d = document.createElement("div");
+      d.innerHTML = "<dt>" + label + "</dt><dd>" + value +
+        (sub ? " <small>" + sub + "</small>" : "") + "</dd>";
+      statsEl.appendChild(d);
+    }
+
+    function draw() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      if (!ck) return;
+      var curve = ck.curve || [], rounds = (ck.eval && ck.eval.rounds) || [];
+      // room under the axis for three rows of label plus the status overlay
+      var L = 74, MID = cv.width * 0.52, R = cv.width - 40, T = 44, B = cv.height - 96;
+      g.font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left"; g.fillStyle = C.mut;
+
+      // left: the fit
+      g.fillText("training loss  (mse on the expert's twist)", L, 24);
+      if (curve.length > 1) {
+        var lo = Math.min.apply(null, curve), hi = Math.max.apply(null, curve);
+        var xs = function (i) { return L + (MID - 70 - L) * i / (curve.length - 1); };
+        var ys = function (v) { return B - (B - T) * (Math.log(v + 1e-9) - Math.log(lo + 1e-9)) /
+                                       (Math.log(hi + 1e-9) - Math.log(lo + 1e-9) || 1); };
+        g.strokeStyle = C.rule; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(L, T); g.lineTo(L, B); g.lineTo(MID - 70, B); g.stroke();
+        g.strokeStyle = C.accent; g.lineWidth = 2; g.beginPath();
+        curve.forEach(function (v, i) { i ? g.lineTo(xs(i), ys(v)) : g.moveTo(xs(i), ys(v)); });
+        g.stroke();
+        g.fillStyle = C.mut; g.textAlign = "right";
+        g.fillText(hi.toExponential(1), L - 8, T + 4);
+        g.fillText(lo.toExponential(1), L - 8, B);
+        g.textAlign = "left";
+        g.fillText("epochs", L, B + 18);
+      }
+
+      // right: what that fit is worth when it has to drive
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.fillText("closed loop  (fraction of fresh courses finished)", MID, 24);
+      var bw = 46, gap = 26, x0 = MID + 30;
+      var maxr = 1;
+      rounds.forEach(function (r, i) {
+        var frac = r.tried ? r.reached / r.tried : 0;
+        var h = (B - T) * frac / maxr;
+        var x = x0 + i * (bw + gap);
+        var isPick = ck.eval && ck.eval.picked === r.stage;
+        g.fillStyle = isPick ? C.signal : C.accent;
+        g.globalAlpha = isPick ? 0.9 : 0.42;
+        g.fillRect(x, B - h, bw, h);
+        g.globalAlpha = 1;
+        g.fillStyle = C.ink; g.textAlign = "center";
+        g.font = "500 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(Math.round(frac * 100) + "%", x + bw / 2, B - h - 7);
+        g.fillStyle = C.mut;
+        g.font = "400 9.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+        g.fillText(r.stage.replace("dagger", "DAgger "), x + bw / 2, B + 15);
+        g.fillText(r.reached + "/" + r.tried, x + bw / 2, B + 29);
+      });
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(MID + 10, B + 0.5); g.lineTo(R, B + 0.5); g.stroke();
+      g.textAlign = "left"; g.fillStyle = C.mut;
+      g.font = "400 9.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.fillText("filled bar is the checkpoint this page loads", MID + 10, B + 48);
+    }
+
+    return {
+      ready: function (checkpoint, meta) {
+        ck = checkpoint;
+        var e = ck.eval || {}, t = ck.train || {};
+        stat("samples", (t.samples || 0).toLocaleString(), "from " + (t.maps || 0) + " maps");
+        stat("network", (ck.arch || []).join("&#8239;&rarr;&#8239;"), "tanh, " +
+             ((ck.arch || []).reduce(function (a, n, i, A) {
+               return i ? a + A[i - 1] * n + n : a; }, 0)).toLocaleString() + " params");
+        stat("held-out error", (e.v_mae != null ? e.v_mae.toFixed(4) : "—"),
+             "m/s &middot; " + (e.w_mae != null ? e.w_mae.toFixed(3) : "—") + " rad/s");
+        stat("finishes", (e.closed_loop_tried
+              ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) + "%" : "—"),
+             (e.closed_loop_reached || 0) + " of " + (e.closed_loop_tried || 0) + " courses");
+        noteEl.textContent =
+          "the shipped checkpoint is " + (e.picked || "bc") +
+          " · pick “Clone” in the chase above to drive with it";
+        readEl.textContent =
+          "open loop it predicts the expert to " + (e.v_mae != null ? e.v_mae.toFixed(4) : "?") +
+          " m/s; closed loop it finishes " +
+          (e.closed_loop_tried ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) : 0) +
+          "% — that gap is the whole lesson";
+        draw();
+        log("clone: " + (t.samples || 0).toLocaleString() + " states from " + (t.maps || 0) +
+            " maps, " + (ck.arch || []).join("-") + ", finishing " +
+            (e.closed_loop_tried ? Math.round(100 * e.closed_loop_reached / e.closed_loop_tried) : 0) +
+            "% of fresh courses", "ok");
       }
     };
   })();

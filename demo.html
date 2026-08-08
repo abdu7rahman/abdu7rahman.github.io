@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=d5906305">
+<link rel="stylesheet" href="demo.css?v=ea066275">
 </head>
 <body class="runner-page">
 
@@ -34,7 +34,7 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Six things on this page, and none of them are a recording. Four of them download the Python
+      Eight things on this page, and none of them are a recording. Four of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
@@ -45,7 +45,8 @@
       workspace and find out where it stops seeing you. The fifth runs too, but is copied rather than
       fetched, because the repository behind it is private. The sixth is not mine and does not run
       here &mdash; &pi;0.5 is a 12&nbsp;GB checkpoint, so the page is the client and the model runs
-      on a GPU somewhere else.
+      on a GPU somewhere else. And one is a model I trained here, on this machine, from the repo's own
+      controller &mdash; the checkpoint in <code>assets/</code> is the one the training script wrote.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
@@ -53,6 +54,7 @@
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
       <li><a href="#embodiment">One vector, six robots</a><span>cross-embodiment action masks</span></li>
+      <li><a href="#clone">Clone the controller</a><span>behaviour cloning, and why it falls over</span></li>
       <li><a href="#rl">Reinforce it</a><span>GRPO, and a curriculum that will not let RL touch the policy</span></li>
       <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
@@ -152,6 +154,16 @@
         controller is slow &mdash; keeps moving on the last command until a new one arrives. Pick it
         and watch the lag in the readout; that number is the honest cost of 1000 samples a tick.
       </p>
+      <p class="chase__lede">
+        <strong>The last one is not from the repository &mdash; it was trained here.</strong>
+        <em>Clone</em> is a small network fitted to DWA's own output:
+        <code>tools/train_clone.py</code> drives the real
+        <code>dwa_controller.py</code> across generated maps, records what it saw and what twist it
+        committed to, and fits an MLP to that. Driving with it, the fan you see is the observation
+        the network actually got &mdash; range along a spread of bearings, plus the goal in the
+        robot's frame and its current speed. No velocity window, no rollouts: one forward pass.
+        The section below has the numbers, including the ones that are not flattering.
+      </p>
       <p class="chase__key" id="chase-pick">
         <span class="chase__pickl">Controller</span>
         <button class="tbtn tbtn--sm er-src is-on" data-chaser="dwa" type="button">DWA</button>
@@ -159,6 +171,7 @@
         <button class="tbtn tbtn--sm er-src" data-chaser="stanley" type="button">Stanley</button>
         <button class="tbtn tbtn--sm er-src" data-chaser="teb" type="button">TEB</button>
         <button class="tbtn tbtn--sm er-src" data-chaser="mppi" type="button">MPPI</button>
+        <button class="tbtn tbtn--sm er-src" data-chaser="clone" type="button">Clone</button>
         <button class="tbtn tbtn--sm" id="chase-reset" type="button">Clear the field</button>
       </p>
       <p class="chase__key">
@@ -297,6 +310,40 @@
       rollouts and no simulator, and nothing here should be read as a robot doing anything. What it
       is, is a real design decision with real consequences you can see above.
     </p>
+
+  <section class="chase" id="clone">
+    <div class="chase__head">
+      <p class="panel__label">The only model on this page I trained</p>
+      <h2 class="chase__title">Clone the controller</h2>
+      <p class="chase__lede">
+        Everything else here either runs code from a repository or calls a model someone else
+        trained. This one is fitted on this machine, from scratch, and the checkpoint the page loads
+        is the one <code>tools/train_clone.py</code> wrote. No GPU, no dataset download, nothing
+        hand-labelled &mdash; the supervision comes from the repo's own
+        <code>dwa_controller.py</code> driving A* plans across generated maps, recording what it saw
+        and what twist it committed to.
+      </p>
+      <p class="chase__lede">
+        That makes it the smallest honest version of what ACT and Diffusion Policy do: watch an
+        expert, fit its actions. The expert here samples a velocity window and scores a fan of
+        rollouts every tick. The clone is three matrix multiplies.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        <strong>It is also the clearest failure on the page, and that is why it is here.</strong>
+        Open-loop the fit is excellent &mdash; a hundredth of a metre per second of error against
+        held-out expert commands. Let it drive and it falls over, because imitation compounds its
+        own mistakes: one small deviation puts the robot somewhere the expert never went, so the
+        next prediction is worse. The numbers below are the run that produced the shipped
+        checkpoint, failures included.
+      </p>
+      <div class="clone-stats" id="clone-stats"></div>
+      <p class="chase__read chase__read--flow" id="clone-note">loading the checkpoint…</p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="clone-canvas" width="1204" height="530" aria-label="Training loss for the cloned controller, and the closed-loop success rate after each data-aggregation round."></canvas>
+      <p class="chase__read" id="clone-read">&nbsp;</p>
+    </div>
+  </section>
 
   <section class="chase" id="rl">
     <div class="chase__head">
@@ -445,6 +492,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=7ad8f228" defer></script>
+<script src="demo.js?v=3a3d94e6" defer></script>
 </body>
 </html>
