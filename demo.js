@@ -822,6 +822,38 @@
     "def race_done():",
     "    d = _RACE",
     "    return bool(d) and all(r is None or r['state'] != 'running' for r in d['runners'])",
+    "_RFM = {}",
+    "def rfm_init():",
+    "    # The package is laid out at its real module paths and imported the way",
+    "    # the repo imports it, so action_space.py's `from rfm.schemas import ...`",
+    "    # resolves without being touched.",
+    "    import sys",
+    "    if '/rfm_pkg' not in sys.path: sys.path.insert(0, '/rfm_pkg')",
+    "    from rfm.data import action_space as A",
+    "    from rfm import schemas as S",
+    "    cfg = S.UnifiedActionSpaceConfig()",
+    "    _RFM.update(A=A, S=S, cfg=cfg)",
+    "    slices = [[s.name, int(s.start), int(s.stop), s.unit, s.description]",
+    "              for s in S.ACTION_LAYOUT]",
+    "    embs = [e.value for e in cfg.embodiment_slices]",
+    "    return [slices, embs, int(S.ACTION_DIM)]",
+    "def rfm_mask(name):",
+    "    # embodiment_mask is the node's own function; nothing is recomputed here.",
+    "    d = _RFM; e = d['S'].Embodiment(name)",
+    "    return [bool(v) for v in d['A'].embodiment_mask(e, d['cfg'])]",
+    "def rfm_coverage():",
+    "    # How many embodiments light each dimension. A dimension covered by one",
+    "    # embodiment gets gradient as rare as that embodiment -- which is the",
+    "    # point describe_coverage() exists to make, as a number per column.",
+    "    d = _RFM; cfg = d['cfg']",
+    "    out = [0] * int(d['S'].ACTION_DIM)",
+    "    for e in cfg.embodiment_slices:",
+    "        m = d['A'].embodiment_mask(e, cfg)",
+    "        for i, v in enumerate(m):",
+    "            if v: out[i] += 1",
+    "    return out",
+    "def rfm_table():",
+    "    return _RFM['A'].describe_coverage(_RFM['cfg'])",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -1160,6 +1192,26 @@
         log(RACERS[i].file + "  " + rs.text.length.toLocaleString() + " bytes from " + rs.branch, "ok");
       }
       race.ready(BOOTSTRAP, raceSrc);
+
+      // The cross-embodiment action space, copied into this site rather than
+      // fetched: its repository is private. schemas.py is pydantic, which
+      // pyodide ships, so both files import unmodified at their real paths.
+      try {
+        log("loading the action space from vendor/rfm…");
+        await pyodide.loadPackage("pydantic");
+        for (var v = 0; v < RFM.files.length; v++) {
+          var vf = RFM.files[v];
+          var vr = await fetch(vf, { cache: "no-store" });
+          if (!vr.ok) throw new Error(vf + " -> " + vr.status);
+          var vt = await vr.text();
+          pyodide.globals.set("__src", vt);
+          pyodide.globals.set("__path", "/rfm_pkg/" + vf.replace("vendor/", ""));
+          pyodide.runPython("arm_write(__path, __src)");
+        }
+        embDemo.ready();
+      } catch (e) {
+        log("action space unavailable: " + String(e && e.message ? e.message : e), "err");
+      }
 
       ready = true;
       runBtn.disabled = false;
@@ -2220,6 +2272,170 @@
     showExplored = e.target.checked; draw();
   });
   runBtn.addEventListener("click", run);
+
+
+  /* ---------- one vector, six robots -----------------------------------
+     The cross-embodiment action space out of my robot foundation model.
+     Every robot writes into one 32-D vector and a boolean mask says which
+     dimensions are real for that morphology; the flow-matching loss is
+     masked to match, so a dimension a robot does not have contributes no
+     gradient instead of being trained toward zero.
+
+     embodiment_mask() is called per click. The strip is whatever it returns.
+
+     This one is copied rather than fetched -- the repository is private. See
+     vendor/rfm/PROVENANCE.md for the commit and hashes.
+     ------------------------------------------------------------------- */
+  var RFM = { files: ["vendor/rfm/__init__.py", "vendor/rfm/schemas.py",
+                      "vendor/rfm/data/__init__.py", "vendor/rfm/data/action_space.py"] };
+
+  var embDemo = (function () {
+    var cv = document.getElementById("emb-canvas");
+    if (!cv) return { ready: function () {} };
+    var g = cv.getContext("2d");
+    var readEl = document.getElementById("emb-read");
+    var keyEl = document.getElementById("emb-key");
+    var slices = [], embs = [], DIM = 32, cover = [], mask = [], current = "";
+
+    function label(t, x, y, col, size, align) {
+      g.fillStyle = col;
+      g.font = "500 " + (size || 10) + "px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = align || "left";
+      g.fillText(t, x, y);
+    }
+
+    function draw() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cv.width, cv.height);
+      if (!slices.length) return;
+      var L = 150, R = cv.width - 46, T = 132;
+      var w = (R - L) / DIM;
+      var CELL = 42, GAP = 6;
+
+      label("dimension", L - 12, T - 12, C.mut, 10, "right");
+      // the index ruler
+      for (var i = 0; i < DIM; i++) {
+        if (i % 4 === 0) label(String(i), L + i * w + w / 2, T - 12, C.mut, 9, "center");
+      }
+
+      // slice groups: the named blocks the vector is actually made of
+      slices.forEach(function (s, k) {
+        var x0 = L + s[1] * w, x1 = L + s[2] * w;
+        g.strokeStyle = C.rule; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(x0 + 0.5, T - 26); g.lineTo(x0 + 0.5, T + CELL * 2 + GAP + 30); g.stroke();
+        if (k === slices.length - 1) {
+          g.beginPath(); g.moveTo(x1 - 0.5, T - 26); g.lineTo(x1 - 0.5, T + CELL * 2 + GAP + 30); g.stroke();
+        }
+        var mid = (x0 + x1) / 2;
+        // straight up: at -90 the labels are parallel, so a single-column slice
+        // like right_gripper still gets a full-length name without overlapping
+        // its neighbour
+        g.save(); g.translate(mid + 3.5, T - 30); g.rotate(-Math.PI / 2);
+        label(s[0], 0, 0, C.ink, 9.5);
+        g.restore();
+        // a one-column slice is ~32px wide and "normalized" is not, so the
+        // unit is only drawn where it fits; the name above already says which
+        // slice it is
+        g.font = "500 8.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+        if (g.measureText(s[3]).width < (x1 - x0) - 4) {
+          label(s[3], mid, T + CELL * 2 + GAP + 26, C.mut, 8.5, "center");
+        }
+      });
+
+      // row 1: the mask for the selected embodiment
+      label("mask", L - 12, T + CELL * 0.62, C.ink, 10.5, "right");
+      label(current, L - 12, T + CELL * 0.62 + 13, C.mut, 9, "right");
+      for (var d = 0; d < DIM; d++) {
+        var on = mask[d];
+        g.fillStyle = on ? C.signal : C.paper;
+        g.globalAlpha = on ? 0.88 : 1;
+        g.fillRect(L + d * w + 1, T, w - 2, CELL);
+        g.globalAlpha = 1;
+        g.strokeStyle = on ? C.signal : C.rule; g.lineWidth = 1;
+        g.strokeRect(L + d * w + 1.5, T + 0.5, w - 3, CELL - 1);
+      }
+
+      // row 2: how many of the six cover each dimension
+      var T2 = T + CELL + GAP;
+      label("covered by", L - 12, T2 + CELL * 0.62, C.ink, 10.5, "right");
+      label("of " + embs.length + " robots", L - 12, T2 + CELL * 0.62 + 13, C.mut, 9, "right");
+      for (var d2 = 0; d2 < DIM; d2++) {
+        var c = cover[d2] || 0, frac = c / Math.max(1, embs.length);
+        var h = Math.max(3, CELL * frac);
+        g.fillStyle = c <= 2 ? C.signal : C.accent;
+        g.globalAlpha = c <= 2 ? 0.85 : 0.42;
+        g.fillRect(L + d2 * w + 1, T2 + (CELL - h), w - 2, h);
+        g.globalAlpha = 1;
+        label(String(c), L + d2 * w + w / 2, T2 + CELL + 12, c <= 2 ? C.signal : C.mut, 8.5, "center");
+      }
+
+      // every embodiment at once, so the selected one has something to sit against
+      var T3 = T2 + CELL + 46;
+      label("all " + embs.length, L - 12, T3 - 6, C.mut, 10, "right");
+      embs.forEach(function (e, r) {
+        var y = T3 + r * 17;
+        var m = RFMMASKS[e] || [];
+        label(e, L - 12, y + 8, e === current ? C.ink : C.mut, 9, "right");
+        for (var d3 = 0; d3 < DIM; d3++) {
+          g.fillStyle = m[d3] ? (e === current ? C.signal : C.ink) : C.rule;
+          g.globalAlpha = m[d3] ? (e === current ? 0.9 : 0.30) : 0.35;
+          g.fillRect(L + d3 * w + 1, y, w - 2, 12);
+        }
+        g.globalAlpha = 1;
+        var n = m.filter(Boolean).length;
+        label(n + "/" + DIM, R + 6, y + 9, e === current ? C.ink : C.mut, 9);
+      });
+    }
+
+    var RFMMASKS = {};
+
+    function pick(e) {
+      current = e;
+      mask = RFMMASKS[e] || [];
+      Array.prototype.forEach.call(keyEl.querySelectorAll(".racer"), function (b) {
+        b.classList.toggle("is-on", b.getAttribute("data-emb") === e);
+      });
+      var n = mask.filter(Boolean).length;
+      var dead = [];
+      slices.forEach(function (s) {
+        var any = false;
+        for (var i = s[1]; i < s[2]; i++) if (mask[i]) any = true;
+        if (!any) dead.push(s[0]);
+      });
+      readEl.textContent = e + " · " + n + " of " + DIM + " dimensions active" +
+        (dead.length ? " · masked out: " + dead.join(", ") : " · every slice live");
+      draw();
+    }
+
+    return {
+      ready: function () {
+        try {
+          var meta = pyodide.runPython("rfm_init()").toJs();
+          slices = meta[0]; embs = meta[1]; DIM = meta[2];
+          cover = pyodide.runPython("rfm_coverage()").toJs();
+          embs.forEach(function (e) {
+            pyodide.globals.set("__emb", e);
+            RFMMASKS[e] = pyodide.runPython("rfm_mask(__emb)").toJs();
+          });
+        } catch (err) {
+          log("action space: " + String(err && err.message ? err.message : err).split("\n").slice(-3).join(" | "), "err");
+          readEl.textContent = "the action space could not be loaded";
+          return;
+        }
+        embs.forEach(function (e) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "tbtn tbtn--sm racer";
+          b.setAttribute("data-emb", e);
+          b.textContent = e;
+          b.addEventListener("click", function () { pick(e); });
+          keyEl.appendChild(b);
+        });
+        log("action space: " + DIM + "-D unified vector, " + slices.length +
+            " slices, " + embs.length + " embodiments  (vendored from robot-foundation-model)", "ok");
+        pick(embs[0]);
+      }
+    };
+  })();
 
   /* ---------- pi0.5, over a policy server -------------------------------
      The one thing here that does not run in the tab, and cannot: pi0.5 is a
