@@ -1064,6 +1064,18 @@
     "        band = getattr(n, 'band', None) or []",
     "        viz = ['band'] + [float(q) for pt in band for q in list(pt)[:2]]",
     "    return [bv, bw, 0, 0, [], [], [], 0, wp, viz]",
+    "def chase_adopt_path(flat):",
+    "    # A path planned somewhere else, handed to this controller the way /plan",
+    "    # would. Used when the controller runs in a worker but the planner does",
+    "    # not: A* is two milliseconds and belongs where it can draw immediately.",
+    "    d = _DWA; c = d['c']",
+    "    pts = [(float(flat[i]), float(flat[i + 1])) for i in range(0, len(flat) - 1, 2)]",
+    "    d['path'] = pts or None",
+    "    if pts:",
+    "        c._path_cb(_as_path(pts))",
+    "    else:",
+    "        c.current_path = None",
+    "    return len(pts)",
     "def chase_remap(flat):",
     "    # An obstacle appeared. Re-inflate and hand both nodes the new costmap,",
     "    # which is all a fresh /local_costmap message does on the robot.",
@@ -1525,6 +1537,24 @@
         } catch (e) { plan = []; }
       }
 
+      // A remote controller is asked on the same cadence, but asynchronously:
+      // one request in flight at a time, and the base keeps integrating on the
+      // last command while the worker thinks. That is what a real base does
+      // when its controller is slow, and here the lag is legible.
+      if (chaser.remote) {
+        // The plan is computed above, on this thread, and only the path is
+        // shipped -- A* is two milliseconds and belongs where it can be drawn
+        // the instant it changes. Only the controller is slow enough to exile.
+        if (remoteReady && plan !== sentPlan) {
+          sentPlan = plan;
+          race.send({ type: "chase_path", pts: plan });
+        }
+        if (remoteReady && !inflight && ts - lastCtl >= CTL_MS) {
+          lastCtl = ts; inflight = true;
+          race.send({ type: "chase_tick", seq: ++seq, x: bot.x, y: bot.y, yaw: bot.yaw,
+                      v: bot.v, w: bot.w });
+        }
+      } else
       // ...and run the controller at its own rate
       if (ts - lastCtl >= CTL_MS) {
         lastCtl = ts;
@@ -1575,7 +1605,9 @@
                   ? "controller stopped  ·  see the console below"
                   : "A* " + (plan.length / 2 | 0) + " pts in " + planMs.toFixed(1) +
                     " ms  ·  " + (nTraj ? "DWA scoring " + nTraj + " rollouts"
-                                            : chase.current().label) + "  ·  v " +
+                                            : chase.current().label +
+                                              (ctlMs > 40 ? " thinking " + Math.round(ctlMs) + " ms a tick" : "")) +
+                    "  ·  v " +
                     bot.v.toFixed(2) + " m/s  w " + (bot.w >= 0 ? "+" : "") +
                     bot.w.toFixed(2) + " rad/s  ·  " + d.toFixed(2) + " m out";
     }
@@ -1605,6 +1637,9 @@
       pyodide.globals.set("__occ", Array.from(occ));
       cost = pyodide.runPython("chase_remap(list(__occ.to_py()) if " +
                                "hasattr(__occ,'to_py') else list(__occ))").toJs();
+      // The worker keeps its own costmap when it is driving, so it needs the
+      // same obstacle -- otherwise it plans around a field it cannot see.
+      if (chaser.remote) race.send({ type: "chase_remap", occ: Array.from(occ) });
       dirty = true;                                    // force an immediate re-plan
       log("obstacle dropped, costmap re-inflated, global plan invalidated");
     }
@@ -1624,11 +1659,26 @@
       { key: "dwa", file: "dwa_controller", cls: "DWAControllerNode", label: "DWA" },
       { key: "pure_pursuit", file: "pure_pursuit_controller", cls: "PurePursuitControllerNode", label: "Pure Pursuit" },
       { key: "stanley", file: "stanley_controller", cls: "StanleyControllerNode", label: "Stanley" },
-      { key: "teb", file: "teb_controller", cls: "TEBControllerNode", label: "TEB" }
+      { key: "teb", file: "teb_controller", cls: "TEBControllerNode", label: "TEB" },
+      // MPPI is ~580 ms a tick, which is a single indivisible Python call. It
+      // runs in the race's worker instead, so the cursor stays at 60 fps and
+      // the robot does what a real base does when its planner is slow: keeps
+      // moving on the last command until a new one lands.
+      { key: "mppi", file: "mppi_controller", cls: "MPPIControllerNode", label: "MPPI", remote: true }
     ];
     var chaser = CHASERS[0];
+    var inflight = false, seq = 0, ctlMs = 0, remoteReady = false, pendingRemote = null;
+    var sentPlan = null;
 
     function initController() {
+      if (chaser.remote) {
+        remoteReady = false; inflight = false;
+        race.send({ type: "chase_init", pcls: MODULES.astar.cls, cmod: chaser.file,
+                    ccls: chaser.cls, kind: chaser.key, occ: Array.from(occ),
+                    h: CH, w: CW, res: RES, inflate: INFLATE });
+        CTL_MS = 100;
+        return null;                       // meta arrives on the worker reply
+      }
       pyodide.globals.set("__occ", Array.from(occ));
       var meta = pyodide.runPython(
         "chase_init('astar_planner','" + MODULES.astar.cls + "','" + chaser.file + "','" +
@@ -1647,13 +1697,57 @@
       select: function (key) {
         var next = CHASERS.filter(function (c) { return c.key === key; })[0];
         if (!next || next === chaser) return null;
+        if (next.remote && !race.isArmed()) {
+          // The worker takes ~30 s to bring up its own pyodide. Remember the
+          // request instead of dropping it, so an early click is a wait rather
+          // than a button that does nothing.
+          pendingRemote = key;
+          readEl.textContent = "the worker runtime is still loading · " +
+            next.label + " will start as soon as it is up";
+          return null;
+        }
         chaser = next;
         var meta = initController();
         plan = []; fan = []; best = null; viz = []; dirty = true;
         bot.v = bot.w = 0;
-        return meta;
+        // A remote controller has no meta yet; the worker sends it back.
+        return meta || [0, 0, 0, 0, 0.1, 0, 0, 0, 0, null];
       },
       current: function () { return chaser; },
+      // The worker replies for the chase land here. Registered once, after the
+      // race module has created the worker.
+      wireRemote: function () {
+        race.hook("__ready", function () {
+          if (!pendingRemote) return;
+          var k = pendingRemote; pendingRemote = null;
+          var btn = document.querySelector('[data-chaser="' + k + '"]');
+          if (btn) btn.click();               // the normal path, including the chip state
+        });
+        race.hook("chase_init", function (msg) {
+          var m = msg.meta;
+          if (m && m.length) {
+            CTL_MS = Math.round(m[4] * 1000) || 100;
+            cost = m[9];
+          }
+          remoteReady = true; inflight = false; sentPlan = null;
+          log("chase controller: " + chaser.file + ".py in the worker at " +
+              Math.round(1000 / CTL_MS) + " Hz  (v_max " + (m && m[0] ? m[0].toFixed(2) : "?") +
+              " m/s)", "ok");
+        });
+        race.hook("chase_remap", function () { dirty = true; });
+        race.hook("chase_tick", function (msg) {
+          inflight = false;
+          ctlMs = msg.ms;
+          var out = msg.out || [];
+          if (!out.length) return;
+          bot.v = out[0]; bot.w = out[1]; state = out[7];
+          viz = out.length > 9 ? out[9] : [];
+          if (viz && viz[0] === "err" && !broke) {
+            broke = true;
+            log("chase controller " + chaser.file + ".py: " + viz[1], "err");
+          }
+        });
+      },
       start: function () {
         var meta = initController();
         live = true; paint(); requestAnimationFrame(step);
@@ -1678,6 +1772,7 @@
       if (rb) rb.addEventListener("click", function () {
         chase.reset(); log("field cleared");
       });
+      chase.wireRemote();
       document.querySelectorAll("[data-chaser]").forEach(function (b) {
         b.addEventListener("click", function () {
           var key = b.getAttribute("data-chaser");
@@ -1717,6 +1812,9 @@
     var occ = new Uint8Array(CW * CH);
     var plan = [], trails = [], rows = [], live = false, armed = false, raf2 = 0;
     var worker = null;
+    // The chase borrows this worker for MPPI rather than starting a third
+    // pyodide. Its messages are namespaced chase_*, so they demux here.
+    var hooks = {};
     var frames = 0;
 
     // The course: two walls staggered so the route has to come off one end and
@@ -1918,13 +2016,18 @@
     }
 
     return {
+      // The chase runs MPPI through this worker; these are how it talks to it.
+      send: function (m) { if (worker) worker.postMessage(m); },
+      hook: function (t, fn) { hooks[t] = fn; },
+      isArmed: function () { return armed; },
       // Called once the main thread has fetched the sources, so the worker
       // gets them by message rather than downloading everything a second time.
       ready: function (bootstrap, sources) {
         worker = new Worker("race-worker.js");
         worker.onmessage = function (e) {
           var msg = e.data;
-          if (msg.type === "ready") { armed = true; readyRead(); }
+          if (hooks[msg.type]) return hooks[msg.type](msg);
+          if (msg.type === "ready") { armed = true; readyRead(); if (hooks.__ready) hooks.__ready(); }
           else if (msg.type === "init") onInit(msg);
           else if (msg.type === "step") onStep(msg);
           else if (msg.type === "error") {

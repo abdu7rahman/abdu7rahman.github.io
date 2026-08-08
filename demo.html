@@ -145,10 +145,12 @@
         cursor &mdash; only the thing following the plan changes, and they follow it differently
         enough to feel it. Each one draws what it is actually looking at: the point Pure Pursuit
         steers at, the point Stanley measures its cross-track error from, the band TEB is deforming.
-        Only DWA has a rollout fan, because only DWA scores a window of trajectories. MPPI is not
-        here &mdash; a tick costs about 580&nbsp;ms and this loop runs on the main thread, so it
-        would freeze the cursor instead of chasing it. It is in <a class="inline" href="#race">the
-        race</a>, where a worker absorbs that.
+        Only DWA has a rollout fan, because only DWA scores a window of trajectories. MPPI is here
+        too, but it runs in a worker: a tick costs about 580&nbsp;ms and that is one indivisible
+        call, so on the main thread it would freeze the cursor instead of chasing it. Off the main
+        thread the page stays at 60&nbsp;fps and the robot does what a real base does when its
+        controller is slow &mdash; keeps moving on the last command until a new one arrives. Pick it
+        and watch the lag in the readout; that number is the honest cost of 1000 samples a tick.
       </p>
       <p class="chase__key" id="chase-pick">
         <span class="chase__pickl">Controller</span>
@@ -156,6 +158,7 @@
         <button class="tbtn tbtn--sm er-src" data-chaser="pure_pursuit" type="button">Pure Pursuit</button>
         <button class="tbtn tbtn--sm er-src" data-chaser="stanley" type="button">Stanley</button>
         <button class="tbtn tbtn--sm er-src" data-chaser="teb" type="button">TEB</button>
+        <button class="tbtn tbtn--sm er-src" data-chaser="mppi" type="button">MPPI</button>
         <button class="tbtn tbtn--sm" id="chase-reset" type="button">Clear the field</button>
       </p>
       <p class="chase__key">
@@ -442,6 +445,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=02936956" defer></script>
+<script src="demo.js?v=0f82ede5" defer></script>
 </body>
 </html>
