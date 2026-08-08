@@ -186,8 +186,10 @@
 .kx--infl { background: color-mix(in srgb, var(--signal) 26%, var(--paper)); height: 10px; width: 10px; }
 .tbtn--sm { padding: 6px 11px; font-size: 10.5px; margin-left: auto; }
 
+.chase__lede em { font-style: italic; color: var(--ink); }
+
 .chase__stage { position: relative; }
-#chase {
+#chase, #arm {
   display: block; width: 100%; height: auto;
   border: 1px solid var(--rule-2); background: var(--paper);
   cursor: crosshair; touch-action: none;

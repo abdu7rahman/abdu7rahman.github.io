@@ -12,6 +12,16 @@
     rrt:        { file: "rrt_planner.py",        cls: "RRTPlannerNode",        call: "_rrt" }
   };
   var DWA = { file: "dwa_controller.py", cls: "DWAControllerNode" };
+  // The arm's detector comes from a different repo, and it ships a headless
+  // harness -- tests/harness.py loads the node with ROS stubbed and tests/
+  // scene.py builds synthetic RealSense frames. Both are laid into the Pyodide
+  // filesystem at their repo paths so they import unmodified.
+  var ARM = {
+    repo: "abdu7rahman/reactive-replanning-ur12e",
+    branch: "main",
+    files: ["tests/harness.py", "tests/scene.py",
+            "reactive_replanning_ur12e/reactive_replanning.py"]
+  };
   var HINTS = {
     astar: "8-connected grid search, octile heuristic. Expands in cost order.",
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
@@ -266,6 +276,111 @@
     "        path = [[int(a), int(b)] for a, b in (p or [])]",
     "        expl = [[int(a), int(b)] for a, b in (e or [])]",
     "    return [path, expl, ms]",
+    "_ARM = {}",
+    "def arm_write(path, src):",
+    "    import os",
+    "    d = os.path.dirname(path)",
+    "    if d: os.makedirs(d, exist_ok=True)",
+    "    open(path, 'w').write(src)",
+    "def arm_init(seed):",
+    "    # tests/harness.py resolves its package root from __file__ and imports",
+    "    # scene as a sibling, so the files are laid out the way the repo lays",
+    "    # them out and imported unmodified rather than patched.",
+    "    import sys, numpy as np",
+    "    if '/rr/tests' not in sys.path: sys.path.insert(0, '/rr/tests')",
+    "    import harness, scene",
+    "    cls = harness.load_node_class()",
+    "    rig = harness.Rig(cls)",
+    "    n = rig.node",
+    "    # Count what each stage keeps by wrapping the node's own calls. The",
+    "    # workspace box is inline in _cloud_cb, so its survivors are read off",
+    "    # what reaches the colour filter.",
+    "    st = {}",
+    "    _colour, _self = n._is_robot_color, n._filter_robot_self",
+    "    def colour(rgb):",
+    "        st['ws'] = len(rgb)",
+    "        m = _colour(rgb)",
+    "        st['colour'] = int((~m).sum())",
+    "        return m",
+    "    def selff(p):",
+    "        out = _self(p)",
+    "        st['self'] = len(out)",
+    "        return out",
+    "    n._is_robot_color, n._filter_robot_self = colour, selff",
+    "    _ARM.update(rig=rig, n=n, scene=scene, st=st,",
+    "                rng=np.random.default_rng(int(seed)), t=0.0)",
+    "    # prime the baseline the way the node does: parked arm, empty workspace",
+    "    for _ in range(8):",
+    "        cam, rgb, _g = scene.build(_ARM['rng'])",
+    "        rig.feed(cam, rgb)",
+    "    n._executing = True",
+    "    L = scene.LINKS",
+    "    return [float(n.DEPTH_MIN), float(n.DEPTH_MAX), int(n.OBSTACLE_THRESHOLD),",
+    "            int(n.DEBOUNCE_FRAMES), float(n.CLOUD_THROTTLE),",
+    "            int(n._baseline_count or 0),",
+    "            [[float(a) for a in L[k]] for k in L],",
+    "            [[list(L).index(a), list(L).index(b)] for a, b in scene.CHAIN]]",
+    "F, CX, CY = 610.0, 559.0, 245.0        # px; chosen so the workspace fills the plate",
+    "PLANE_Y = 0.08                          # the arm's own plane, and the one the",
+    "                                        # camera axis is least parallel to, so the",
+    "                                        # cursor unprojects cleanly across the plate",
+    "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))    # the node's workspace box",
+    "def _project(p):",
+    "    z = p[:, 2].copy(); z[z < 1e-3] = 1e-3",
+    "    return F * p[:, 0] / z + CX, F * p[:, 1] / z + CY",
+    "def arm_unproject(u, v):",
+    "    import numpy as np",
+    "    s = _ARM['scene']",
+    "    d = s.R_BASE_FROM_CAM @ np.array([(u - CX) / F, (v - CY) / F, 1.0])",
+    "    if abs(d[1]) < 1e-6: return None",
+    "    t = (PLANE_Y - s.CAM_POS[1]) / d[1]",
+    "    if t <= 0: return None",
+    "    p = s.CAM_POS + t * d",
+    "    # keep it inside the box the node filters on, so the cursor cannot",
+    "    # wander somewhere the pipeline would discard for a boring reason",
+    "    return np.array([min(max(p[i], WS[i][0]), WS[i][1]) for i in range(3)])",
+    "def arm_links():",
+    "    import numpy as np",
+    "    s = _ARM['scene']",
+    "    P = np.array([s.LINKS[k] for k in s.LINKS])",
+    "    u, v = _project(s.to_camera(P))",
+    "    return [[float(a), float(b)] for a, b in zip(u, v)]",
+    "def arm_frame(u, v, radius, keep):",
+    "    import numpy as np, time",
+    "    a = _ARM; s, rig, n, st = a['scene'], a['rig'], a['n'], a['st']",
+    "    c = arm_unproject(u, v)",
+    "    if c is None: return None",
+    "    st.clear()",
+    "    before = len(rig.detections)",
+    "    cam, rgb, gt = s.build(a['rng'], obstacle=(tuple(c), radius))",
+    "    ms = rig.feed(cam, rgb) * 1000.0",
+    "    hit = len(rig.detections) > before",
+    "    # nearest distance from the obstacle surface to any arm segment",
+    "    near = 1e9",
+    "    for A, B in s.CHAIN:",
+    "        p0, p1 = s.LINKS[A], s.LINKS[B]",
+    "        d = p1 - p0; L2 = float(d @ d)",
+    "        t = 0.0 if L2 < 1e-9 else float(np.clip((c - p0) @ d / L2, 0.0, 1.0))",
+    "        near = min(near, float(np.linalg.norm(c - (p0 + t * d))))",
+    "    idx = np.linspace(0, len(cam) - 1, min(int(keep), len(cam))).astype(int)",
+    "    pu, pv = _project(cam[idx])",
+    "    col = rgb[idx]",
+    "    ou, ov = _project(s.to_camera(np.array([c])))",
+    "    det = [float(ou[0]), float(ov[0])]",
+    "    err = 0.0",
+    "    if hit:",
+    "        dxyz, _dif = rig.detections[-1]",
+    "        du, dv = _project(s.to_camera(np.array([dxyz])))",
+    "        det = [float(du[0]), float(dv[0])]",
+    "        err = float(np.linalg.norm(dxyz - gt))",
+    "    return [[float(x) for x in pu], [float(y) for y in pv],",
+    "            [int(r) << 16 | int(g) << 8 | int(b) for r, g, b in col],",
+    "            float(ou[0]), float(ov[0]), float(radius / max(1e-3, np.linalg.norm(",
+    "                s.to_camera(np.array([c]))[0])) * F),",
+    "            bool(hit), det, err, float(near), ms,",
+    "            int(len(cam)), int(st.get('ws', 0)), int(st.get('colour', 0)),",
+    "            int(st.get('self', 0)), int(n._baseline_count or 0),",
+    "            int(n._obstacle_streak), bool(n._obstacle_present)]",
     "_DWA = {}",
     "def _inflate(g, radius, res, lethal=253):",
     "    # nav2_costmap_2d's inflation layer: an exponential falloff around every",
@@ -510,6 +625,10 @@
       runBtn.disabled = false;
       runLabel.textContent = "Run planner";
       log("ready. draw a map and hit run.", "ok");
+
+      // The arm goes last on purpose: its harness stubs ROS for itself, and
+      // the nav modules have already bound their own names by now.
+      await bootArm();
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";
@@ -832,6 +951,266 @@
         chase.reset(); log("field cleared");
       });
     } catch (e) { log("chase unavailable: " + e.message, "err"); }
+  }
+
+  /* ---------- reach in: the arm's obstacle detector ---------------------
+     Same idea as above, different repo. tests/harness.py drives the real
+     _cloud_cb on synthetic RealSense frames; every count on the right is read
+     off the node's own filter calls, not recomputed. The blind spot near a
+     link is the self-filter doing its job, and you can find it with the
+     cursor.
+     ------------------------------------------------------------------- */
+  var arm = (function () {
+    var cvn = document.getElementById("arm");
+    if (!cvn) return { start: function () {} };
+    var g = cvn.getContext("2d");
+    var readEl = document.getElementById("arm-read");
+    var VIEW = 604;                                   // the camera plate
+    var PAD = 30;
+    var live = false, lastF = 0, cur = { u: 300, v: 300 }, have = false;
+    var links = [], chain = [], meta = null, f = null, radius = 0.07;
+    var hist = [];                                    // recent decisions, for the strip
+
+    function bar(x, y, w, h, frac, colour, alpha) {
+      g.fillStyle = C.rule; g.globalAlpha = 0.55;
+      g.fillRect(x, y, w, h);
+      g.globalAlpha = alpha === undefined ? 1 : alpha;
+      g.fillStyle = colour;
+      g.fillRect(x, y, Math.max(1, w * Math.min(1, Math.max(0, frac))), h);
+      g.globalAlpha = 1;
+    }
+    function label(t, x, y, colour, size, align) {
+      g.fillStyle = colour || C.ink3 || C.mut;
+      g.font = (size || 10) + "px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = align || "left"; g.textBaseline = "alphabetic";
+      g.fillText(t, x, y);
+    }
+
+    function paint() {
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvn.width, cvn.height);
+
+      // ── the camera plate ──────────────────────────────────────────
+      g.save(); g.beginPath(); g.rect(0, 0, VIEW, cvn.height); g.clip();
+      g.fillStyle = "#14140f"; g.fillRect(0, 0, VIEW, cvn.height);
+
+      if (f) {
+        var pu = f[0], pv = f[1], pc = f[2];
+        for (var i = 0; i < pu.length; i++) {
+          var c = pc[i];
+          g.fillStyle = "rgb(" + ((c >> 16) & 255) + "," + ((c >> 8) & 255) + "," + (c & 255) + ")";
+          g.fillRect(pu[i], pv[i], 1.9, 1.9);
+        }
+      }
+
+      // the arm chain, so the self-filter has something to point at
+      if (links.length) {
+        g.strokeStyle = "#5aa5af"; g.globalAlpha = 0.5; g.lineWidth = 2;
+        g.lineCap = "round";
+        g.beginPath();
+        chain.forEach(function (s) {
+          g.moveTo(links[s[0]][0], links[s[0]][1]);
+          g.lineTo(links[s[1]][0], links[s[1]][1]);
+        });
+        g.stroke();
+        g.fillStyle = "#5aa5af";
+        links.forEach(function (p) {
+          g.beginPath(); g.arc(p[0], p[1], 2.6, 0, 6.284); g.fill();
+        });
+        g.globalAlpha = 1;
+      }
+
+      if (f) {
+        var ox = f[3], oy = f[4], orad = Math.max(6, f[5]), hit = f[6];
+        // the obstacle you are holding
+        g.strokeStyle = hit ? "#ff8a5c" : "#d7d3c6";
+        g.lineWidth = 1.8;
+        g.setLineDash(hit ? [] : [4, 4]);
+        g.beginPath(); g.arc(ox, oy, orad, 0, 6.284); g.stroke();
+        g.setLineDash([]);
+        if (hit) {                                    // where the node put it
+          var d = f[7];
+          g.strokeStyle = "#ff8a5c"; g.lineWidth = 1.2;
+          g.beginPath();
+          g.moveTo(d[0] - 11, d[1]); g.lineTo(d[0] - 4, d[1]);
+          g.moveTo(d[0] + 4, d[1]); g.lineTo(d[0] + 11, d[1]);
+          g.moveTo(d[0], d[1] - 11); g.lineTo(d[0], d[1] - 4);
+          g.moveTo(d[0], d[1] + 4); g.lineTo(d[0], d[1] + 11);
+          g.stroke();
+        }
+      }
+      // plate label
+      label("CAMERA  /  depth + color points", 16, 24, "#8b8578", 10);
+      label("arm chain", 16, 44, "#5aa5af", 9.5);
+      label("your hand", 82, 44, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
+      label(meta ? meta[0].toFixed(1) + "-" + meta[1].toFixed(1) + " m depth gate" : "",
+            16, cvn.height - 14, "#6e6a5c", 10);
+      g.restore();
+      g.strokeStyle = C.rule; g.lineWidth = 1;
+      g.strokeRect(0.5, 0.5, VIEW - 1, cvn.height - 1);
+
+      // ── the pipeline, stage by stage ──────────────────────────────
+      var X = VIEW + PAD, W = cvn.width - VIEW - PAD * 2, y = 40;
+      label("PIPELINE", X, y - 14, C.signal, 10);
+      if (!f) {
+        label("move the cursor over the camera plate", X, y + 10, C.mut, 12);
+        return;
+      }
+      var total = f[11], rows = [
+        ["cloud in", total, C.ink],
+        ["depth gate + workspace box", f[12], C.ink],
+        ["colour filter", f[13], C.accent],
+        ["arm self-filter", f[14], C.accent]
+      ];
+      rows.forEach(function (r, k) {
+        var yy = y + k * 34;
+        label(r[0], X, yy, C.mut, 10);
+        bar(X, yy + 6, W - 66, 8, r[1] / total, r[2], 0.85);
+        label(r[1].toLocaleString(), X + W, yy + 13, C.ink, 12, "right");
+      });
+
+      y += 4 * 34 + 18;
+      g.strokeStyle = C.rule; g.beginPath();
+      g.moveTo(X, y - 12); g.lineTo(X + W, y - 12); g.stroke();
+
+      // count against the parked baseline, and the threshold that decides
+      var count = f[14], base = f[15], diff = count - base, thr = meta[2];
+      label("foreign points vs parked baseline", X, y + 6, C.mut, 10);
+      var scale = Math.max(thr * 2.2, diff * 1.15, 1);
+      bar(X, y + 12, W - 66, 10, diff / scale, diff >= thr ? C.signal : C.accent, 0.85);
+      var tx = X + (W - 66) * thr / scale;
+      g.strokeStyle = C.ink; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(tx, y + 8); g.lineTo(tx, y + 26); g.stroke();
+      label("threshold " + thr, tx + 5, y + 36, C.ink, 9.5);
+      label((diff > 0 ? "+" : "") + diff, X + W, y + 21, C.ink, 13, "right");
+
+      y += 58;
+      label("debounce", X, y + 6, C.mut, 10);
+      for (var s = 0; s < meta[3]; s++) {
+        g.fillStyle = s < f[16] ? C.signal : C.rule;
+        g.fillRect(X + s * 20, y + 12, 14, 10);
+      }
+      label(Math.min(f[16], meta[3]) + " / " + meta[3] + " frames" +
+            (f[16] > meta[3] ? "  ·  held " + f[16] : ""),
+            X + 20 * meta[3] + 10, y + 21, C.ink, 11);
+
+      y += 46;
+      g.strokeStyle = C.rule; g.beginPath();
+      g.moveTo(X, y); g.lineTo(X + W, y); g.stroke();
+      y += 22;
+
+      // the blind spot, which is the interesting part
+      var near = f[9];
+      label("obstacle to nearest link", X, y, C.mut, 10);
+      var NW = W - 66, dmax = 0.5;
+      bar(X, y + 8, NW, 8, near / dmax, near < 0.11 ? C.mut : C.accent, 0.85);
+      var bx = X + NW * 0.11 / dmax;
+      g.fillStyle = C.ink; g.globalAlpha = 0.18;
+      g.fillRect(X, y + 8, bx - X, 8); g.globalAlpha = 1;
+      g.strokeStyle = C.ink; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(bx, y + 4); g.lineTo(bx, y + 22); g.stroke();
+      label("0.11 m", bx + 5, y + 32, C.ink, 9.5);
+      label(near.toFixed(2) + " m", X + W, y + 17, C.ink, 13, "right");
+
+      y += 54;
+      label("decision", X, y, C.mut, 10);
+      g.fillStyle = f[6] ? C.signal : C.mut;
+      g.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+      g.textAlign = "left";
+      g.fillText(f[6] ? "OBSTACLE" : (near < 0.11 ? "MASKED AS ARM" : "CLEAR"), X, y + 26);
+      if (f[6]) label("centroid error " + (f[8] * 100).toFixed(1) + " cm", X, y + 46, C.mut, 10);
+
+      // the last few decisions, so a flicker is visible
+      var HW = 3, hx = X + W - hist.length * HW;
+      hist.forEach(function (h, k) {
+        g.fillStyle = h ? C.signal : C.rule;
+        g.fillRect(hx + k * HW, y + 8, HW - 1, 22);
+      });
+
+      y += 66;
+      label("frame time", X, y, C.mut, 10);
+      bar(X, y + 8, W - 66, 8, f[10] / (meta[4] * 1000), C.ink, 0.7);
+      label(f[10].toFixed(1) + " ms", X + W, y + 17, C.ink, 13, "right");
+      label("budget " + (meta[4] * 1000).toFixed(0) + " ms at " +
+            Math.round(1 / meta[4]) + " Hz", X, y + 30, C.mut, 9.5);
+    }
+
+    function step(ts) {
+      if (!live) return;
+      requestAnimationFrame(step);
+      if (ts - lastF < 110) return;                   // a shade under the node's 20 Hz
+      lastF = ts;
+      if (!have) { paint(); return; }
+      try {
+        var out = pyodide.runPython(
+          "arm_frame(" + cur.u + "," + cur.v + "," + radius + ",2600)");
+        if (out) {
+          f = out.toJs();
+          hist.push(f[6]); if (hist.length > 40) hist.shift();
+        }
+      } catch (e) { /* leave the last frame up */ }
+      paint();
+      readEl.textContent = f
+        ? (f[6] ? "detected" : f[9] < 0.11 ? "inside the self-filter" : "no obstacle") +
+          "  ·  " + f[14].toLocaleString() + " foreign points  ·  " +
+          f[9].toFixed(2) + " m from the arm  ·  " + f[10].toFixed(1) + " ms"
+        : "move the cursor over the camera plate";
+    }
+
+    function place(clientX, clientY) {
+      var b = cvn.getBoundingClientRect();
+      var u = (clientX - b.left) / b.width * cvn.width;
+      var v = (clientY - b.top) / b.height * cvn.height;
+      if (u > VIEW) { have = false; return; }
+      cur.u = u; cur.v = v; have = true;
+    }
+    cvn.addEventListener("mousemove", function (e) { place(e.clientX, e.clientY); });
+    cvn.addEventListener("touchmove", function (e) {
+      e.preventDefault(); place(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    cvn.addEventListener("mouseleave", function () { have = false; });
+    cvn.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      radius = Math.min(0.14, Math.max(0.03, radius - e.deltaY * 0.0001));
+    }, { passive: false });
+
+    return {
+      start: function (m) {
+        meta = m;
+        links = pyodide.runPython("arm_links()").toJs();
+        chain = m[7];
+        live = true; paint(); requestAnimationFrame(step);
+      }
+    };
+  })();
+
+  async function bootArm() {
+    var el = document.getElementById("arm");
+    if (!el) return;
+    try {
+      log("loading the arm detector from " + ARM.repo + "…");
+      for (var i = 0; i < ARM.files.length; i++) {
+        var rel = ARM.files[i];
+        var url = "https://raw.githubusercontent.com/" + ARM.repo + "/" +
+                  ARM.branch + "/" + rel;
+        var r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(rel + ": HTTP " + r.status);
+        var txt = await r.text();
+        pyodide.globals.set("__src", txt);
+        pyodide.globals.set("__path", "/rr/" + rel);
+        pyodide.runPython("arm_write(__path, __src)");
+        log("  " + rel + "  " + txt.length.toLocaleString() + " bytes");
+      }
+      pyodide.globals.set("__path", "/rr/reactive_replanning_ur12e/__init__.py");
+      pyodide.globals.set("__src", "");
+      pyodide.runPython("arm_write(__path, __src)");
+      var m = pyodide.runPython("arm_init(20260808)").toJs();
+      arm.start(m);
+      log("detector online: threshold " + m[2] + " foreign points, " + m[3] +
+          "-frame debounce, " + Math.round(1 / m[4]) + " Hz", "ok");
+    } catch (e) {
+      log("arm detector unavailable: " + String(e && e.message || e)
+          .split("\n").slice(-3).join(" | "), "err");
+    }
   }
 
   /* ---------- interaction ------------------------------------------- */
