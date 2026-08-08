@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=5258b549">
+<link rel="stylesheet" href="demo.css?v=2c027f69">
 </head>
 <body class="runner-page">
 
@@ -139,16 +139,34 @@
         plan is thrown away and re-run, and the controller keeps tracking whatever comes back &mdash;
         which is the entire point of the repository.
       </p>
+      <p class="chase__lede">
+        <strong>Swap the controller and chase again.</strong> Same planner, same costmap, same
+        cursor &mdash; only the thing following the plan changes, and they follow it differently
+        enough to feel it. Each one draws what it is actually looking at: the point Pure Pursuit
+        steers at, the point Stanley measures its cross-track error from, the band TEB is deforming.
+        Only DWA has a rollout fan, because only DWA scores a window of trajectories. MPPI is not
+        here &mdash; a tick costs about 580&nbsp;ms and this loop runs on the main thread, so it
+        would freeze the cursor instead of chasing it. It is in <a class="inline" href="#race">the
+        race</a>, where a worker absorbs that.
+      </p>
+      <p class="chase__key" id="chase-pick">
+        <span class="chase__pickl">Controller</span>
+        <button class="tbtn tbtn--sm er-src is-on" data-chaser="dwa" type="button">DWA</button>
+        <button class="tbtn tbtn--sm er-src" data-chaser="pure_pursuit" type="button">Pure Pursuit</button>
+        <button class="tbtn tbtn--sm er-src" data-chaser="stanley" type="button">Stanley</button>
+        <button class="tbtn tbtn--sm er-src" data-chaser="teb" type="button">TEB</button>
+        <button class="tbtn tbtn--sm" id="chase-reset" type="button">Clear the field</button>
+      </p>
       <p class="chase__key">
         <span><i class="kx kx--plan"></i>global plan</span>
         <span><i class="kx kx--fan"></i>rejected rollouts</span>
         <span><i class="kx kx--best"></i>committed trajectory</span>
+        <span><i class="kx kx--look"></i>what the controller is looking at</span>
         <span><i class="kx kx--infl"></i>inflation layer</span>
-        <button class="tbtn tbtn--sm" id="chase-reset" type="button">Clear the field</button>
       </p>
     </div>
     <div class="chase__stage">
-      <canvas id="chase" width="1204" height="616" aria-label="A robot that drives toward your cursor. A* plans the route and the DWA controller from the repository follows it. Click to add obstacles and watch it re-plan."></canvas>
+      <canvas id="chase" width="1204" height="616" aria-label="A robot that drives toward your cursor. A* plans the route and whichever local controller you pick follows it. Click to add obstacles and watch it re-plan."></canvas>
       <p class="chase__read" id="chase-read">move the cursor over the field &middot; click to drop an obstacle</p>
     </div>
   </section>
@@ -362,6 +380,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=1837520c" defer></script>
+<script src="demo.js?v=5adc6ecf" defer></script>
 </body>
 </html>

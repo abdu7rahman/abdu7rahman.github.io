@@ -883,7 +883,7 @@
     "                try: setattr(n, t.attr, ast.literal_eval(st.value))",
     "                except Exception: pass",
     "    return n",
-    "def chase_init(pmod, pcls, cmod, ccls, flat, h, w, res, radius):",
+    "def chase_init(pmod, pcls, cmod, ccls, kind, flat, h, w, res, radius):",
     "    # The whole stack, wired the way the launch file wires it: one global",
     "    # planner and one local controller sharing a costmap.",
     "    import numpy as np",
@@ -919,16 +919,95 @@
     "    c.cmd_pub = _Sink(); c.status_pub = _Sink()",
     "    c.replan_pub = _Sink('replan')",
     "    c._record_pose = lambda *a, **k: None",
-    "    c.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None)",
+    "    c.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None, debug=lambda *a, **k: None)",
+    "    # Every publisher the node makes, read out of its own source, plus a",
+    "    # clock. Only DWA got away without these: the chase runs a transcribed",
+    "    # loop for it, while every other controller runs its real _control_loop,",
+    "    # and that publishes markers -- which need a stamp and a topic to go to.",
+    "    import re as _re",
+    "    for _nm in set(_re.findall(r'self\\.(\\w+)\\s*=\\s*self\\.create_publisher', _SRC[cmod])):",
+    "        setattr(c, _nm, _Sink())",
+    "    _stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    c.get_clock = lambda: types.SimpleNamespace(now=lambda: _stamp)",
     "    _DWA.update(p=p, c=c, res=res, h=h, w=w, path=None, pose=(0.0, 0.0, 0.0),",
     "                replan=False)",
     "    # base_link resolves to the robot; map and odom are aligned",
     "    c._get_tf = lambda tgt, src: (_DWA['pose'] if 'base_link' in (tgt, src)",
     "                                  else (0.0, 0.0, 0.0))",
     "    p._get_tf = c._get_tf",
-    "    return [c.max_vel, c.max_yawrate, c.max_accel, c.max_dyawrate, c.dt,",
-    "            c.predict_time, c.goal_tol, c.wp_tol, c.lookahead_wps,",
-    "            [int(v) for v in g.ravel()]]",
+    "    _chase_viz(c, kind)",
+    "    # Only DWA has all of these. The rest of the panel reads whatever the",
+    "    # selected controller actually declares and leaves the other slots at",
+    "    # zero, rather than crashing on the first attribute it does not have.",
+    "    return [float(getattr(c, 'max_vel', 0.5)), float(getattr(c, 'max_yawrate', 1.5)),",
+    "            float(getattr(c, 'max_accel', 0.0)), float(getattr(c, 'max_dyawrate', 0.0)),",
+    "            float(getattr(c, 'dt', 0.1) or 0.1), float(getattr(c, 'predict_time', 0.0)),",
+    "            float(getattr(c, 'goal_tol', 0.15)), float(getattr(c, 'wp_tol', 0.0)),",
+    "            int(getattr(c, 'lookahead_wps', 0)), [int(v) for v in g.ravel()]]",
+    "_CH = {}",
+    "def _chase_viz(c, kind):",
+    "    # Each controller's most informative internal, captured at the point it",
+    "    # is computed. These wrap a getter rather than a marker publisher: the",
+    "    # value is what is wanted, and the node computes it either way, so the",
+    "    # control path is untouched.",
+    "    _CH.clear(); _CH['kind'] = kind; _CH['viz'] = []",
+    "    if kind == 'pure_pursuit' and hasattr(c, '_get_lookahead_point'):",
+    "        orig = c._get_lookahead_point",
+    "        def look(rx, ry, _o=orig):",
+    "            t = _o(rx, ry)",
+    "            _CH['viz'] = ['look', float(t.x), float(t.y)] if t is not None else []",
+    "            return t",
+    "        c._get_lookahead_point = look",
+    "    elif kind == 'stanley' and hasattr(c, '_get_closest_point'):",
+    "        orig = c._get_closest_point",
+    "        def near(rx, ry, _o=orig):",
+    "            out = _o(rx, ry)",
+    "            try:",
+    "                idx, err, _yaw = out",
+    "                p = c.current_path.poses[int(idx)].pose.position",
+    "                _CH['viz'] = ['near', float(p.x), float(p.y), float(err)]",
+    "            except Exception:",
+    "                _CH['viz'] = []",
+    "            return out",
+    "        c._get_closest_point = near",
+    "def chase_step_any(x, y, yaw, v, w_):",
+    "    # The node's own _control_loop, run unedited, with the pose and the",
+    "    # measured velocity fed in where the subscriptions would put them.",
+    "    #",
+    "    # DWA keeps the transcribed version above because the rollout fan is the",
+    "    # thing worth drawing and it only exists inside _score_trajectories.",
+    "    # Nothing else on this page has an equivalent, so nothing else needs it.",
+    "    import math",
+    "    d = _DWA; n = d['c']",
+    "    d['pose'] = (x, y, yaw)",
+    "    _CH['viz'] = []",
+    "    if not d['path'] or getattr(n, 'current_path', None) is None:",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 3, 0, []]",
+    "    n.current_pose = types.SimpleNamespace(x=x, y=y, yaw=yaw)",
+    "    n._get_robot_pose = lambda: (x, y, yaw)",
+    "    if isinstance(getattr(n, 'current_vel', None), dict):",
+    "        n.current_vel = {'v': v, 'omega': w_}",
+    "    n.cmd_pub.last = None",
+    "    try:",
+    "        n._control_loop()",
+    "    except Exception as e:",
+    "        # Report it rather than returning a silent zero: a controller that",
+    "        # cannot run should say why once, not look like a stalled robot.",
+    "        import traceback",
+    "        _CH['err'] = traceback.format_exc().strip().split(chr(10))[-1]",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 5, 0, ['err', _CH['err']]]",
+    "    wp = int(getattr(n, '_wp_idx', getattr(n, 'wp_idx', 0)) or 0)",
+    "    if getattr(n, 'goal_reached', False):",
+    "        return [0.0, 0.0, 0, 0, [], [], [], 1, wp, []]",
+    "    m = n.cmd_pub.last",
+    "    bv = float(getattr(m.linear, 'x', 0.0)) if m is not None else 0.0",
+    "    bw = float(getattr(m.angular, 'z', 0.0)) if m is not None else 0.0",
+    "    viz = _CH.get('viz') or []",
+    "    if _CH.get('kind') == 'teb':",
+    "        # TEB keeps its elastic band on the node, already in world metres.",
+    "        band = getattr(n, 'band', None) or []",
+    "        viz = ['band'] + [float(q) for pt in band for q in list(pt)[:2]]",
+    "    return [bv, bw, 0, 0, [], [], [], 0, wp, viz]",
     "def chase_remap(flat):",
     "    # An obstacle appeared. Re-inflate and hand both nodes the new costmap,",
     "    # which is all a fresh /local_costmap message does on the robot.",
@@ -1105,6 +1184,11 @@
         if (RACERS[i].file === DWA.file) continue;
         var rs = await fetchSource(RACERS[i].file);
         raceSrc[RACERS[i].file.replace(".py", "")] = rs.text;
+        // Also loaded here, not just handed to the worker: the chase lets you
+        // drive with any of these on the main thread.
+        pyodide.globals.set("__src", rs.text);
+        pyodide.globals.set("__name_", RACERS[i].file.replace(".py", ""));
+        pyodide.runPython("load_module(__name_, __src)");
         log(RACERS[i].file + "  " + rs.text.length.toLocaleString() + " bytes from " + rs.branch, "ok");
       }
       race.ready(BOOTSTRAP, raceSrc);
@@ -1211,7 +1295,7 @@
     var goal = { x: bot.x, y: bot.y }, have = false;
     var plan = [], fan = [], best = null, live = false;
     var lastCtl = 0, lastFrame = 0, lastPlan = 0, lastGate = 0, gate = 0;
-    var nTraj = 0, state = 3;
+    var nTraj = 0, state = 3, viz = [];
     var planMs = 0, planned = { x: 1e9, y: 1e9 }, drops = 0, dirty = false, broke = false;
     var CTL_MS = 100;                                 // overwritten with the node's own dt
 
@@ -1286,6 +1370,45 @@
         g.beginPath(); g.arc(tip[0], tip[1], 2.6, 0, 6.284); g.fill();
       }
 
+      // What the selected controller is actually looking at. Each one exposes
+      // something different and it is the most informative thing it has:
+      // the point Pure Pursuit is steering at, the point Stanley measures its
+      // cross-track error from, or the band TEB is deforming.
+      if (viz && viz.length) {
+        if (viz[0] === "look") {
+          var lp = toPx(viz[1], viz[2]);
+          var bp = toPx(bot.x, bot.y);
+          g.strokeStyle = C.accent; g.globalAlpha = 0.5; g.lineWidth = 1.2;
+          g.setLineDash([4, 4]);
+          g.beginPath(); g.moveTo(bp[0], bp[1]); g.lineTo(lp[0], lp[1]); g.stroke();
+          g.setLineDash([]); g.globalAlpha = 1;
+          g.strokeStyle = C.accent; g.lineWidth = 2;
+          g.beginPath(); g.arc(lp[0], lp[1], 6, 0, 6.284); g.stroke();
+        } else if (viz[0] === "near") {
+          var np = toPx(viz[1], viz[2]);
+          var rp = toPx(bot.x, bot.y);
+          g.strokeStyle = C.accent; g.globalAlpha = 0.75; g.lineWidth = 1.6;
+          g.beginPath(); g.moveTo(rp[0], rp[1]); g.lineTo(np[0], np[1]); g.stroke();
+          g.globalAlpha = 1;
+          g.fillStyle = C.accent;
+          g.beginPath(); g.arc(np[0], np[1], 3.4, 0, 6.284); g.fill();
+        } else if (viz[0] === "band" && viz.length > 4) {
+          g.strokeStyle = C.accent; g.globalAlpha = 0.8; g.lineWidth = 2;
+          g.beginPath();
+          for (var b = 1; b + 1 < viz.length; b += 2) {
+            var q2 = toPx(viz[b], viz[b + 1]);
+            b === 1 ? g.moveTo(q2[0], q2[1]) : g.lineTo(q2[0], q2[1]);
+          }
+          g.stroke();
+          g.fillStyle = C.accent;
+          for (var b2 = 1; b2 + 1 < viz.length; b2 += 2) {
+            var q3 = toPx(viz[b2], viz[b2 + 1]);
+            g.beginPath(); g.arc(q3[0], q3[1], 2.4, 0, 6.284); g.fill();
+          }
+          g.globalAlpha = 1;
+        }
+      }
+
       if (have) {                                     // goal crosshair at the cursor
         var gp = toPx(goal.x, goal.y);
         g.strokeStyle = state === 1 ? C.accent : C.signal; g.lineWidth = 1.4;
@@ -1349,13 +1472,21 @@
       if (ts - lastCtl >= CTL_MS) {
         lastCtl = ts;
         try {
+          // DWA runs the transcribed loop, because that is where the fan is.
+          // Everything else runs its own _control_loop untouched.
+          var fn = chaser.key === "dwa" ? "chase_step" : "chase_step_any";
           var out = pyodide.runPython(
-            "chase_step(" + bot.x + "," + bot.y + "," + bot.yaw + "," +
+            fn + "(" + bot.x + "," + bot.y + "," + bot.yaw + "," +
             bot.v + "," + bot.w + ")").toJs();
           bot.v = out[0]; bot.w = out[1]; nTraj = out[2]; state = out[7];
           best = [out[4], out[5]]; fan = out[6];
+          viz = out.length > 9 ? out[9] : [];
+          if (viz && viz[0] === "err" && !broke) {
+            broke = true;
+            log("chase controller " + chaser.file + ".py: " + viz[1], "err");
+          }
         } catch (e) {
-          bot.v = 0; bot.w = 0; fan = []; best = null; state = 5;
+          bot.v = 0; bot.w = 0; fan = []; best = null; viz = []; state = 5;
           if (!broke) {                              // once, not sixty times a second
             broke = true;
             log("controller stopped: " + String(e && e.message || e)
@@ -1367,7 +1498,7 @@
       var cr = Math.floor(bot.y / RES), cc = Math.floor(bot.x / RES);
       if (cr < 1 || cc < 1 || cr >= CH - 1 || cc >= CW - 1 || occ[cr * CW + cc]) {
         bot.x = CW * RES * 0.15; bot.y = CH * RES * 0.5;
-        bot.yaw = 0; bot.v = bot.w = 0; fan = []; best = null; plan = []; dirty = true;
+        bot.yaw = 0; bot.v = bot.w = 0; fan = []; best = null; viz = []; plan = []; dirty = true;
       }
 
       paint();
@@ -1386,7 +1517,8 @@
                 : state === 5
                   ? "controller stopped  ·  see the console below"
                   : "A* " + (plan.length / 2 | 0) + " pts in " + planMs.toFixed(1) +
-                    " ms  ·  DWA scoring " + nTraj + " rollouts  ·  v " +
+                    " ms  ·  " + (nTraj ? "DWA scoring " + nTraj + " rollouts"
+                                            : chase.current().label) + "  ·  v " +
                     bot.v.toFixed(2) + " m/s  w " + (bot.w >= 0 ? "+" : "") +
                     bot.w.toFixed(2) + " rad/s  ·  " + d.toFixed(2) + " m out";
     }
@@ -1427,15 +1559,46 @@
     }, { passive: false });
     cvc.addEventListener("mouseleave", function () { have = false; });
 
+    // Which controller is driving. MPPI is deliberately absent: one tick is
+    // ~580 ms and the chase runs its controller on the main thread at the
+    // node's own rate, so it would freeze the cursor rather than track it.
+    // It is in the race instead, where a worker absorbs the cost.
+    var CHASERS = [
+      { key: "dwa", file: "dwa_controller", cls: "DWAControllerNode", label: "DWA" },
+      { key: "pure_pursuit", file: "pure_pursuit_controller", cls: "PurePursuitControllerNode", label: "Pure Pursuit" },
+      { key: "stanley", file: "stanley_controller", cls: "StanleyControllerNode", label: "Stanley" },
+      { key: "teb", file: "teb_controller", cls: "TEBControllerNode", label: "TEB" }
+    ];
+    var chaser = CHASERS[0];
+
+    function initController() {
+      pyodide.globals.set("__occ", Array.from(occ));
+      var meta = pyodide.runPython(
+        "chase_init('astar_planner','" + MODULES.astar.cls + "','" + chaser.file + "','" +
+        chaser.cls + "','" + chaser.key + "', list(__occ.to_py()) if hasattr(__occ,'to_py') " +
+        "else list(__occ), " + CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
+      CTL_MS = Math.round(meta[4] * 1000) || 100;      // the node's own dt
+      cost = meta[9];
+      return meta;
+    }
+
     return {
+      CHASERS: CHASERS,
+      // Swapping controller rebuilds it against the current costmap and forces
+      // a fresh plan, because the new one has its own idea of where it is on
+      // the path and inheriting the old index would start it mid-route.
+      select: function (key) {
+        var next = CHASERS.filter(function (c) { return c.key === key; })[0];
+        if (!next || next === chaser) return null;
+        chaser = next;
+        var meta = initController();
+        plan = []; fan = []; best = null; viz = []; dirty = true;
+        bot.v = bot.w = 0;
+        return meta;
+      },
+      current: function () { return chaser; },
       start: function () {
-        pyodide.globals.set("__occ", Array.from(occ));
-        var meta = pyodide.runPython(
-          "chase_init('astar_planner','" + MODULES.astar.cls + "','dwa_controller','" +
-          DWA.cls + "', list(__occ.to_py()) if hasattr(__occ,'to_py') else list(__occ), " +
-          CH + ", " + CW + ", " + RES + ", " + INFLATE + ")").toJs();
-        CTL_MS = Math.round(meta[4] * 1000);           // the node's own dt
-        cost = meta[9];
+        var meta = initController();
         live = true; paint(); requestAnimationFrame(step);
         return meta;
       },
@@ -1457,6 +1620,18 @@
       var rb = document.getElementById("chase-reset");
       if (rb) rb.addEventListener("click", function () {
         chase.reset(); log("field cleared");
+      });
+      document.querySelectorAll("[data-chaser]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var key = b.getAttribute("data-chaser");
+          var cm = chase.select(key);
+          if (!cm) return;
+          document.querySelectorAll("[data-chaser]").forEach(function (o) {
+            o.classList.toggle("is-on", o === b);
+          });
+          log("chase controller: " + chase.current().file + ".py at " +
+              Math.round(1 / cm[4]) + " Hz  (v_max " + cm[0].toFixed(2) + " m/s)", "ok");
+        });
       });
     } catch (e) { log("chase unavailable: " + e.message, "err"); }
   }
