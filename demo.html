@@ -253,14 +253,17 @@
         of seven joint velocities plus a gripper command, plotted below.
       </p>
       <p class="chase__lede chase__lede--note">
-        <strong>You need a server for this one.</strong> On a GPU box,
-        <code>uv run scripts/serve_policy.py --env DROID</code> and point <code>data-server</code> at
-        it. With no GPU, <code>python3 tools/stub_policy_server.py</code> speaks the same protocol
-        with synthetic actions, so the client can be checked without one &mdash; it says so in its
+        <strong>You need a server for this one.</strong>
+        <code>uv run scripts/serve_policy.py --env DROID</code>, then point <code>data-server</code>
+        at it. A GPU is the fast path, not the only one &mdash; openpi ships PyTorch versions of
+        &pi;0 and &pi;0.5 and the server takes them the same way, so it runs on CPU too, slowly and
+        with enough RAM to hold the weights. If you have neither,
+        <code>python3 tools/stub_policy_server.py</code> speaks the same protocol with synthetic
+        actions so the client can still be checked &mdash; it declares itself synthetic in its
         metadata and this page prints that, because a plot of made-up numbers should not be able to
-        pass for a policy. Note the joint state below is a plausible rest pose to perturb, not a
-        measurement, and the two camera views are the same image, which a real DROID cell would not
-        send.
+        pass for a policy. Two other things this page is not pretending about: the joint state below
+        is a plausible rest pose to perturb rather than a measurement, and both camera views are the
+        same image, which a real DROID cell would not send.
       </p>
       <p class="chase__key">
         <button class="tbtn tbtn--sm er-src is-on" id="pi-src-arm" type="button">The arm cell</button>
