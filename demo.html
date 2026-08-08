@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=081aa0cb">
+<link rel="stylesheet" href="demo.css?v=e966796f">
 </head>
 <body class="runner-page">
 
@@ -34,21 +34,23 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Four things on this page, and none of them are a recording. Your browser downloads the Python
+      Five things on this page, and none of them are a recording. Four of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
       <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>
       and executes it here, unmodified — ROS is stubbed at the import boundary and nothing below it is
       touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
-      way; race all five of the package's local controllers over one plan; then reach into a UR12e's
-      workspace and find out where it stops seeing you.
+      way; race all five of the package's local controllers over one plan; reach into a UR12e's
+      workspace and find out where it stops seeing you. The fifth is not mine and does not run here
+      &mdash; it asks Gemini Robotics-ER what it sees, over the network, and draws the answer.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
+      <li><a href="#policy">Ask a robot model</a><span>Gemini Robotics-ER, over the network</span></li>
     </ol>
   </header>
 
@@ -227,12 +229,64 @@
     </div>
   </section>
 
+  <!-- data-proxy is the Worker `wrangler deploy` prints. See worker/README.md.
+       Leave it empty and the section says so rather than failing silently. -->
+  <section class="chase" id="policy" data-proxy="">
+    <div class="chase__head">
+      <p class="panel__label">A real policy, live</p>
+      <h2 class="chase__title">Ask a robot model</h2>
+      <p class="chase__lede">
+        Everything above this point is my code, running locally. This one is not mine and does not run
+        here: it is <a class="inline" href="https://ai.google.dev/gemini-api/docs/robotics-overview" target="_blank" rel="noopener">Gemini
+        Robotics-ER</a>, Google DeepMind's embodied-reasoning model, answering over the network about
+        an image you give it. Show it a scene and it returns image coordinates &mdash; where to point,
+        what to grasp, what order to do things in. That is the layer above a VLA: it decides
+        <em>where</em> and <em>what</em>, and something like &pi;0.5 turns that into joint commands.
+      </p>
+      <p class="chase__lede">
+        <strong>Give it the arm cell above, your camera, or a file.</strong> The points come back
+        normalised to 0&ndash;1000 and get drawn where the model put them. The raw response is printed
+        underneath, so you can see it is the model's answer and not mine.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        This is the one thing on the page that leaves your browser. The image and prompt go to a
+        Cloudflare Worker that holds the API key and forwards to Google &mdash; a static site has
+        nowhere safe to keep a key, so it does not have one.
+        <a class="inline" href="https://github.com/abdu7rahman/portfolio/tree/main/worker" target="_blank" rel="noopener">The
+        Worker is 90 lines and in the repo</a>; it pins one model, locks to this origin and caps the
+        body size. Nothing is stored. If you would rather not, skip this section &mdash; nothing else
+        on the page sends anything anywhere.
+      </p>
+      <p class="chase__key" id="policy-key">
+        <button class="tbtn tbtn--sm er-src is-on" id="er-src-arm" type="button">The arm cell</button>
+        <button class="tbtn tbtn--sm er-src" id="er-src-cam" type="button">My camera</button>
+        <button class="tbtn tbtn--sm er-src" id="er-src-file" type="button">A file</button>
+        <input type="file" id="er-file" accept="image/*" hidden>
+        <button class="tbtn tbtn--sm" id="er-ask" type="button">Ask it</button>
+      </p>
+      <p class="chase__key">
+        <label class="er-task">
+          <span>Task</span>
+          <input type="text" id="er-prompt" value="Point at every object a robot arm could pick up."
+                 aria-label="What to ask the model">
+        </label>
+      </p>
+    </div>
+    <div class="chase__stage">
+      <canvas id="er-canvas" width="1204" height="560" aria-label="An image with the points Gemini Robotics-ER returned drawn on it."></canvas>
+      <p class="chase__read" id="er-read">pick a source and ask</p>
+    </div>
+    <pre id="er-raw" class="log log--raw" aria-live="polite">the model's raw response will appear here</pre>
+  </section>
+
   <section class="console">
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      Everything above runs client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>.
-      Nothing is sent anywhere. The source shown in the log is fetched live from
+      The four demos run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask a robot
+      model</a>, which has to reach Google to reach the model, and only when you press the button.
+      The source shown in the log is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page.
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
         Read the source <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a>
@@ -248,6 +302,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=7d230f1f" defer></script>
+<script src="demo.js?v=f0e882b0" defer></script>
 </body>
 </html>
