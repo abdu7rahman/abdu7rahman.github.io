@@ -1,57 +1,74 @@
 /* ============================================================
    Mohammed Abdul Rahman — portfolio
-   Warm paper, ink, one signal colour. Hairlines instead of cards.
+
+   Near-white and near-black, one blue, the system font, and surfaces that
+   float rather than rules that divide. The warm-paper, Fraunces-and-mono
+   editorial identity this replaced was a printed page rendered in a browser;
+   this is software.
    ============================================================ */
 
 :root {
-  /* Warm sand, warm ink, one clay signal and one pine accent.
-     Checked, not eyeballed: ink 11.7:1, ink-2 7.5:1, ink-3 5.4:1 and signal
-     5.1:1 on paper, and signal-to-accent holds dE 59 in normal vision, 62
-     under deuteranopia, 48 under protanopia. */
+  /* Neutrals with no temperature: the page is the absence of colour, and the
+     one hue is spent on the thing you can act on. Checked rather than picked --
+     see the contrast table in tools/check_contrast.py. */
 
   /* surfaces */
-  --paper:    #efe7d6;
-  --paper-2:  #e3d9c4;   /* recessed band */
-  --paper-3:  #f6efe0;   /* raised, used sparingly */
+  --paper:    #fbfbfd;   /* the page */
+  --paper-2:  #f5f5f7;   /* a recessed band, where cards sit */
+  --paper-3:  #ffffff;   /* a card, raised off the band */
 
   /* ink */
-  --ink:      #2c2a23;
-  --ink-2:    #3d4a47;
-  --ink-3:    #565f5a;
+  --ink:      #1d1d1f;
+  --ink-2:    #424245;
+  --ink-3:    #6e6e73;
 
-  /* structure — the ink hairline at 8% and 14% over paper, precomputed */
-  --rule:     #e1d8c7;
-  --rule-2:   #d6cdbc;
+  /* structure. Hairlines survive, but they separate far less than they did:
+     most grouping is a surface now, not a line. */
+  --rule:     #e8e8ed;
+  --rule-2:   #d2d2d7;
 
-  /* dominant + accent */
-  --signal:   #9a4a26;
-  --signal-w: #ecdccb;   /* signal at 12% over paper, precomputed */
-  --accent:   #3f6b57;
-  --sun:      #d6b27c;   /* a warm fill, never text */
+  /* One accent, and it means "you can act on this". Nothing decorative is
+     ever this colour. */
+  --signal:   #0066cc;
+  --signal-w: #e8f2fd;   /* the accent at 8%, precomputed */
+  --accent:   #007a3d;   /* the second categorical, charts only */
+  --sun:      #ff9500;   /* a fill, never text */
 
-  /* the one dark surface: the console, and the demo's camera plate */
-  --night:     #0f1a18;
-  --night-2:   #172420;
-  --night-ink: #cdc5b8;
-  --night-mut: #9ba59f;
+  /* True black, not a dark grey. Apple's dark bands are #000 so an OLED
+     panel actually switches the pixels off, and so the plate has no edge. */
+  --night:     #000000;
+  --night-2:   #1d1d1f;
+  --night-ink: #f5f5f7;
+  --night-mut: #86868b;
 
-  --rail-w:   232px;
-  --gutter:   28px;
-  --maxw:     1180px;
+  /* Depth. Three levels, each a soft wide shadow at low opacity rather than a
+     tight dark one -- a big surface reads as thicker than a small one, which
+     is what the blur radius encodes. */
+  --lift-1: 0 1px 3px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .04);
+  --lift-2: 0 2px 6px rgba(0, 0, 0, .05), 0 12px 32px rgba(0, 0, 0, .07);
+  --lift-3: 0 4px 10px rgba(0, 0, 0, .06), 0 24px 56px rgba(0, 0, 0, .10);
 
-  /* Radius scale. Everything used to be 2px, which is a sharp editorial corner
-     and reads as a printed rule rather than as software. The scale is by role,
-     not by size: things you press are pills, because a fully rounded end says
-     "press me" at a glance and that is the whole job of the shape; surfaces get
-     a generous radius; small marks get just enough to stop being pixel-sharp. */
-  --r-pill: 999px;   /* buttons, chips -- anything pressable */
-  --r-lg:   14px;    /* surfaces: callouts, figures, canvases, the console */
-  --r-md:   10px;    /* grouped controls, like the segmented strip */
-  --r-sm:   6px;     /* swatches, inline code */
+  --nav-h:    52px;
+  --gutter:   24px;
+  --maxw:     1024px;   /* Apple's readable measure, not a full-bleed column */
 
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --serif: "Fraunces", Georgia, "Times New Roman", serif;
-  --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Radius by role. Pills for anything pressable, because a fully rounded end
+     says "press me" at a glance; a generous radius for surfaces; just enough
+     on small marks to stop them being pixel-sharp. */
+  --r-pill: 980px;
+  --r-xl:   18px;    /* large cards */
+  --r-lg:   12px;    /* figures, the console, canvases */
+  --r-sm:   8px;     /* swatches, inline code */
+
+  /* The system font, everywhere. It already ships optical sizing, tracking
+     tables and legibility tuning, it is the face the reader's own OS is set
+     in, and dropping the three webfonts took three render-blocking requests
+     off the critical path with it. */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+          "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+  --serif: var(--sans);   /* kept so nothing referencing it breaks */
 
   /* Motion tokens. Built-in CSS easings are too weak for UI; these are the
      curves from Emil Kowalski's animation guidance, not hand-rolled. */
@@ -77,21 +94,26 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.65;
+  /* 17px is the size this whole system is drawn at, and -.022em is the
+     tracking that size wants -- body copy is the one place people assume
+     tracking should be zero, and at 17px in a grotesk it should be slightly
+     tight or the words come apart. */
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -.022em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Fraunces carries an optical-size axis and a WONK axis that swaps in the
-   splayed leg forms. Both are worth spending at display sizes and worth
-   turning off at small ones, so they are set per level rather than globally. */
+/* Tracking is size-specific, which for headings means the bigger it gets the
+   tighter it goes. Weight carries the emphasis instead of a second family. */
 h1, h2, h3 {
-  font-family: var(--serif); font-weight: 400; margin: 0;
-  letter-spacing: -.018em;
-  font-variation-settings: "opsz" 96, "SOFT" 24, "WONK" 1;
+  font-family: var(--sans); font-weight: 700; margin: 0;
+  line-height: 1.06;
+  letter-spacing: -.028em;
 }
-h3 { font-variation-settings: "opsz" 28, "SOFT" 12, "WONK" 0; letter-spacing: -.01em; }
+h2 { letter-spacing: -.024em; }
+h3 { font-weight: 600; line-height: 1.16; letter-spacing: -.018em; }
 p { margin: 0; }
 a { color: inherit; }
 
@@ -108,74 +130,80 @@ a { color: inherit; }
 .skip {
   position: absolute; left: -9999px; top: 0; z-index: 99;
   background: var(--ink); color: var(--paper);
-  padding: 12px 20px; font: 500 13px/1 var(--mono);
+  padding: 12px 20px; font: 500 15px/1 var(--sans); border-radius: var(--r-sm);
 }
 .skip:focus { left: 12px; top: 12px; }
 
 /* ── shell ─────────────────────────────────────────────────── */
-.shell { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+/* One column. The 232px left rail is gone: a permanent sidebar spends a fifth
+   of the window on navigation nobody uses twice, and it forces the content
+   into a narrow off-centre strip. The nav is a bar over the top now, and the
+   content gets the middle of the page. */
+.shell { display: block; }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 0 var(--gutter);
   max-width: var(--maxw);
-  padding-inline: clamp(24px, 5vw, 80px);
+  margin-inline: auto;
+  padding-inline: clamp(22px, 5vw, 40px);
 }
 
-/* ── left rail ─────────────────────────────────────────────── */
+/* ── top bar ───────────────────────────────────────────────── */
+/* Translucent chrome with the page scrolling underneath it, rather than an
+   opaque strip that permanently costs 52px of window. The saturate() is what
+   keeps colour alive through the blur instead of going milky. */
 .rail {
-  position: sticky; top: 0; align-self: start;
-  height: 100vh;
-  display: flex; flex-direction: column;
-  padding: 44px 0 36px clamp(20px, 3vw, 40px);
-  border-right: 1px solid var(--rule);
+  position: sticky; top: 0; z-index: 40;
+  height: var(--nav-h);
+  display: flex; align-items: center; gap: 28px;
+  padding: 0 clamp(22px, 5vw, 40px);
+  background: rgba(251, 251, 253, .72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+/* A scroll edge, not a divider: a fade where the content passes beneath says
+   "this is in front" without drawing a line the layout does not have. */
+.rail::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, .05), transparent);
 }
 
-.mark { text-decoration: none; display: inline-flex; align-items: center; gap: 12px; }
+.rail__top { flex: none; }
+.mark { text-decoration: none; display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .mark__initials {
-  font: 600 13px/1 var(--mono); letter-spacing: .22em; color: var(--ink);
+  font: 600 15px/1 var(--sans); letter-spacing: -.01em; color: var(--ink);
 }
-.mark__rule { display: block; width: 26px; height: 1px; background: var(--signal); }
+.mark__rule { display: none; }
 
-.rail__nav { margin-top: 56px; flex: 1; }
-.rail__nav ol { list-style: none; margin: 0; padding: 0; }
-.rail__nav li + li { margin-top: 2px; }
+.rail__nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.rail__nav::-webkit-scrollbar { display: none; }
+.rail__nav ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
 
 .rail__nav a {
-  display: grid; grid-template-columns: 26px 1fr; align-items: baseline; gap: 10px;
-  padding: 7px 14px 7px 0;
+  display: block; white-space: nowrap;
+  padding: 7px 11px; border-radius: var(--r-pill);
   text-decoration: none;
-  color: var(--ink-3);
-  transition: color .18s var(--ease);
-  position: relative;
+  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
+  color: var(--ink-2);
+  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
 }
-.rail__nav .num { font: 400 10px/1.6 var(--mono); letter-spacing: .1em; }
-.rail__nav .lbl {
-  font: 500 13px/1.6 var(--mono); letter-spacing: .04em;
-}
-.rail__nav a::before {
-  content: ""; position: absolute; left: calc(-1 * clamp(20px, 3vw, 40px)); top: 50%;
-  width: 0; height: 1px; background: var(--signal);
-  transform: translateY(-50%);
-  transition: width .22s var(--ease);
-}
-.rail__nav a:hover { color: var(--ink); }
-.rail__nav a:hover::before { width: 12px; }
+/* The numbers were a print affectation. A nav item should say where it goes. */
+.rail__nav .num { display: none; }
+.rail__nav .lbl { font: inherit; letter-spacing: inherit; }
+.rail__nav a[aria-current="true"] { color: var(--ink); background: rgba(0, 0, 0, .06); }
 
-.rail__nav a[aria-current="true"] { color: var(--signal); }
-.rail__nav a[aria-current="true"] .num { color: var(--signal); }
-.rail__nav a[aria-current="true"]::before { width: clamp(14px, 2.4vw, 28px); }
-
-.rail__foot { display: flex; flex-direction: column; gap: 4px; }
+.rail__foot { display: flex; gap: 2px; flex: none; }
 .icolink {
-  display: inline-flex; align-items: center; gap: 9px;
-  font: 400 12px/1 var(--mono); letter-spacing: .04em;
-  color: var(--ink-3); text-decoration: none;
-  padding: 6px 0;
-  transition: color .18s var(--ease);
+  display: inline-flex; align-items: center; gap: 7px;
+  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
+  color: var(--ink-2); text-decoration: none;
+  padding: 7px 11px; border-radius: var(--r-pill);
+  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
 }
-.icolink:hover { color: var(--signal); }
+.icolink span { display: none; }   /* the mark is the label at this size */
 
 /* ── icons ─────────────────────────────────────────────────── */
 .ico { width: 18px; height: 18px; flex: none; display: block; }
@@ -183,79 +211,104 @@ a { color: inherit; }
 .ico--link { width: 15px; height: 15px; }
 
 /* ── hero ──────────────────────────────────────────────────── */
-.hero { padding: clamp(72px, 13vh, 148px) 0 clamp(64px, 10vh, 112px); }
+/* Centred, and everything in one column. The old hero put the name in an
+   eight-column block with a four-column table of facts alongside it, which is
+   a magazine spread -- two things competing at the top of the page. One
+   centred column has an order: name, sentence, the things you can press. */
+.hero { padding: clamp(56px, 11vh, 116px) 0 clamp(48px, 8vh, 88px); text-align: center; }
 
 .hero__eyebrow {
   grid-column: 1 / -1;
-  font: 500 11px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase;
+  font: 600 15px/1.3 var(--sans); letter-spacing: -.01em; text-transform: none;
   color: var(--signal);
-  padding-bottom: 26px;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: 40px;
+  margin-bottom: 12px;
 }
 
+/* The size ceiling is high on purpose. This is the one piece of display type
+   on the page and it should be unambiguously the first thing read; -.03em is
+   the tracking that size wants, since letters read too far apart as they grow. */
 .hero__name {
-  grid-column: 1 / 9;
-  font-size: clamp(2.9rem, 6.6vw, 5.4rem);
-  line-height: .96;
-  letter-spacing: -.028em;
+  grid-column: 1 / -1;
+  font-size: clamp(2.75rem, 7.4vw, 5.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -.03em;
 }
 
 .hero__lede {
-  grid-column: 1 / 7;
-  margin-top: 34px;
-  font-size: 1.0625rem;
+  grid-column: 1 / -1;
+  margin: 22px auto 0;
+  font-size: clamp(1.0625rem, 1.6vw, 1.3125rem);
+  line-height: 1.42;
+  letter-spacing: -.018em;
   color: var(--ink-2);
-  max-width: 54ch;
+  max-width: 34ch;
 }
 
+/* The facts read as a quiet caption row under the actions rather than as a
+   second table beside the name. */
 .hero__meta {
-  grid-column: 9 / 13;
-  margin: 12px 0 0;
-  align-self: end;
+  grid-column: 1 / -1;
+  margin: 44px 0 0;
+  /* A grid, not wrapping flex: four items in a flex row broke 3 + 1 and the
+     lone one centred under the gap, which reads as a mistake. A grid keeps the
+     columns even at every step -- 4, then 2, then 1, all of which divide 4. */
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px 24px;
 }
-.hero__meta > div { padding: 11px 0; border-top: 1px solid var(--rule); }
-.hero__meta > div:last-child { border-bottom: 1px solid var(--rule); }
+.hero__meta > div { padding: 0; border: 0; }
 .hero__meta dt {
-  font: 500 10px/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+  font: 400 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
   color: var(--ink-3);
 }
 .hero__meta dd {
-  margin: 3px 0 0; font-size: .9375rem; color: var(--ink);
-  display: flex; align-items: center; gap: 7px;
+  margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--ink);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
 }
-.hero__meta .ico { color: var(--signal); }
+.hero__meta .ico { color: var(--ink-3); }
 
 .hero__actions {
-  grid-column: 1 / 9;
-  display: flex; flex-wrap: wrap; gap: 12px;
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
   margin-top: 42px;
 }
 
 .btn {
   display: inline-flex; align-items: center; gap: 10px;
-  padding: 14px 24px;
-  border: 1px solid var(--rule-2);
+  padding: 12px 22px;
+  border: 1px solid var(--signal);
   background: transparent;
-  color: var(--ink);
-  font: 500 14px/1 var(--sans); letter-spacing: -.01em;
+  /* The blue is the accent and the accent means "actionable", so a button is
+     blue whether or not it is the filled one. Grey-bordered buttons made the
+     primary action fight three lookalikes. */
+  color: var(--signal);
+  font: 400 17px/1.24 var(--sans); letter-spacing: -.022em;
   text-decoration: none;
   border-radius: var(--r-pill);
-  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
+  transition: background var(--dur-hover) var(--ease),
+              border-color var(--dur-hover) var(--ease),
+              color var(--dur-hover) var(--ease),
+              opacity var(--dur-hover) var(--ease);
 }
-.btn:hover { border-color: var(--ink); background: var(--paper-3); }
-.btn--solid { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.btn--solid:hover { background: var(--signal); border-color: var(--signal); color: #fff; }
+.btn .ico { color: currentColor; }
+.btn:hover { background: var(--signal-w); }
+.btn--solid { background: var(--signal); border-color: var(--signal); color: #fff; }
+.btn--solid:hover { background: #0055b3; border-color: #0055b3; color: #fff; opacity: 1; }
 
 /* ── sections ──────────────────────────────────────────────── */
-.sec { padding: clamp(64px, 9vh, 104px) 0; border-top: 1px solid var(--rule); }
+/* No rule between sections. A band of a different surface, or simply the
+   space, is what separates them -- a full-width hairline every 700px is the
+   editorial habit this design dropped. The Work section gets the recessed
+   band, because that is where the cards sit and a card needs something to be
+   raised off. */
+.sec { padding: clamp(72px, 10vh, 128px) 0; }
 .sec--band { background: var(--paper-2); }
+#work { background: var(--paper-2); }
 .sec--end { padding-bottom: 0; }
 
 .sec__label { grid-column: 1 / 4; position: sticky; top: 44px; align-self: start; }
 .sec__label .tag {
   display: block;
-  font: 500 10px/1 var(--mono); letter-spacing: .18em; color: var(--signal);
+  font: 600 13px/1 var(--sans); letter-spacing: -.01em; color: var(--signal);
   margin-bottom: 14px;
 }
 .sec__label h2 { font-size: 1.75rem; line-height: 1.15; }
@@ -268,33 +321,34 @@ a { color: inherit; }
 .lead { font-size: 1.0625rem; color: var(--ink-2); max-width: 62ch; margin-bottom: 44px; }
 
 /* ── projects ──────────────────────────────────────────────── */
-.projects { list-style: none; margin: 0; padding: 0; }
+/* Cards on a band, not rows separated by rules. A rule says "these are two
+   entries in a list"; a raised surface says "this is a thing", which is what
+   each of these is. The lift is small at rest and grows on hover, so the card
+   answers a pointer by coming toward it. */
+.projects { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 
 .proj {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 172px;
+  grid-template-columns: 32px minmax(0, 1fr) 172px;
   gap: 0 24px;
-  padding: 30px 20px 30px 0;
-  border-top: 1px solid var(--rule);
+  padding: 28px 28px 30px;
+  background: var(--paper-3);
+  border-radius: var(--r-xl);
+  box-shadow: var(--lift-1);
   position: relative;
-  transition: background .2s var(--ease);
+  transition: box-shadow var(--dur-move) var(--ease),
+              transform var(--dur-move) var(--ease);
 }
-.proj:last-child { border-bottom: 1px solid var(--rule); }
-.proj::before {
-  content: ""; position: absolute; left: 0; top: -1px; height: 1px; width: 0;
-  background: var(--signal);
-  transition: width .3s var(--ease);
+@media (hover: hover) and (pointer: fine) {
+  .proj:hover { box-shadow: var(--lift-2); transform: translateY(-2px); }
 }
-.proj:hover { background: var(--paper-3); }
-.proj:hover::before { width: 100%; }
 
 .proj__idx {
-  font: 400 11px/1.9 var(--mono); letter-spacing: .1em; color: var(--ink-3);
-  padding-top: 4px;
+  font: 400 15px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-3);
+  padding-top: 7px;
 }
-.proj:hover .proj__idx { color: var(--signal); }
 
-.proj__title { font-size: 1.3125rem; line-height: 1.25; }
+.proj__title { font-size: 1.5rem; line-height: 1.2; }
 .proj__title a {
   text-decoration: none;
   display: inline-flex; align-items: baseline; gap: 8px;
@@ -306,11 +360,11 @@ a { color: inherit; }
 .proj__title .ico--link { transition: transform .22s var(--ease); align-self: center; }
 .proj__title a:hover .ico--link { transform: translate(2px, -2px); }
 
-.proj__desc { margin-top: 10px; color: var(--ink-2); font-size: .9375rem; max-width: 62ch; }
+.proj__desc { margin-top: 12px; color: var(--ink-2); font-size: 16px; line-height: 1.45; max-width: 62ch; }
 
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
 .chips li {
-  font: 400 11px/1 var(--mono); letter-spacing: .04em;
+  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
   color: var(--ink-3);
   border: 1px solid var(--rule-2);
   padding: 6px 11px;
@@ -320,7 +374,7 @@ a { color: inherit; }
 .demo {
   display: inline-flex; align-items: center; gap: 7px;
   margin-top: 16px;
-  font: 500 12px/1 var(--mono); letter-spacing: .04em;
+  font: 400 15px/1 var(--sans); letter-spacing: -.015em;
   color: var(--signal); text-decoration: none;
   border-bottom: 1px solid transparent;
   padding-bottom: 2px;
@@ -332,12 +386,13 @@ a { color: inherit; }
 .proj__stats > div { padding: 7px 0; border-top: 1px solid var(--rule); }
 .proj__stats > div:first-child { border-top: 0; padding-top: 0; }
 .proj__stats dt {
-  font: 400 9.5px/1.4 var(--mono); letter-spacing: .13em; text-transform: uppercase;
+  font: 400 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
   color: var(--ink-3);
 }
 .proj__stats dd {
-  margin: 1px 0 0;
-  font-family: var(--serif); font-size: 1.375rem; line-height: 1.15;
+  margin: 2px 0 0;
+  font-size: 1.5rem; font-weight: 600; line-height: 1.15;
+  letter-spacing: -.022em;
   font-variant-numeric: tabular-nums;
 }
 .proj__stats .unit { font-family: var(--mono); font-size: .8125rem; margin-left: 2px; color: var(--ink-3); }
@@ -346,18 +401,18 @@ a { color: inherit; }
 .bench { margin: 0 0 48px; }
 .bench__cap { margin-bottom: 16px; }
 .bench__cap h3 { font-size: 1.1875rem; }
-.bench__cap p { font: 400 12px/1.5 var(--mono); color: var(--ink-3); margin-top: 4px; }
+.bench__cap p { font: 400 14px/1.45 var(--sans); letter-spacing: -.016em; color: var(--ink-3); margin-top: 5px; }
 
 .bench__table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .bench__table th, .bench__table td { text-align: left; padding: 11px 14px 11px 0; }
 .bench__table thead th {
-  font: 500 9.5px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+  font: 500 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
   color: var(--ink-3);
   border-bottom: 1px solid var(--rule-2);
   padding-bottom: 8px;
 }
 .bench__table tbody th {
-  font: 500 13px/1.4 var(--mono); letter-spacing: .02em; color: var(--ink);
+  font: 500 14px/1.4 var(--sans); letter-spacing: -.016em; color: var(--ink);
 }
 .bench__table tbody th .sub {
   display: block; font-weight: 400; font-size: 10.5px; color: var(--ink-3); letter-spacing: .04em;
@@ -382,7 +437,7 @@ a { color: inherit; }
 .legend { list-style: none; display: flex; gap: 16px; margin: 10px 0 0; padding: 0; }
 .legend li {
   display: inline-flex; align-items: center; gap: 7px;
-  font: 400 11px/1 var(--mono); letter-spacing: .06em; color: var(--ink-2);
+  font: 400 13px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-2);
 }
 .sw { width: 11px; height: 11px; border-radius: 3px; display: block; }
 .sw--py  { background: var(--accent); }
@@ -417,7 +472,7 @@ a.inline:hover { border-color: var(--signal); }
 }
 .stack > div:last-child { border-bottom: 1px solid var(--rule); }
 .stack dt {
-  font: 500 10px/1.7 var(--mono); letter-spacing: .15em; text-transform: uppercase;
+  font: 500 13px/1.5 var(--sans); letter-spacing: -.01em; text-transform: none;
   color: var(--signal);
 }
 .stack dd { margin: 0; font-size: .9375rem; color: var(--ink-2); }
@@ -430,14 +485,14 @@ a.inline:hover { border-color: var(--signal); }
 }
 .path > li:last-child { border-bottom: 1px solid var(--rule); }
 .path__when {
-  font: 500 12px/1.7 var(--mono); letter-spacing: .06em; color: var(--ink-3);
+  font: 400 15px/1.5 var(--sans); letter-spacing: -.015em; color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 .path__what h3 { font-size: 1.125rem; line-height: 1.35; }
 .path__what .at { color: var(--signal); }
 .path__what p { margin-top: 8px; font-size: .9375rem; color: var(--ink-2); max-width: 64ch; }
 .path__roles {
-  font: 400 11.5px/1.6 var(--mono) !important; letter-spacing: .02em;
+  font: 400 15px/1.5 var(--sans) !important; letter-spacing: -.015em;
   color: var(--ink-3) !important; margin-top: 6px !important;
 }
 
@@ -451,7 +506,7 @@ a.inline:hover { border-color: var(--signal); }
   display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; align-items: center; gap: 14px;
   padding: 17px 4px;
   text-decoration: none;
-  font: 400 14px/1 var(--mono); letter-spacing: .02em;
+  font: 400 17px/1 var(--sans); letter-spacing: -.022em;
   color: var(--ink);
   transition: padding .22s var(--ease), color .18s var(--ease), background .18s var(--ease);
 }
@@ -467,14 +522,13 @@ a.inline:hover { border-color: var(--signal); }
 .foot .grid { padding-block: 26px; }
 .foot__l { grid-column: 1 / 7; }
 .foot__r { grid-column: 7 / 13; text-align: right; color: var(--ink-3); }
-.foot p { font: 400 11.5px/1 var(--mono); letter-spacing: .06em; color: var(--ink-3); }
+.foot p { font: 400 13px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-3); }
 
 /* ── responsive ────────────────────────────────────────────── */
 @media (max-width: 1080px) {
-  .hero__name { grid-column: 1 / 10; }
-  .hero__lede { grid-column: 1 / 8; }
-  .hero__meta { grid-column: 1 / 8; margin-top: 36px; }
-  .hero__actions { grid-column: 1 / 12; }
+  /* The hero is one centred column at every width now, so the old per-element
+     column spans have nothing left to do. Only the facts grid steps down. */
+  .hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sec__label { grid-column: 1 / 13; position: static; margin-bottom: 32px; }
   .sec__note { max-width: 44ch; }
   .sec__body { grid-column: 1 / 13; }
@@ -483,46 +537,12 @@ a.inline:hover { border-color: var(--signal); }
 
 @media (max-width: 860px) {
   :root { --gutter: 18px; }
-  /* minmax(0, 1fr), not 1fr: a plain fr track takes its minimum from the
-     max-content of its items, so the widest thing in the rail or the main
-     column sets the page width and everything else scrolls sideways with it. */
-  .shell { grid-template-columns: minmax(0, 1fr); }
-
-  .rail {
-    position: sticky; top: 0; z-index: 20;
-    height: auto; flex-direction: row; align-items: center; gap: 20px;
-    padding: 12px clamp(20px, 5vw, 40px);
-    border-right: 0; border-bottom: 0;
-    background: color-mix(in srgb, var(--paper) 92%, transparent);
-    backdrop-filter: blur(8px);
-  }
-  /* A scroll edge, not a divider. A 1px rule under floating chrome draws a
-     line the layout does not actually have and reads as a seam; a short fade
-     where the content passes underneath says the same thing -- this bar is in
-     front, that content is behind it -- without inventing an edge. This is the
-     only place on the site where floating UI overlaps content, so it is the
-     only place the effect belongs. */
-  .rail::after {
-    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 14px;
-    pointer-events: none;
-    background: linear-gradient(to bottom,
-      color-mix(in srgb, var(--paper) 78%, transparent), transparent);
-  }
-  .rail__top { flex: none; }
-  /* min-width:0 is what makes overflow-x:auto mean anything here. A flex item
-     defaults to min-width:auto, which floors it at the max-content width of the
-     nowrap link row -- 415px of it -- so the rail, and with it the page, was
-     wider than a phone and scrolled sideways. */
-  .rail__nav { margin: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .rail__nav::-webkit-scrollbar { display: none; }
-  .rail__nav ol { display: flex; gap: 4px; }
-  .rail__nav li + li { margin-top: 0; }
-  .rail__nav a { display: block; padding: 6px 10px; white-space: nowrap; }
-  .rail__nav a::before { display: none; }
-  .rail__nav .num { display: none; }
-  .rail__nav a[aria-current="true"] { box-shadow: inset 0 -1px 0 var(--signal); }
-  .rail__foot { flex-direction: row; gap: 14px; }
-  .icolink span { display: none; }
+  .hero__meta { grid-template-columns: 1fr; }
+  /* The bar is already the bar at every width, so this breakpoint only has to
+     tighten it -- the whole rail-to-topbar block that used to live here is the
+     base rule now. */
+  .rail { gap: 14px; padding-inline: clamp(18px, 5vw, 40px); }
+  .rail__nav a { padding: 7px 9px; font-size: 12.5px; }
 
   .proj { grid-template-columns: 26px minmax(0, 1fr); }
   .proj__stats { grid-column: 2; display: flex; flex-wrap: wrap; gap: 0 32px; margin-top: 18px; }
@@ -552,7 +572,7 @@ a.inline:hover { border-color: var(--signal); }
 }
 .tryit:hover { background: var(--paper-3); padding-left: 28px; }
 .tryit__tag {
-  font: 500 9.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+  font: 500 12px/1 var(--sans); letter-spacing: -.005em; text-transform: none;
   color: var(--signal); border: 1px solid var(--signal); border-radius: var(--r-pill);
   padding: 6px 8px; white-space: nowrap;
 }
@@ -634,12 +654,23 @@ a.inline:hover { border-color: var(--signal); }
    need to be visible rather than felt. */
 @media (prefers-contrast: more) {
   :root {
-    --rule:   #b9ad97;
-    --rule-2: #a2957e;
-    --ink-3:  #454c48;   /* 5.4:1 -> 7.4:1 on paper */
+    --rule:   #b0b0b8;
+    --rule-2: #8e8e93;
+    --ink-3:  #4b4b50;   /* 4.9:1 -> 8.0:1 on the page */
+    --signal: #0050a0;   /* 5.4:1 -> 8.1:1, so links clear AAA */
   }
   .btn, .tryit, .chips li, .proj__stats > div { border-color: var(--rule-2); }
+  /* A card is separated by a shadow, which more-contrast readers may not see
+     at all. Give it the edge the shadow was standing in for. */
+  .proj, .bench, .tryit { border: 1px solid var(--rule-2); }
   .seg__btn.is-on, .tbtn:focus-visible { outline: 1px solid currentColor; }
+}
+
+/* The cards float on a shadow. Asked for less transparency, a reader is also
+   asking for less of that kind of soft depth cue, so the surfaces get a real
+   edge instead. */
+@media (prefers-reduced-transparency: reduce) {
+  .proj, .bench { box-shadow: none; border: 1px solid var(--rule-2); }
 }
 
 /* ── print ───────────────────────────────────────────────────────────
