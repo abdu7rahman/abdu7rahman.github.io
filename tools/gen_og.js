@@ -55,7 +55,7 @@ async function inlineFonts() {
 const T = {
   paper: '#fbfbfd', paper2: '#f5f5f7', paper3: '#ffffff', rule: '#d2d2d7',
   ink: '#1d1d1f', ink2: '#424245', ink3: '#6e6e73',
-  signal: '#0066cc', signalW: '#e8f2fd', accent: '#007a3d',
+  signal: '#d70015', signalW: '#f9ecef', accent: '#007a3d',
 };
 const SANS = '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",'
            + 'Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif';
