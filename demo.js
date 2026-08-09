@@ -4,6 +4,37 @@
 (function () {
   "use strict";
 
+  /* Every canvas on this page was authored with a fixed backing store -- 1204
+     wide for three of them -- and then scaled by CSS to whatever the column
+     gave it. On a desktop that is roughly 1:1 and nobody notices. On a phone
+     the column is 350px, so the scale is 0.29: an 11px label lands at three
+     pixels, a robot drawn at radius 6 lands at under two, and the whole demo
+     reads as an empty box with a couple of bars in it.
+
+     The backing store follows the element now. Drawing happens in CSS pixels
+     -- setTransform absorbs the device ratio, so retina gets real pixels
+     without any of the geometry below having to know -- and the simulated
+     world, which every renderer derives from these dimensions, gets coarser
+     on a small screen rather than smaller. Fewer cells, all of them visible,
+     which is the right trade.
+
+     Called once before each demo initialises. It deliberately does not react
+     to resize: the world, its costmap and any in-flight plan are built from
+     these numbers, and rebuilding all of that under a rotating phone is a lot
+     of risk for a case a reload already handles. */
+  function fitCanvas(cv, wideAspect, narrowAspect) {
+    var w = Math.max(280, Math.round(cv.getBoundingClientRect().width));
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var h = Math.round(w * (w < 640 ? narrowAspect : wideAspect));
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cv._w = w;                       // CSS pixels: the space everything draws in
+    cv._h = h;
+    cv._narrow = w < 640;
+    cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    return cv;
+  }
+
   var REPO = "abdu7rahman/reactive_autonomous_nav";
   var BRANCHES = ["main", "feat/complete-planners"];   // fallback if main moves
   var MODULES = {
@@ -56,7 +87,8 @@
   var pyodide = null, ready = false, running = false;
   var result = null, replay = 0, raf = null, showExplored = true;
 
-  var cv = document.getElementById("map"), ctx = cv.getContext("2d");
+  var cv = fitCanvas(document.getElementById("map"), 640 / 960, 0.85),
+      ctx = cv.getContext("2d");
   var logEl = document.getElementById("log");
   var runBtn = document.getElementById("run"), runLabel = document.getElementById("run-label");
 
@@ -110,7 +142,7 @@
   };
 
   /* ---------- rendering --------------------------------------------- */
-  var CS = cv.width / COLS;
+  var CS = cv._w / COLS;
   var css = getComputedStyle(document.documentElement);
   function tok(n, fb) { return (css.getPropertyValue(n) || fb).trim(); }
   var C = {
@@ -121,13 +153,13 @@
 
   function draw() {
     ctx.fillStyle = C.paper;
-    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillRect(0, 0, cv._w, cv._h);
 
     // drafting grid
     ctx.strokeStyle = C.rule; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
     ctx.beginPath();
-    for (var c = 0; c <= COLS; c += 8) { ctx.moveTo(c * CS + 0.5, 0); ctx.lineTo(c * CS + 0.5, cv.height); }
-    for (var r = 0; r <= ROWS; r += 8) { ctx.moveTo(0, r * CS + 0.5); ctx.lineTo(cv.width, r * CS + 0.5); }
+    for (var c = 0; c <= COLS; c += 8) { ctx.moveTo(c * CS + 0.5, 0); ctx.lineTo(c * CS + 0.5, cv._h); }
+    for (var r = 0; r <= ROWS; r += 8) { ctx.moveTo(0, r * CS + 0.5); ctx.lineTo(cv._w, r * CS + 0.5); }
     ctx.stroke(); ctx.globalAlpha = 1;
 
     // walls
@@ -1310,14 +1342,19 @@
      costmap and the controller keeps tracking whatever comes back.
      ------------------------------------------------------------------- */
   var chase = (function () {
-    var cvc = document.getElementById("chase");
+    var cvc = fitCanvas(document.getElementById("chase"), 616 / 1204, 0.88);
     if (!cvc) return { start: function () {} };
     var g = cvc.getContext("2d");
     var readEl = document.getElementById("chase-read");
     var RES = 0.05;                                   // m per costmap cell
-    var CELL = 14;                                    // px per cell
-    var CW = Math.floor(cvc.width / CELL), CH = Math.floor(cvc.height / CELL);
-    var PX = cvc.width / CW;                          // px per cell, exact
+    /* Finer cells on a small canvas. The grid is what sets the world size, so
+       a phone-sized plate at the desktop cell size gives a course barely wider
+       than the robot -- the corridors get tight enough that controllers which
+       clear them everywhere else start failing, which is the plate lying about
+       the controller. */
+    var CELL = cvc._narrow ? 6 : 14;                  // px per cell
+    var CW = Math.floor(cvc._w / CELL), CH = Math.floor(cvc._h / CELL);
+    var PX = cvc._w / CW;                             // px per cell, exact
     var INFLATE = 4;                                  // cells, ~0.2 m
     var BRUSH = 3;                                    // cells, ~0.15 m obstacle
     var occ = new Uint8Array(CW * CH);
@@ -1341,11 +1378,11 @@
     function toPx(mx, my) { return [mx / RES * PX, my / RES * PX]; }
 
     function paint() {
-      g.fillStyle = C.paper; g.fillRect(0, 0, cvc.width, cvc.height);
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvc._w, cvc._h);
       g.strokeStyle = C.rule; g.globalAlpha = 0.5; g.lineWidth = 1;
       g.beginPath();
-      for (var c = 0; c <= CW; c += 5) { g.moveTo(Math.round(c * PX) + .5, 0); g.lineTo(Math.round(c * PX) + .5, cvc.height); }
-      for (var r = 0; r <= CH; r += 5) { g.moveTo(0, Math.round(r * PX) + .5); g.lineTo(cvc.width, Math.round(r * PX) + .5); }
+      for (var c = 0; c <= CW; c += 5) { g.moveTo(Math.round(c * PX) + .5, 0); g.lineTo(Math.round(c * PX) + .5, cvc._h); }
+      for (var r = 0; r <= CH; r += 5) { g.moveTo(0, Math.round(r * PX) + .5); g.lineTo(cvc._w, Math.round(r * PX) + .5); }
       g.stroke(); g.globalAlpha = 1;
 
       // The inflation layer the controller is actually reading. A whisper --
@@ -1877,16 +1914,16 @@
      MPPI's 20 Hz and everyone else's 10 Hz both come out right.
      ------------------------------------------------------------------- */
   var race = (function () {
-    var cvr = document.getElementById("race-canvas");
+    var cvr = fitCanvas(document.getElementById("race-canvas"), 680 / 1204, 1.02);
     if (!cvr) return { ready: function () {} };
     var g = cvr.getContext("2d");
     var readEl = document.getElementById("race-read");
     var keyEl = document.getElementById("race-key");
     var runBtnEl = document.getElementById("race-run");
     var RES = 0.05;
-    var CELL = 12;
-    var CW = Math.floor(cvr.width / CELL), CH = Math.floor(cvr.height / CELL);
-    var PX = cvr.width / CW;
+    var CELL = cvr._narrow ? 5 : 12;
+    var CW = Math.floor(cvr._w / CELL), CH = Math.floor(cvr._h / CELL);
+    var PX = cvr._w / CW;
     var occ = new Uint8Array(CW * CH);
     var plan = [], trails = [], rows = [], live = false, armed = false, raf2 = 0;
     var worker = null;
@@ -1934,11 +1971,11 @@
     }
 
     function drawStatic() {
-      g.fillStyle = C.paper; g.fillRect(0, 0, cvr.width, cvr.height);
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvr._w, cvr._h);
       g.strokeStyle = C.rule; g.globalAlpha = 0.45; g.lineWidth = 1;
       g.beginPath();
-      for (var c = 0; c <= CW; c += 8) { g.moveTo(c * PX + 0.5, 0); g.lineTo(c * PX + 0.5, cvr.height); }
-      for (var r = 0; r <= CH; r += 8) { g.moveTo(0, r * PX + 0.5); g.lineTo(cvr.width, r * PX + 0.5); }
+      for (var c = 0; c <= CW; c += 8) { g.moveTo(c * PX + 0.5, 0); g.lineTo(c * PX + 0.5, cvr._h); }
+      for (var r = 0; r <= CH; r += 8) { g.moveTo(0, r * PX + 0.5); g.lineTo(cvr._w, r * PX + 0.5); }
       g.stroke(); g.globalAlpha = 1;
 
       g.fillStyle = C.ink;
@@ -2144,11 +2181,16 @@
      cursor.
      ------------------------------------------------------------------- */
   var arm = (function () {
-    var cvn = document.getElementById("arm");
+    var cvn = fitCanvas(document.getElementById("arm"), 620 / 1204, 1.18);
     if (!cvn) return { start: function () {} };
     var g = cvn.getContext("2d");
     var readEl = document.getElementById("arm-read");
-    var VIEW = 604;                                   // the camera plate
+    /* The camera plate and the pipeline panel sit side by side when there is
+       room and stack when there is not. VIEW was a hard 604, which is wider
+       than the whole canvas on a phone -- the panel's width came out negative
+       and every label in it was drawn off the left edge. */
+    var VIEW = cvn._narrow ? cvn._w : Math.round(cvn._w * 0.502),
+        VIEW_H = cvn._narrow ? Math.round(cvn._h * 0.60) : cvn._h;
     var PAD = 30;
     var live = false, lastF = 0, cur = { u: 300, v: 300 }, have = false;
     var links = [], chain = [], meta = null, f = null, radius = 0.07;
@@ -2171,11 +2213,21 @@
     }
 
     function paint() {
-      g.fillStyle = C.paper; g.fillRect(0, 0, cvn.width, cvn.height);
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvn._w, cvn._h);
 
       // ── the camera plate ──────────────────────────────────────────
-      g.save(); g.beginPath(); g.rect(0, 0, VIEW, cvn.height); g.clip();
-      g.fillStyle = "#14140f"; g.fillRect(0, 0, VIEW, cvn.height);
+      g.save(); g.beginPath(); g.rect(0, 0, VIEW, VIEW_H); g.clip();
+      g.fillStyle = "#14140f"; g.fillRect(0, 0, VIEW, VIEW_H);
+
+      /* Everything below is in the node's own image coordinates -- the point
+         cloud comes back already projected through F, CX, CY -- and those were
+         drawn onto the plate one to one. That only works while the plate is
+         the size it was designed at: shrink it and the view crops instead of
+         fitting, which on a phone meant most of the arm was outside the plate.
+         Scaling the camera-space block fits the whole frame; the plate's own
+         labels are drawn after the restore, so they keep their real size. */
+      var kcam = Math.min(VIEW / 604, VIEW_H / 620);
+      g.save(); g.scale(kcam, kcam);
 
       if (f) {
         var pu = f[0], pv = f[1], pc = f[2];
@@ -2334,19 +2386,25 @@
           g.stroke();
         }
       }
+      g.restore();                       // out of camera space
+
       // plate label
       label("CAMERA  /  depth + color points", 16, 24, "#8b8578", 10);
-      label(meta ? "pick_z_offset " + meta[9] + "  ·  place_y_offset " + meta[10] +
-            "  ·  read from the node" : "", 16, 40, "#8b8578", 9.5);
+      // The provenance line does not fit a phone-width plate, and a sentence
+      // cut off mid-word reads worse than a shorter one that ends.
+      label(meta ? ("pick_z_offset " + meta[9] + "  ·  place_y_offset " + meta[10] +
+            (cvn._narrow ? "" : "  ·  read from the node")) : "", 16, 40, "#8b8578", 9.5);
       label("arm chain", 16, 58, "#5aa5af", 9.5);
       if (have) label("your hand", 82, 58, f && f[6] ? "#ff8a5c" : "#8b8578", 9.5);
 
       g.restore();
       g.strokeStyle = C.rule; g.lineWidth = 1;
-      g.strokeRect(0.5, 0.5, VIEW - 1, cvn.height - 1);
+      g.strokeRect(0.5, 0.5, VIEW - 1, VIEW_H - 1);
 
       // ── the pipeline, stage by stage ──────────────────────────────
-      var X = VIEW + PAD, W = cvn.width - VIEW - PAD * 2, y = 40;
+      var X = cvn._narrow ? PAD : VIEW + PAD,
+          W = (cvn._narrow ? cvn._w : cvn._w - VIEW) - PAD * 2,
+          y = cvn._narrow ? VIEW_H + 34 : 40;
       label("PIPELINE", X, y - 14, C.signal, 10);
       if (!f) {
         label("move the cursor over the camera plate", X, y + 10, C.mut, 12);
@@ -2481,9 +2539,11 @@
 
     function place(clientX, clientY) {
       var b = cvn.getBoundingClientRect();
-      var u = (clientX - b.left) / b.width * cvn.width;
-      var v = (clientY - b.top) / b.height * cvn.height;
-      if (u > VIEW) { have = false; return; }
+      var u = (clientX - b.left) / b.width * cvn._w;
+      var v = (clientY - b.top) / b.height * cvn._h;
+      // Only the camera plate is live, and when stacked that is the top
+      // band rather than the left column.
+      if (u > VIEW || v > VIEW_H) { have = false; return; }
       cur.u = u; cur.v = v; have = true;
     }
     cvn.addEventListener("mousemove", function (e) { place(e.clientX, e.clientY); });
