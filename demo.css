@@ -42,10 +42,14 @@
 }
 
 /* contents: a ruled index, not a nav bar */
+/* Four columns, because there are four demos. It was three, which put the
+   fourth on a second row where its own top rule ran directly under the first
+   item's and read as a stray line through the block. A contents list should
+   have as many columns as it has entries, or a number that divides them. */
 .runner__toc {
-  list-style: none; margin: 30px 0 0; padding: 0;
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0; max-width: 860px; counter-reset: toc;
+  list-style: none; margin: 34px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 24px; max-width: 1000px; counter-reset: toc;
 }
 .runner__toc li {
   counter-increment: toc;
@@ -66,6 +70,11 @@
 .runner__toc span {
   display: block; margin-top: 5px;
   font: 400 11px/1.4 var(--mono); letter-spacing: .04em; color: var(--ink-3);
+}
+/* 4 -> 2 -> 1, all of which divide four evenly, so no entry is ever left
+   stranded on a row of its own. */
+@media (max-width: 1080px) {
+  .runner__toc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
   .runner__toc { grid-template-columns: 1fr; }
@@ -90,12 +99,14 @@
 }
 .panel__hint { margin-top: 10px; font-size: .8125rem; line-height: 1.5; color: var(--ink-3); }
 
-/* segmented control — a single ruled strip, not pills */
-.seg { display: flex; border: 1px solid var(--rule-2); border-radius: 2px; overflow: hidden; }
+/* segmented control — one grouped strip. The group is rounded; the members
+   inside it are not, because they are segments of one control rather than
+   separate buttons. */
+.seg { display: flex; border: 1px solid var(--rule-2); border-radius: var(--r-md); overflow: hidden; }
 .seg__btn {
   flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer;
-  padding: 9px 4px;
-  font: 500 11.5px/1 var(--mono); letter-spacing: .04em; color: var(--ink-3);
+  padding: 10px 4px;
+  font: 500 12px/1 var(--sans); letter-spacing: -.005em; color: var(--ink-3);
   border-right: 1px solid var(--rule-2);
   transition: background .16s var(--ease), color .16s var(--ease);
 }
@@ -105,18 +116,18 @@
 .btnrow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .tbtn {
   appearance: none; cursor: pointer;
-  border: 1px solid var(--rule-2); border-radius: 2px; background: transparent;
-  padding: 9px 6px;
-  font: 500 11.5px/1 var(--mono); letter-spacing: .04em; color: var(--ink);
+  border: 1px solid var(--rule-2); border-radius: var(--r-pill); background: transparent;
+  padding: 10px 6px;
+  font: 500 12px/1 var(--sans); letter-spacing: -.005em; color: var(--ink);
   transition: border-color .16s var(--ease), background .16s var(--ease);
 }
 
 .run {
   width: 100%; appearance: none; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 14px 18px; border: 1px solid var(--ink); border-radius: 2px;
+  padding: 15px 18px; border: 1px solid var(--ink); border-radius: var(--r-pill);
   background: var(--ink); color: var(--paper);
-  font: 500 13px/1 var(--mono); letter-spacing: .05em;
+  font: 500 14px/1 var(--sans); letter-spacing: -.01em;
   transition: background .18s var(--ease), border-color .18s var(--ease);
 }
 .run:disabled { opacity: .45; cursor: progress; }
@@ -144,17 +155,14 @@
 }
 
 /* ── the plate ──────────────────────────────────────────── */
+/* The two sharp L-brackets that used to sit on opposite corners of the map are
+   gone. They were viewfinder decoration -- they marked nothing and did nothing
+   -- and a 90-degree bracket sitting on a rounded corner is just wrong. */
 .mapwrap { position: relative; }
-.mapwrap::before, .mapwrap::after {
-  content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
-  border-color: var(--signal); border-style: solid; border-width: 0;
-}
-.mapwrap::before { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
-.mapwrap::after { bottom: 33px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
 
 #map {
   display: block; width: 100%; height: auto;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--rule-2); border-radius: var(--r-lg);
   background: var(--paper);
   cursor: crosshair;
   touch-action: none;
@@ -165,7 +173,7 @@
   font: 400 11px/1 var(--mono); letter-spacing: .05em; color: var(--ink-3);
 }
 .maplegend span { display: inline-flex; align-items: center; gap: 7px; }
-.maplegend .sw { width: 11px; height: 11px; border-radius: 2px; display: block; }
+.maplegend .sw { width: 11px; height: 11px; border-radius: 3px; display: block; }
 .sw--wall  { background: var(--ink); }
 .sw--exp   { background: color-mix(in srgb, var(--accent) 34%, var(--paper)); }
 .sw--path  { background: var(--signal); }
@@ -177,7 +185,7 @@
 .log {
   margin: 0; padding: 18px 20px;
   background: var(--night); color: var(--night-ink);
-  border-radius: 2px;
+  border-radius: var(--r-lg);
   font: 400 12px/1.7 var(--mono);
   max-height: 240px; overflow: auto;
   white-space: pre-wrap; word-break: break-word;
@@ -193,7 +201,6 @@
   .runner__grid { grid-template-columns: 1fr; }
   .panel { position: static; }
   .panel__row:last-of-type { border-bottom: 1px solid var(--rule); }
-  .mapwrap::after { bottom: 33px; }
 }
 @media (max-width: 620px) {
   .seg__btn { font-size: 10.5px; padding: 8px 2px; }
@@ -240,7 +247,8 @@
    getBoundingClientRect().width, so a scaled canvas still maps clicks correctly. */
 #chase, #race-canvas, #arm {
   display: block; width: 100%; height: auto;
-  border: 1px solid var(--rule-2); background: var(--paper);
+  border: 1px solid var(--rule-2); border-radius: var(--r-lg);
+  background: var(--paper);
 }
 /* The chase tracks the pointer 1:1, which on touch means the browser must not
    also read the drag as a scroll. This replaces a preventDefault inside a

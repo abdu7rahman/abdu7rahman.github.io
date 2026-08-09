@@ -39,6 +39,16 @@
   --gutter:   28px;
   --maxw:     1180px;
 
+  /* Radius scale. Everything used to be 2px, which is a sharp editorial corner
+     and reads as a printed rule rather than as software. The scale is by role,
+     not by size: things you press are pills, because a fully rounded end says
+     "press me" at a glance and that is the whole job of the shape; surfaces get
+     a generous radius; small marks get just enough to stop being pixel-sharp. */
+  --r-pill: 999px;   /* buttons, chips -- anything pressable */
+  --r-lg:   14px;    /* surfaces: callouts, figures, canvases, the console */
+  --r-md:   10px;    /* grouped controls, like the segmented strip */
+  --r-sm:   6px;     /* swatches, inline code */
+
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --serif: "Fraunces", Georgia, "Times New Roman", serif;
   --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -90,7 +100,9 @@ a { color: inherit; }
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
-  border-radius: 1px;
+  /* No radius of its own: browsers draw the outline around the element's own
+     border-radius, so a pill button gets a pill ring for free. Forcing 1px here
+     drew a sharp rectangle around a rounded button. */
 }
 
 .skip {
@@ -222,13 +234,13 @@ a { color: inherit; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 10px;
-  padding: 12px 20px;
+  padding: 14px 24px;
   border: 1px solid var(--rule-2);
   background: transparent;
   color: var(--ink);
-  font: 500 13px/1 var(--mono); letter-spacing: .03em;
+  font: 500 14px/1 var(--sans); letter-spacing: -.01em;
   text-decoration: none;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
 }
 .btn:hover { border-color: var(--ink); background: var(--paper-3); }
@@ -298,11 +310,11 @@ a { color: inherit; }
 
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
 .chips li {
-  font: 400 10.5px/1 var(--mono); letter-spacing: .06em;
+  font: 400 11px/1 var(--mono); letter-spacing: .04em;
   color: var(--ink-3);
   border: 1px solid var(--rule-2);
-  padding: 5px 8px;
-  border-radius: 2px;
+  padding: 6px 11px;
+  border-radius: var(--r-pill);
 }
 
 .demo {
@@ -372,7 +384,7 @@ a { color: inherit; }
   display: inline-flex; align-items: center; gap: 7px;
   font: 400 11px/1 var(--mono); letter-spacing: .06em; color: var(--ink-2);
 }
-.sw { width: 11px; height: 11px; border-radius: 2px; display: block; }
+.sw { width: 11px; height: 11px; border-radius: 3px; display: block; }
 .sw--py  { background: var(--accent); }
 .sw--cpp { background: var(--signal); }
 
@@ -387,7 +399,7 @@ a { color: inherit; }
 code {
   font: 400 .875em/1 var(--mono);
   background: var(--signal-w); color: var(--ink);
-  padding: 2px 5px; border-radius: 2px;
+  padding: 2px 6px; border-radius: var(--r-sm);
 }
 
 a.inline {
@@ -534,14 +546,14 @@ a.inline:hover { border-color: var(--signal); }
   align-items: center; gap: 18px;
   padding: 18px 20px; margin-bottom: 8px;
   text-decoration: none; color: var(--ink);
-  border: 1px solid var(--signal); border-radius: 2px;
+  border: 1px solid var(--signal); border-radius: var(--r-lg);
   background: var(--signal-w);
   transition: background .18s var(--ease), padding .22s var(--ease);
 }
 .tryit:hover { background: var(--paper-3); padding-left: 28px; }
 .tryit__tag {
   font: 500 9.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
-  color: var(--signal); border: 1px solid var(--signal); border-radius: 2px;
+  color: var(--signal); border: 1px solid var(--signal); border-radius: var(--r-pill);
   padding: 6px 8px; white-space: nowrap;
 }
 .tryit__body { font-size: .9375rem; line-height: 1.55; color: var(--ink-2); }
