@@ -1599,10 +1599,53 @@
                     bot.w.toFixed(2) + " rad/s  ·  " + d.toFixed(2) + " m out";
     }
 
+    // How far outside the plate the pointer is, in CSS pixels, 0 while inside.
+    function overshootOf(clientX, clientY, b) {
+      return Math.hypot(Math.max(0, b.left - clientX, clientX - b.right),
+                        Math.max(0, b.top - clientY, clientY - b.bottom));
+    }
+
+    // The rubber-band curve from Apple's fluid-interfaces sample: the further
+    // past the bound you drag, the less the thing follows. Returns the damped
+    // distance, which approaches dimension*constant rather than growing.
+    function rubberband(overshoot, dimension, constant) {
+      constant = constant === undefined ? 0.55 : constant;
+      return (overshoot * dimension * constant) /
+             (dimension + constant * Math.abs(overshoot));
+    }
+
+    // Leaving the plate used to drop the goal outright: the robot stopped
+    // being told where to go and the readout reverted to "move the cursor over
+    // the field" mid-chase. A hard stop at a boundary reads as frozen. So the
+    // edge resists instead. Inside, the goal tracks the pointer 1:1; outside,
+    // it still follows -- along the edge, since that is the only part of your
+    // move that is still reachable -- by a fraction that decays the further out
+    // you go. Far enough away and it settles, which reads as "still with you,
+    // but there is nothing more this way" rather than as a freeze.
+    // 160px, not more. The plate is over 1200px wide, so a larger release
+    // distance is simply off-screen on a normal viewport -- the branch would
+    // never fire and the robot would keep being driven by a cursor halfway down
+    // the page. 160 is a wide enough band to feel like resistance and close
+    // enough to reach, which is what makes the let-go real rather than
+    // theoretical.
+    var RELEASE = 160;                        // px out; past this, let go
     function setGoal(clientX, clientY) {
       var b = cvc.getBoundingClientRect();
-      goal.x = Math.max(RES, Math.min((CW - 1) * RES, (clientX - b.left) / b.width * CW * RES));
-      goal.y = Math.max(RES, Math.min((CH - 1) * RES, (clientY - b.top) / b.height * CH * RES));
+      var over = overshootOf(clientX, clientY, b);
+      if (over > RELEASE) { have = false; return; }
+
+      var gx = Math.max(RES, Math.min((CW - 1) * RES,
+                        (clientX - b.left) / b.width * CW * RES));
+      var gy = Math.max(RES, Math.min((CH - 1) * RES,
+                        (clientY - b.top) / b.height * CH * RES));
+
+      if (over > 0 && have) {
+        // follow falls from 1 at the edge toward 0 as the overshoot grows
+        var follow = 1 - rubberband(over, RELEASE) / RELEASE;
+        gx = goal.x + (gx - goal.x) * follow;
+        gy = goal.y + (gy - goal.y) * follow;
+      }
+      goal.x = gx; goal.y = gy;
       have = true;
     }
 
@@ -1631,12 +1674,28 @@
       log("obstacle dropped, costmap re-inflated, global plan invalidated");
     }
 
-    cvc.addEventListener("mousemove", function (ev) { setGoal(ev.clientX, ev.clientY); });
-    cvc.addEventListener("mousedown", function (ev) { ev.preventDefault(); drop(ev.clientX, ev.clientY); });
-    cvc.addEventListener("touchmove", function (ev) {
-      ev.preventDefault(); setGoal(ev.touches[0].clientX, ev.touches[0].clientY);
-    }, { passive: false });
-    cvc.addEventListener("mouseleave", function () { have = false; });
+    // Pointer Events, so mouse, pen and touch are one path instead of two that
+    // have to be kept in step. The move listener sits on the window rather than
+    // the canvas because the boundary resists now instead of stopping: the goal
+    // has to keep being updated while the pointer is outside the plate, and a
+    // canvas-scoped listener never sees that. `engaged` is what stops the robot
+    // chasing a cursor that has never been over the plate at all.
+    var engaged = false;
+    cvc.addEventListener("pointerenter", function () { engaged = true; });
+    window.addEventListener("pointermove", function (ev) {
+      if (!engaged) return;
+      setGoal(ev.clientX, ev.clientY);
+      if (!have) engaged = false;               // decayed past RELEASE, let go
+    });
+    cvc.addEventListener("pointerdown", function (ev) {
+      ev.preventDefault();
+      // Keep the drag ours even if it leaves the plate, so a stroke of
+      // obstacles is not cut short by the pointer crossing the edge.
+      if (cvc.setPointerCapture) cvc.setPointerCapture(ev.pointerId);
+      engaged = true;
+      setGoal(ev.clientX, ev.clientY);
+      drop(ev.clientX, ev.clientY);
+    });
 
     // Which controller is driving. MPPI is deliberately absent: one tick is
     // ~580 ms and the chase runs its controller on the main thread at the

@@ -52,12 +52,17 @@
 
   // Keep focus with the reader after an in-page jump, so keyboard and screen
   // reader users land in the section rather than back at the top of the rail.
+  //
+  // This waited 320ms first, to let the smooth scroll finish. That wait was on
+  // the input path and bought nothing: preventScroll is exactly the flag that
+  // makes focus() safe to call mid-scroll, so the delay only meant a keyboard
+  // user pressed Enter and nothing took focus for a third of a second.
   links.forEach(function (a) {
     a.addEventListener("click", function () {
       var el = document.getElementById(a.getAttribute("href").slice(1));
       if (!el) return;
       el.setAttribute("tabindex", "-1");
-      window.setTimeout(function () { el.focus({ preventScroll: true }); }, 320);
+      el.focus({ preventScroll: true });
     });
   });
 })();
