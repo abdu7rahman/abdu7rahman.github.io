@@ -1387,13 +1387,17 @@
 
       // The inflation layer the controller is actually reading. A whisper --
       // it covers a lot of ground and the trajectories have to stay legible on
-      // top of it.
+      // top of it. The alpha was tuned against a muted clay accent; the red
+      // that replaced it is far more saturated, so the same numbers washed the
+      // whole field pink. Roughly halved, which keeps the falloff readable
+      // without it competing with the thing driving over it. Same threshold,
+      // so it still shows every cell the controller actually reads.
       if (cost) {
         g.fillStyle = C.signal;
         for (var i = 0; i < cost.length; i++) {
           var v = cost[i];
           if (v < 40 || occ[i]) continue;
-          g.globalAlpha = 0.03 + 0.09 * (v / 252);
+          g.globalAlpha = 0.018 + 0.05 * (v / 252);
           g.fillRect((i % CW) * PX, Math.floor(i / CW) * PX, PX + .5, PX + .5);
         }
         g.globalAlpha = 1;
