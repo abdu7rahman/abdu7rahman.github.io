@@ -303,13 +303,15 @@
     </div>
     <p class="chase__lede chase__lede--note" id="embodiment-note">
       Unlike everything else on this page, this one is not fetched from GitHub at load: the
-      repository is private, so <code>raw.githubusercontent.com</code> returns 404. The two files
-      are <strong>copied</strong> into this site at
+      repository is private, so <code>raw.githubusercontent.com</code> returns 404. The files are
+      <strong>copied</strong> into this site at
       <a class="inline" href="https://github.com/abdu7rahman/abdu7rahman.github.io/blob/main/vendor/rfm/PROVENANCE.md" target="_blank" rel="noopener">vendor/rfm</a>,
-      with the source commit and their SHA-256 recorded, and they run unmodified. That repository is
-      an architecture I am building, not a working policy &mdash; it has no trained weights, no
-      rollouts and no simulator, and nothing here should be read as a robot doing anything. What it
-      is, is a real design decision with real consequences you can see above.
+      with the source commit and their SHA-256 recorded, and they run unmodified.
+      <code>single_arm_osc_pos</code> is the one being trained right now, and it lights
+      <strong>4 of the 32</strong> &mdash; the other twenty-eight are masked out of its loss
+      entirely. That repository has a simulator, 3,008 collected episodes and trained checkpoints,
+      and the policy has still never completed the task: <strong>0 of 16</strong>. So read this as a
+      design decision with visible consequences, not as a robot doing anything.
     </p>
 
   <section class="chase" id="clone">

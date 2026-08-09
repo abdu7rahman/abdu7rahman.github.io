@@ -266,10 +266,13 @@
                   two philosophies from being stapled together. Every robot writes into one 32-D action
                   space with a per-embodiment mask, and a competence head exports abstention so the
                   layer above can ask &ldquo;can you do this?&rdquo; in a forward pass instead of a
-                  rollout. <strong>It is an architecture, not a result:</strong> no trained weights, no
-                  rollouts, no simulator. What it has produced is a list of the ways it could lie to me
-                  and the bugs that found &mdash; a tokenizer that was never assigned, pinning a loss at
-                  exactly zero while 410M parameters trained on nothing behind a healthy-looking curve.
+                  rollout. It trains on 3,008 episodes collected in robosuite and it has
+                  <strong>never once completed the task</strong> &mdash; 0 of 16. The one real result
+                  is the competence signal: prediction error separates failures at AUROC 0.946
+                  &plusmn; 0.008 against controls at 0.11, which the repo still refuses to call a win
+                  because the same checkpoint predicts the next latent worse than copying the present.
+                  Its own evidence index opens by counting twelve times a number looked healthy while
+                  the thing it stood for did nothing.
                 </p>
                 <ul class="chips">
                   <li>PyTorch</li><li>Flow&nbsp;matching</li><li>GRPO</li><li>Pydantic</li><li>RDT-style&nbsp;action&nbsp;space</li>

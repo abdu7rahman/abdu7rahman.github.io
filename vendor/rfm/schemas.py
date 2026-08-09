@@ -106,6 +106,12 @@ class Embodiment(StrEnum):
 
     SINGLE_ARM_6DOF = "single_arm_6dof"
     SINGLE_ARM_7DOF = "single_arm_7dof"
+    # 3-DoF Cartesian position control plus a gripper: the robosuite OSC controller this
+    # project trains against. Kept distinct from SINGLE_ARM_7DOF because that mask marks
+    # 14 dimensions active while the controller writes only four, so ten dimensions were
+    # supervised against a constant zero and diluted the gradient on the ones that decide
+    # the task by ~3.5x.
+    SINGLE_ARM_OSC_POS = "single_arm_osc_pos"
     BIMANUAL_14DOF = "bimanual_14dof"
     MOBILE_BIMANUAL = "mobile_bimanual"
     QUADRUPED_ARM = "quadruped_arm"
@@ -298,6 +304,10 @@ class UnifiedActionSpaceConfig(BaseModel):
                                          "right_ee_delta_pos", "right_ee_delta_rot"],
             Embodiment.SINGLE_ARM_7DOF: ["right_arm_joint_vel", "right_gripper",
                                          "right_ee_delta_pos", "right_ee_delta_rot"],
+            # Only the three translation dims and the gripper. The simulator bridge packs
+            # Cartesian deltas into the leading slots of the arm slice, so dof_override
+            # truncates it to 3 and the existing demonstrations need no re-collection.
+            Embodiment.SINGLE_ARM_OSC_POS: ["right_arm_joint_vel", "right_gripper"],
             Embodiment.BIMANUAL_14DOF: ["right_arm_joint_vel", "left_arm_joint_vel",
                                         "right_gripper", "left_gripper",
                                         "right_ee_delta_pos", "right_ee_delta_rot",
@@ -317,7 +327,8 @@ class UnifiedActionSpaceConfig(BaseModel):
         description="Active slice names per embodiment; everything else is masked out.",
     )
     dof_override: dict[Embodiment, int] = Field(
-        default_factory=lambda: {Embodiment.SINGLE_ARM_6DOF: 6},
+        default_factory=lambda: {Embodiment.SINGLE_ARM_6DOF: 6,
+                                 Embodiment.SINGLE_ARM_OSC_POS: 3},
         description="Truncate a joint-velocity slice below its full 7 DoF width.",
     )
     strict_mask_check: bool = Field(
@@ -509,6 +520,17 @@ class DynamicsConfig(BaseModel):
         description="Future offsets k (in control steps) predicted jointly. Multi-horizon "
                     "prevents the head from degenerating into a one-step copy.",
     )
+    predict_residual: bool = Field(
+        default=True,
+        description="Predict the change from the current latent rather than the future "
+                    "latent outright, so that copying is the zero-output solution and "
+                    "therefore the floor. Without it the head conditions on pooled_per_view "
+                    "while the copy baseline is built from tower_features, so it must "
+                    "reconstruct one projection of the image from a different "
+                    "representation before it can even tie -- measured at -8.9 of "
+                    "attainable headroom, i.e. far worse than copying. Checkpoints record "
+                    "this flag: a model trained one way cannot be loaded the other.",
+    )
     target: LatentTarget = Field(default=LatentTarget.FROZEN_TOWER_EMA)
     ema_momentum: float = Field(default=0.999, ge=0.0, lt=1.0,
                                 description="EMA on the target projection only.")
@@ -523,8 +545,18 @@ class DynamicsConfig(BaseModel):
     infonce_temperature: float = Field(default=0.07, gt=0)
     copy_baseline_margin: float = Field(
         default=0.05, ge=0.0,
-        description="Minimum required cosine(pred, target) - cosine(z_t, target). Below this "
-                    "the head has learned identity and is vestigial (failure mode FM-2).",
+        description="Absolute cosine(pred, target) - cosine(z_t, target). Reported, but no "
+                    "longer the gate: cosine is bounded by 1, so the attainable margin is "
+                    "only 1 - cos_copy. On a quasi-static task that ceiling drops below this "
+                    "value and no model can pass, however good. See copy_gate_attainable.",
+    )
+    copy_baseline_margin_normalized: float = Field(
+        default=0.20, ge=0.0, le=1.0,
+        description="Required fraction of *attainable* headroom, (cos_pred - cos_copy) / "
+                    "(1 - cos_copy). 1.0 is a perfect predictor, 0.0 is copying, negative is "
+                    "worse than copying. This is the gate for failure mode FM-2, because it "
+                    "stays meaningful however static the scene is. The 0.20 default is a "
+                    "judgement call and has not itself been validated.",
     )
 
 
@@ -851,6 +883,76 @@ class MinedQuestion(BaseModel):
         if self.answer not in self.choices:
             raise ValueError(f"answer {self.answer!r} not among choices {self.choices}")
         return self
+
+
+class LeRobotDatasetSpec(BaseModel):
+    """How one LeRobot-format dataset maps into the unified 32-D action space.
+
+    LeRobot has become the distribution format for essentially every open manipulation
+    corpus -- DROID, Open X-Embodiment, RoboCasa, MimicGen, LIBERO, GR00T -- so one
+    adapter reaches all of them. What LeRobot does *not* standardise is the semantics of
+    the ``action`` vector: one dataset's seven numbers are joint velocities, another's
+    are end-effector deltas, and grippers are variously signed, unit-interval, or a width
+    in metres.
+
+    That mapping is exactly what this project's unified action space needs stated
+    explicitly, so it lives here as data rather than in per-dataset code. Getting it
+    wrong is silent: the shapes agree, the loss falls, and the robot learns to drive the
+    wrong actuators.
+
+    Tensor contract
+    ---------------
+    native ``action`` ``(T, D_native)`` -> unified ``(T, 32)`` plus a ``(32,)`` mask.
+    """
+
+    model_config = _Strict
+
+    repo_id: str = Field(description="HuggingFace repo id, e.g. 'lerobot/droid_100'.")
+    embodiment: Embodiment = Field(
+        description="Which embodiment's mask applies. Must cover every slice written by "
+                    "action_slices, or the loss would ignore dimensions being supervised."
+    )
+    action_slices: dict[str, list[int]] = Field(
+        description="Slice name -> indices into the native action vector. E.g. "
+                    "{'right_ee_delta_pos': [0, 1, 2], 'right_gripper': [6]}. Indices are "
+                    "columns of the dataset's own action array."
+    )
+    image_keys: list[str] = Field(
+        default_factory=lambda: ["observation.images.top"],
+        description="LeRobot feature keys for camera views, in the order this project's "
+                    "view slots expect them.",
+    )
+    state_key: str = Field(default="observation.state")
+    gripper_convention: Literal["signed", "unit", "width"] = Field(
+        default="signed",
+        description="'signed' is already in [-1, 1] with +1 closed, matching this "
+                    "project. 'unit' is [0, 1] with 1 open and is remapped. 'width' is a "
+                    "physical opening in metres and needs a per-robot threshold, so it "
+                    "is rejected rather than guessed at.",
+    )
+    gripper_closed_is_positive: bool = Field(
+        default=True,
+        description="Set False for datasets where negative means closed; the sign is "
+                    "flipped on load so every embodiment agrees on +1 = closed.",
+    )
+
+    @field_validator("action_slices")
+    @classmethod
+    def _slices_exist_and_fit(cls, v: dict[str, list[int]]) -> dict[str, list[int]]:
+        known = {s.name: s for s in ACTION_LAYOUT}
+        for name, idx in v.items():
+            if name not in known:
+                raise ValueError(
+                    f"{name!r} is not a slice of the unified action space. Known: "
+                    f"{sorted(known)}"
+                )
+            width = known[name].stop - known[name].start
+            if len(idx) > width:
+                raise ValueError(
+                    f"{name!r} is {width} wide but {len(idx)} source indices were given. "
+                    "A silent truncation here would map the wrong actuators."
+                )
+        return v
 
 
 class DataConfig(BaseModel):
@@ -1485,6 +1587,15 @@ class ConductorConfig(BaseModel):
     model_config = _Strict
 
     task: str = Field(description="Natural-language task for this episode.")
+    task_criteria: list[str] = Field(
+        default_factory=list,
+        description="Pre-declared, plan-independent success criteria for the task, each "
+                    "checkable against rendered evidence. When empty, progress falls back "
+                    "to the fraction of the agent's own substeps that succeeded -- which "
+                    "the agent controls the denominator of, so a one-substep plan that "
+                    "does nothing scores 100%. Set these for any run whose number will be "
+                    "compared across arms.",
+    )
     vlm_model: str = Field(default="claude-opus-5",
                            description="Coding-agent VLM. Maestro used Gemini; any strong "
                                        "code-writing VLM works, this is not the contribution.")
