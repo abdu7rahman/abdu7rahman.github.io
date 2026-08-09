@@ -1,7 +1,7 @@
 /* ============================================================
    Mohammed Abdul Rahman — portfolio
 
-   Near-white and near-black, one blue, the system font, and surfaces that
+   Near-white and near-black, one red, the system font, and surfaces that
    float rather than rules that divide. The warm-paper, Fraunces-and-mono
    editorial identity this replaced was a printed page rendered in a browser;
    this is software.
@@ -28,9 +28,11 @@
   --rule-2:   #d2d2d7;
 
   /* One accent, and it means "you can act on this". Nothing decorative is
-     ever this colour. */
-  --signal:   #0066cc;
-  --signal-w: #e8f2fd;   /* the accent at 8%, precomputed */
+     ever this colour. #d70015 rather than a brighter red because the accent
+     carries link text: at 5.21:1 on the page it clears the same gate the blue
+     it replaced did at 5.39, where Apple's #ff3b30 sits at 3.43 and fails. */
+  --signal:   #d70015;
+  --signal-w: #f9ecef;   /* the accent at 6% over the page, precomputed */
   --accent:   #007a3d;   /* the second categorical, charts only */
   --sun:      #ff9500;   /* a fill, never text */
 
@@ -292,7 +294,7 @@ a { color: inherit; }
 .btn .ico { color: currentColor; }
 .btn:hover { background: var(--signal-w); }
 .btn--solid { background: var(--signal); border-color: var(--signal); color: #fff; }
-.btn--solid:hover { background: #0055b3; border-color: #0055b3; color: #fff; opacity: 1; }
+.btn--solid:hover { background: #b3000f; border-color: #b3000f; color: #fff; opacity: 1; }
 
 /* ── sections ──────────────────────────────────────────────── */
 /* No rule between sections. A band of a different surface, or simply the
@@ -657,7 +659,7 @@ a.inline:hover { border-color: var(--signal); }
     --rule:   #b0b0b8;
     --rule-2: #8e8e93;
     --ink-3:  #4b4b50;   /* 4.9:1 -> 8.0:1 on the page */
-    --signal: #0050a0;   /* 5.4:1 -> 8.1:1, so links clear AAA */
+    --signal: #9c000c;   /* 5.2:1 -> 8.4:1, so links clear AAA */
   }
   .btn, .tryit, .chips li, .proj__stats > div { border-color: var(--rule-2); }
   /* A card is separated by a shadow, which more-contrast readers may not see
