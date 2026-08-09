@@ -61,3 +61,44 @@
     });
   });
 })();
+
+/* ── first-time reveal ──────────────────────────────────────────────────
+   Sections lift in once as they arrive. Built to the rules in Emil
+   Kowalski's animation guidance:
+
+   - it is a first-time, once-per-visit reveal, which is the only tier
+     where a duration past 300ms is allowed
+   - transform and opacity only, so it never touches layout or paint
+   - staggered 60ms within a section, because everything landing at once
+     reads as a page dumping rather than assembling
+   - it unobserves after firing; a reveal that replays on every scroll is
+     an animation the user sees hundreds of times, which fails the gate
+   - if IntersectionObserver is missing, everything is shown immediately.
+     Content must never be left invisible behind a script.
+   ------------------------------------------------------------------- */
+(function () {
+  var nodes = [].slice.call(document.querySelectorAll("[data-reveal]"));
+  if (!nodes.length) return;
+
+  var show = function (el) { el.classList.add("is-in"); };
+  if (!("IntersectionObserver" in window)) { nodes.forEach(show); return; }
+
+  // Anything already on screen at load shows without animating -- the
+  // reveal is for content you scroll to, not for the first viewport.
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      var group = e.target.parentNode ? [].slice.call(
+        e.target.parentNode.querySelectorAll("[data-reveal]")) : [e.target];
+      var i = Math.max(0, group.indexOf(e.target));
+      e.target.style.setProperty("--reveal-delay", Math.min(i, 5) * 60 + "ms");
+      show(e.target);
+      io.unobserve(e.target);
+    });
+  }, { rootMargin: "0px 0px -12% 0px", threshold: 0.08 });
+
+  nodes.forEach(function (el) {
+    if (el.getBoundingClientRect().top < window.innerHeight * 0.9) show(el);
+    else io.observe(el);
+  });
+})();

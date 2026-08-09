@@ -11,10 +11,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9d05063f">
-<link rel="stylesheet" href="demo.css?v=ea066275">
+<link rel="stylesheet" href="style.css?v=148a9e2a">
+<link rel="stylesheet" href="demo.css?v=0210035e">
+<script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
-<body class="runner-page">
+<body class="runner-page no-js">
 
 <a class="skip" href="#main">Skip to content</a>
 
@@ -34,29 +35,21 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Eight things on this page, and none of them are a recording. Four of them download the Python
+      Four things on this page, and none of them are a recording. Your browser downloads the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
       <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>
-      and executes it here, unmodified — ROS is stubbed at the import boundary and nothing below it is
-      touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in its
-      way; race all five of the package's local controllers over one plan; reach into a UR12e's
-      workspace and find out where it stops seeing you. The fifth runs too, but is copied rather than
-      fetched, because the repository behind it is private. The sixth is not mine and does not run
-      here &mdash; &pi;0.5 is a 12&nbsp;GB checkpoint, so the page is the client and the model runs
-      on a GPU somewhere else. And one is a model I trained here, on this machine, from the repo's own
-      controller &mdash; the checkpoint in <code>assets/</code> is the one the training script wrote.
+      and executes it here, unmodified &mdash; ROS is stubbed at the import boundary and nothing below
+      it is touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in
+      its way; race all five of the package's local controllers over one plan; then reach into a
+      UR12e's workspace, block the arm, and watch it cancel and replan around your hand.
     </p>
     <ol class="runner__toc">
       <li><a href="#plan">Draw a map, search it</a><span>A*, Theta*, RRT, SMAC, Hybrid</span></li>
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
-      <li><a href="#embodiment">One vector, six robots</a><span>cross-embodiment action masks</span></li>
-      <li><a href="#clone">Clone the controller</a><span>behaviour cloning, and why it falls over</span></li>
-      <li><a href="#rl">Reinforce it</a><span>GRPO, and a curriculum that will not let RL touch the policy</span></li>
-      <li><a href="#policy">Ask &pi;0.5</a><span>openpi policy server, over a websocket</span></li>
     </ol>
   </header>
 
@@ -270,213 +263,12 @@
   <!-- data-server is an openpi policy server's websocket. Empty means the
        section explains how to start one rather than failing at the network.
        See tools/stub_policy_server.py to develop against the protocol. -->
-  <section class="chase" id="embodiment">
-    <div class="chase__head">
-      <p class="panel__label">One vector, six robots</p>
-      <h2 class="chase__title">Where a policy puts its actions</h2>
-      <p class="chase__lede">
-        A policy trained on many robots has to emit <em>one</em> action vector, because a
-        per-embodiment output head cannot transfer &mdash; a bimanual episode would teach the
-        single-arm head nothing. The alternative, adapted here from RDT-1B, is one 32-D vector that
-        every robot writes into, with a boolean mask deciding which dimensions are real for a given
-        morphology and the loss masked to match.
-      </p>
-      <p class="chase__lede">
-        <strong>Pick a robot and watch the mask.</strong> Every cell below is one dimension of the
-        vector; lit means the loss sees it. This is
-        <code>embodiment_mask()</code> from my <a class="inline" href="#embodiment-note">robot
-        foundation model</a>, called once per click &mdash; the pattern is not drawn by hand.
-      </p>
-      <p class="chase__lede">
-        The row underneath is the part worth staring at: how many of the six robots light each
-        dimension. <code>base_vel</code> and <code>torso_lift</code> are covered by <strong>two</strong>,
-        so those columns get gradient as rare as a mobile base appears in the mixture. Dimension&nbsp;6
-        drops to five because a 6-DoF arm truncates the 7-DoF joint slice. A per-slice loss curve
-        would show you that twelve hours into a run; the table shows it before you start.
-      </p>
-      <p class="chase__key" id="emb-key"></p>
-    </div>
-    <div class="chase__stage">
-      <canvas id="emb-canvas" width="1204" height="470" aria-label="The 32-dimensional unified action vector, showing which dimensions are active for the selected robot morphology and how many of the six morphologies cover each dimension."></canvas>
-      <p class="chase__read" id="emb-read">loading the action space…</p>
-    </div>
-    <p class="chase__lede chase__lede--note" id="embodiment-note">
-      Unlike everything else on this page, this one is not fetched from GitHub at load: the
-      repository is private, so <code>raw.githubusercontent.com</code> returns 404. The two files
-      are <strong>copied</strong> into this site at
-      <a class="inline" href="https://github.com/abdu7rahman/abdu7rahman.github.io/blob/main/vendor/rfm/PROVENANCE.md" target="_blank" rel="noopener">vendor/rfm</a>,
-      with the source commit and their SHA-256 recorded, and they run unmodified. That repository is
-      an architecture I am building, not a working policy &mdash; it has no trained weights, no
-      rollouts and no simulator, and nothing here should be read as a robot doing anything. What it
-      is, is a real design decision with real consequences you can see above.
-    </p>
-
-  <section class="chase" id="clone">
-    <div class="chase__head">
-      <p class="panel__label">The only model on this page I trained</p>
-      <h2 class="chase__title">Clone the controller</h2>
-      <p class="chase__lede">
-        Everything else here either runs code from a repository or calls a model someone else
-        trained. This one is fitted on this machine, from scratch, and the checkpoint the page loads
-        is the one <code>tools/train_clone.py</code> wrote. No GPU, no dataset download, nothing
-        hand-labelled &mdash; the supervision comes from the repo's own
-        <code>dwa_controller.py</code> driving A* plans across generated maps, recording what it saw
-        and what twist it committed to.
-      </p>
-      <p class="chase__lede">
-        That makes it the smallest honest version of what ACT and Diffusion Policy do: watch an
-        expert, fit its actions. The expert here samples a velocity window and scores a fan of
-        rollouts every tick. The clone is three matrix multiplies.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        <strong>It is also the clearest failure on the page, and that is why it is here.</strong>
-        Open-loop the fit is excellent &mdash; a hundredth of a metre per second of error against
-        held-out expert commands. Let it drive and it falls over, because imitation compounds its
-        own mistakes: one small deviation puts the robot somewhere the expert never went, so the
-        next prediction is worse. The numbers below are the run that produced the shipped
-        checkpoint, failures included.
-      </p>
-      <div class="clone-stats" id="clone-stats"></div>
-      <p class="chase__read chase__read--flow" id="clone-note">loading the checkpoint…</p>
-    </div>
-    <div class="chase__stage">
-      <canvas id="clone-canvas" width="1204" height="530" aria-label="Training loss for the cloned controller, and the closed-loop success rate after each data-aggregation round."></canvas>
-      <p class="chase__read" id="clone-read">&nbsp;</p>
-    </div>
-  </section>
-
-  <section class="chase" id="rl">
-    <div class="chase__head">
-      <p class="panel__label">How the reasoner is trained</p>
-      <h2 class="chase__title">Reinforce it</h2>
-      <p class="chase__lede">
-        Same vendored package as above, a different part of it. Training a model that both reasons
-        and acts has an obvious failure mode &mdash; the RL that sharpens the reasoning quietly
-        wrecks the policy underneath it. The curriculum answers that by separating stages
-        <em>by parameter set</em>, not just by time, and the schema enforces it.
-      </p>
-      <p class="chase__lede">
-        <strong>Every number below is read out of <code>CurriculumConfig()</code> and
-        <code>GRPOConfig()</code>.</strong> The stage budgets, which parameter groups each stage
-        unfreezes, the group size, the KL coefficient and the reward weight schedule are the
-        package's defaults, not values retyped into this page.
-      </p>
-      <div class="rl-stages" id="rl-stages"></div>
-      <p class="chase__read chase__read--flow" id="rl-stage-note">&nbsp;</p>
-
-      <h3 class="rl-h">Try to break the isolation</h3>
-      <p class="chase__lede">
-        <code>StageConfig</code> carries a validator, <code>_rl_is_isolated</code>, that refuses a
-        reasoning-RL stage which also trains the action stack. Switch any of these on and ask the
-        schema to build that stage &mdash; the answer below is pydantic's, not mine.
-      </p>
-      <p class="chase__key" id="rl-iso-key">
-        <button class="tbtn tbtn--sm er-src" data-iso="backbone" type="button">train_backbone</button>
-        <button class="tbtn tbtn--sm er-src" data-iso="expert" type="button">train_action_expert</button>
-        <button class="tbtn tbtn--sm er-src" data-iso="dynamics" type="button">train_dynamics</button>
-        <button class="tbtn tbtn--sm" id="rl-iso-run" type="button">Build the stage</button>
-      </p>
-      <pre id="rl-iso" class="log log--raw">press build &mdash; train_reasoning is always on, because this is the RL stage</pre>
-
-      <h3 class="rl-h">What the schedule does to a group</h3>
-      <p class="chase__lede">
-        GRPO has no value network. It samples <code>group_size</code> rollouts for one prompt,
-        scores each, and uses <em>the group itself</em> as the baseline: the advantage is the
-        reward centred and scaled within the group. So what decides which rollout gets reinforced
-        is the reward weighting &mdash; and that moves on a schedule, from format first, to
-        correctness, to punishing traces that do not entail their own answer.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        The three component scores per rollout are the <em>input</em> here, and they are made up:
-        a real run gets them from a format check, a mined answer, and a frozen judge re-deriving
-        the answer from the trace. The weights, the group size and the advantage arithmetic are the
-        package's. Drag the step and watch which rollout wins change without any score changing.
-      </p>
-      <p class="chase__key">
-        <label class="er-task">
-          <span>Step</span>
-          <input type="range" id="rl-step" min="0" max="1799" step="1" value="60">
-          <output id="rl-stepv">60</output>
-        </label>
-      </p>
-    </div>
-    <div class="chase__stage">
-      <canvas id="rl-canvas" width="1204" height="620" aria-label="Eight sampled rollouts scored on format, accuracy and consistency, with the group-relative advantage GRPO would assign each one at the current training step."></canvas>
-      <p class="chase__read" id="rl-read">loading the curriculum</p>
-    </div>
-  </section>
-
-  <section class="chase" id="policy" data-server="">
-    <div class="chase__head">
-      <p class="panel__label">The one that does not run here</p>
-      <h2 class="chase__title">Ask &pi;0.5</h2>
-      <p class="chase__lede">
-        Everything above runs in this tab. This cannot.
-        <a class="inline" href="https://github.com/Physical-Intelligence/openpi" target="_blank" rel="noopener">&pi;0.5</a>
-        is a 3B-parameter vision-language-action model and its base checkpoint is
-        <strong>12.44&nbsp;GB</strong> &mdash; I counted the bucket. Physical Intelligence's own answer
-        is to run it on a GPU behind a policy server and query that from whatever is holding the
-        robot. So this page is the thing holding the robot.
-      </p>
-      <p class="chase__lede">
-        It speaks openpi's protocol: a websocket, msgpack-numpy on the wire, a metadata frame on
-        connect, one observation up and one action chunk back. The observation is the one
-        <code>examples/droid/main.py</code> builds &mdash; two 224&times;224 uint8 views, seven joint
-        positions, a gripper, and a language instruction. The reply is <code>[10, 8]</code>: ten steps
-        of seven joint velocities plus a gripper command, plotted below.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        <strong>You need a server for this one.</strong>
-        <code>uv run scripts/serve_policy.py --env DROID</code>, then point <code>data-server</code>
-        at it. A GPU is the fast path, not the only one &mdash; openpi ships PyTorch versions of
-        &pi;0 and &pi;0.5 and the server takes them the same way, so it runs on CPU too, slowly and
-        with enough RAM to hold the weights. If you have neither,
-        <code>python3 tools/stub_policy_server.py</code> speaks the same protocol with synthetic
-        actions so the client can still be checked &mdash; it declares itself synthetic in its
-        metadata and this page prints that, because a plot of made-up numbers should not be able to
-        pass for a policy. Two other things this page is not pretending about: the joint state below
-        is a plausible rest pose to perturb rather than a measurement, and both camera views are the
-        same image, which a real DROID cell would not send.
-      </p>
-      <p class="chase__key">
-        <button class="tbtn tbtn--sm er-src is-on" id="pi-src-arm" type="button">The arm cell</button>
-        <button class="tbtn tbtn--sm er-src" id="pi-src-file" type="button">A file</button>
-        <input type="file" id="pi-file" accept="image/*" hidden>
-        <button class="tbtn tbtn--sm" id="pi-ask" type="button">Ask &pi;0.5</button>
-      </p>
-      <p class="chase__key">
-        <label class="er-task">
-          <span>Instruction</span>
-          <input type="text" id="pi-prompt" value="pick up the object and place it in the bin"
-                 aria-label="The language instruction sent to the policy">
-        </label>
-      </p>
-      <div class="joints" id="pi-joints">
-        <label><span>j1</span><input type="range" id="pi-j0" min="-2.9" max="2.9" step="0.01"><output id="pi-jv0">0.00</output></label>
-        <label><span>j2</span><input type="range" id="pi-j1" min="-1.8" max="1.8" step="0.01"><output id="pi-jv1">0.00</output></label>
-        <label><span>j3</span><input type="range" id="pi-j2" min="-2.9" max="2.9" step="0.01"><output id="pi-jv2">0.00</output></label>
-        <label><span>j4</span><input type="range" id="pi-j3" min="-3.0" max="0.0" step="0.01"><output id="pi-jv3">0.00</output></label>
-        <label><span>j5</span><input type="range" id="pi-j4" min="-2.9" max="2.9" step="0.01"><output id="pi-jv4">0.00</output></label>
-        <label><span>j6</span><input type="range" id="pi-j5" min="-0.1" max="3.7" step="0.01"><output id="pi-jv5">0.00</output></label>
-        <label><span>j7</span><input type="range" id="pi-j6" min="-2.9" max="2.9" step="0.01"><output id="pi-jv6">0.00</output></label>
-        <label><span>grip</span><input type="range" id="pi-j7" min="0" max="1" step="0.01"><output id="pi-jv7">0.00</output></label>
-      </div>
-    </div>
-    <div class="chase__stage">
-      <canvas id="pi-canvas" width="1204" height="700" aria-label="The action chunk returned by the policy server, plotted as seven joint velocity traces and a gripper command over the ten steps of the chunk."></canvas>
-      <p class="chase__read" id="pi-read">no policy server configured</p>
-    </div>
-    <pre id="pi-raw" class="log log--raw" aria-live="polite">the server's metadata and the first rows of the action chunk will appear here</pre>
-  </section>
-
   <section class="console">
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
       Five of the six run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
-      and send nothing anywhere. The one exception is <a class="inline" href="#policy">Ask &pi;0.5</a>,
-      which sends one observation to whatever policy server it is pointed at, and only when you press
-      the button. The source shown in the log is fetched live from
+      and send nothing anywhere. The source shown in the log is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page.
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
         Read the source <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a>
@@ -492,6 +284,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=3a3d94e6" defer></script>
+<script src="demo.js?v=bc747556" defer></script>
 </body>
 </html>
