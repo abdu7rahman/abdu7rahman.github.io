@@ -242,6 +242,11 @@
   display: block; width: 100%; height: auto;
   border: 1px solid var(--rule-2); background: var(--paper);
 }
+/* The chase tracks the pointer 1:1, which on touch means the browser must not
+   also read the drag as a scroll. This replaces a preventDefault inside a
+   touchmove handler -- same behaviour, declared where it belongs, and it is
+   what lets the pointermove path be the only one. */
+#chase { touch-action: none; }
 .chase__lede--note { font-size: .94rem; color: var(--ink-3); }
 
 
