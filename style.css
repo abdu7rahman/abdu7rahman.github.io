@@ -43,7 +43,15 @@
   --serif: "Fraunces", Georgia, "Times New Roman", serif;
   --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
-  --ease: cubic-bezier(.2, .7, .2, 1);
+  /* Motion tokens. Built-in CSS easings are too weak for UI; these are the
+     curves from Emil Kowalski's animation guidance, not hand-rolled. */
+  --ease:        cubic-bezier(0.23, 1, 0.32, 1);   /* strong ease-out, the default */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* on-screen movement */
+  --dur-press:  120ms;   /* button feedback */
+  --dur-hover:  180ms;   /* hover, colour */
+  --dur-move:   240ms;   /* something travelling on screen */
+  --dur-reveal: 480ms;   /* first-time scroll reveal, allowed to be slower */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -436,7 +444,10 @@ a.inline:hover { border-color: var(--signal); }
   transition: padding .22s var(--ease), color .18s var(--ease), background .18s var(--ease);
 }
 .contact a:hover { color: var(--signal); background: var(--paper-3); padding-left: 14px; }
-.contact .ico--link { opacity: 0; transform: translate(-4px, 4px); transition: all .22s var(--ease); }
+.contact .ico--link {
+  opacity: 0; transform: translate(-4px, 4px);
+  transition: opacity var(--dur-hover) var(--ease), transform var(--dur-hover) var(--ease);
+}
 .contact a:hover .ico--link { opacity: 1; transform: none; }
 
 /* ── footer ────────────────────────────────────────────────── */
@@ -460,7 +471,10 @@ a.inline:hover { border-color: var(--signal); }
 
 @media (max-width: 860px) {
   :root { --gutter: 18px; }
-  .shell { grid-template-columns: 1fr; }
+  /* minmax(0, 1fr), not 1fr: a plain fr track takes its minimum from the
+     max-content of its items, so the widest thing in the rail or the main
+     column sets the page width and everything else scrolls sideways with it. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
 
   .rail {
     position: sticky; top: 0; z-index: 20;
@@ -471,7 +485,11 @@ a.inline:hover { border-color: var(--signal); }
     backdrop-filter: blur(8px);
   }
   .rail__top { flex: none; }
-  .rail__nav { margin: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  /* min-width:0 is what makes overflow-x:auto mean anything here. A flex item
+     defaults to min-width:auto, which floors it at the max-content width of the
+     nowrap link row -- 415px of it -- so the rail, and with it the page, was
+     wider than a phone and scrolled sideways. */
+  .rail__nav { margin: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .rail__nav::-webkit-scrollbar { display: none; }
   .rail__nav ol { display: flex; gap: 4px; }
   .rail__nav li + li { margin-top: 0; }
@@ -520,4 +538,49 @@ a.inline:hover { border-color: var(--signal); }
 .tryit:hover .ico--link { transform: translate(3px, -3px); }
 @media (max-width: 620px) {
   .tryit { grid-template-columns: 1fr; gap: 10px; }
+}
+
+/* ── motion polish ────────────────────────────────────────────────────
+   Built against Emil Kowalski's animation guidance. Three rules drove
+   everything here: transform and opacity only, nothing over 300ms unless
+   it is a first-time reveal, and every hover gated behind a real pointer
+   so a tap on a phone does not fire a stuck hover state.
+   ------------------------------------------------------------------- */
+
+/* Press feedback. Buttons that do not answer a press feel dead, and this
+   was missing everywhere -- the audit found zero :active states. */
+.btn:active,
+.icolink:active { transform: scale(0.985); }
+.btn, .icolink { transition: transform var(--dur-press) var(--ease), color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease); }
+
+/* Hover gating. Touch fires a false hover on tap and it sticks until the
+   next tap elsewhere. */
+@media (hover: hover) and (pointer: fine) {
+  .tryit:hover .ico--link { transform: translate(3px, -3px); }
+  .proj__title a:hover .ico--link { transform: translate(3px, -3px); }
+  .contact a:hover .ico--link { opacity: 1; transform: translate(0, 0); }
+}
+
+/* First-time reveal. Sections lift in once as they arrive; 480ms is past
+   the 300ms UI ceiling on purpose -- this is a marketing reveal seen once
+   per visit, not an interaction. Staggered 60ms so they do not all land
+   together, which is what makes a page feel assembled rather than dumped. */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--dur-reveal) var(--ease), transform var(--dur-reveal) var(--ease);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+[data-reveal].is-in { opacity: 1; transform: none; }
+/* No JS, no reveal -- never leave content invisible behind a script. */
+.no-js [data-reveal] { opacity: 1; transform: none; }
+
+/* Reduced motion means fewer and gentler, not zero: the reveal still
+   fades so the page does not snap, but nothing travels. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] { transform: none; transition: opacity 200ms var(--ease); }
+  [data-reveal].is-in { transform: none; }
+  .btn:active, .icolink:active { transform: none; }
+  .runner__back:hover { gap: 8px; }
 }
