@@ -26,7 +26,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PAGES = ("index.html", "demo.html")
+PAGES = ("index.html", "demo.html", "404.html")
 
 # src="x.js" / href="x.css", optionally already stamped. Absolute URLs and
 # anything with a host are skipped by the pattern: no "//" allowed.
@@ -41,7 +41,11 @@ def digest(path):
 
 def stamp(text, page, missing):
     def sub(m):
-        target = (ROOT / m.group("file")).resolve()
+        # 404.html links its assets root-absolute, because Pages serves that one
+        # file for a miss at any depth and a relative href would resolve against
+        # the missing directory. Strip the leading slash before joining, or
+        # pathlib treats it as absolute and walks straight out of the repo.
+        target = (ROOT / m.group("file").lstrip("/")).resolve()
         if not target.is_file():
             missing.append("%s -> %s" % (page, m.group("file")))
             return m.group(0)
