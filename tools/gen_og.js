@@ -27,11 +27,10 @@ const OUT = path.join(ROOT, 'assets', 'og.png');
 // than a truetype fallback three times the size.
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 
-const CSS_URL = 'https://fonts.googleapis.com/css2'
-  + '?family=Fraunces:opsz,wght@9..144,600;9..144,700'
-  + '&family=Schibsted+Grotesk:wght@400;500;600'
-  + '&family=JetBrains+Mono:wght@400;500'
-  + '&display=swap';
+// The site is set in the system font now, and so is the card. Nothing to
+// fetch: whatever this machine resolves -apple-system to is what a reader's
+// machine resolves it to, and the card is a raster either way.
+const CSS_URL = null;
 
 function get(url) {
   return new Promise((resolve, reject) => {
@@ -48,24 +47,18 @@ function get(url) {
 }
 
 async function inlineFonts() {
-  const css = (await get(CSS_URL)).toString();
-  const urls = [...new Set([...css.matchAll(/url\((https:[^)]+)\)/g)].map(m => m[1]))];
-  let out = css;
-  for (const u of urls) {
-    const buf = await get(u);
-    const mime = u.endsWith('.woff2') ? 'font/woff2' : 'font/ttf';
-    out = out.split(u).join(`data:${mime};base64,${buf.toString('base64')}`);
-  }
-  return { css: out, files: urls.length };
+  return { css: '', files: 0 };
 }
 
 // The site's tokens, not a second palette. If these drift from style.css the
 // card stops looking like the page, which is the only thing it is for.
 const T = {
-  paper: '#efe7d6', paper3: '#f6efe0', rule: '#d6cdbc',
-  ink: '#2c2a23', ink2: '#3d4a47', ink3: '#565f5a',
-  signal: '#9a4a26', signalW: '#ecdccb', accent: '#3f6b57',
+  paper: '#fbfbfd', paper2: '#f5f5f7', paper3: '#ffffff', rule: '#d2d2d7',
+  ink: '#1d1d1f', ink2: '#424245', ink3: '#6e6e73',
+  signal: '#0066cc', signalW: '#e8f2fd', accent: '#007a3d',
 };
+const SANS = '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",'
+           + 'Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif';
 
 // Kept short enough to sit on one line each. nowrap below turns a value that
 // outgrows its column into a frame overflow, which the check catches, rather
@@ -82,48 +75,31 @@ ${fontCss}
 * { margin:0; padding:0; box-sizing:border-box }
 html,body { width:1200px; height:630px }
 body {
-  background:${T.paper}; color:${T.ink};
-  font-family:"Schibsted Grotesk",system-ui,sans-serif;
-  padding:60px 76px; display:flex; flex-direction:column; justify-content:space-between;
-  position:relative; overflow:hidden;
-}
-/* A hairline grid at the same weight the site uses, so the card reads as
-   paper with structure rather than a flat colour field. */
-body::before {
-  content:''; position:absolute; inset:0;
-  background-image:linear-gradient(${T.rule} 1px,transparent 1px),
-                   linear-gradient(90deg,${T.rule} 1px,transparent 1px);
-  background-size:60px 60px; opacity:.5;
+  background:${T.paper}; color:${T.ink}; font-family:${SANS};
+  padding:64px 76px; display:flex; flex-direction:column; justify-content:space-between;
+  position:relative; overflow:hidden; text-align:center;
 }
 .l { position:relative }
-.eyebrow {
-  font-family:"JetBrains Mono",monospace; font-size:17px; font-weight:500;
-  letter-spacing:.18em; text-transform:uppercase; color:${T.signal};
-}
+.eyebrow { font-size:22px; font-weight:600; letter-spacing:-.01em; color:${T.signal} }
 h1 {
-  font-family:"Fraunces",Georgia,serif; font-weight:600;
-  font-size:88px; line-height:.98; letter-spacing:-.028em;
-  margin-top:20px; color:${T.ink};
+  font-weight:700; font-size:82px; line-height:1.05; letter-spacing:-.03em;
+  margin-top:14px; color:${T.ink};
 }
-.rule { width:260px; height:5px; margin:26px 0 0; border-radius:3px;
-  background:linear-gradient(90deg,${T.signal},${T.signal}40) }
-.lede { margin-top:24px; font-size:24px; line-height:1.4; color:${T.ink2}; max-width:52ch }
-.facts { display:flex; gap:40px; margin-top:auto; padding-top:26px }
-.fact dt { font-family:"JetBrains Mono",monospace; font-size:13.5px; font-weight:500;
-  letter-spacing:.12em; text-transform:uppercase; color:${T.ink3} }
-.fact dd { margin-top:8px; font-size:18px; font-weight:500; color:${T.ink}; white-space:nowrap }
-.foot { position:relative; display:flex; align-items:center; justify-content:space-between;
-  border-top:1px solid ${T.rule}; padding-top:22px; margin-top:24px }
-.url { font-family:"JetBrains Mono",monospace; font-size:21px; font-weight:500; color:${T.signal} }
-.tag { font-family:"JetBrains Mono",monospace; font-size:16px; color:${T.ink3} }
-.chips { display:flex; gap:10px }
-.chip { font-family:"JetBrains Mono",monospace; font-size:15px; color:${T.ink3};
-  border:1px solid ${T.rule}; background:${T.paper3}; border-radius:8px; padding:8px 13px }
+.rule { display:none }
+.lede { margin:22px auto 0; font-size:26px; line-height:1.36; letter-spacing:-.02em;
+  color:${T.ink2}; max-width:30ch }
+.facts { display:flex; justify-content:center; gap:56px; margin-top:auto; padding-top:26px }
+.fact dt { font-size:16px; letter-spacing:-.01em; color:${T.ink3} }
+.fact dd { margin-top:6px; font-size:19px; font-weight:500; color:${T.ink}; white-space:nowrap }
+.foot { position:relative; display:flex; align-items:center; justify-content:center;
+  border-top:1px solid ${T.rule}; padding-top:24px; margin-top:26px }
+.url { font-size:22px; font-weight:500; color:${T.signal} }
+.tag { font-size:16px; color:${T.ink3} }
+.chips { display:none }
 </style>
 <div class="l">
   <p class="eyebrow">Robotics engineer</p>
-  <h1>Mohammed<br>Abdul Rahman</h1>
-  <div class="rule"></div>
+  <h1>Mohammed Abdul Rahman</h1>
   <p class="lede">Motion planning, manipulation, and the bringup that makes them run.
     Four of these repos execute in your browser.</p>
 </div>
@@ -143,9 +119,7 @@ h1 {
 }
 
 (async () => {
-  process.stdout.write('fetching fonts… ');
-  const { css, files } = await inlineFonts();
-  console.log(files + ' files inlined');
+  const { css } = await inlineFonts();
 
   const b = await chromium.launch({
     executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
