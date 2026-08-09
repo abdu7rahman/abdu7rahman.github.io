@@ -234,7 +234,11 @@
 .racer .kx { height: 9px; width: 9px; border-radius: 1px; }
 .racer.is-on { opacity: 1; border-color: var(--ink-3); }
 #race-run { margin-left: auto; }
-#race-canvas {
+/* Every stage canvas is 1204 CSS pixels wide by its width attribute, which is
+   wider than a phone. Scaling to the column keeps the backing store at full
+   resolution and costs nothing: every pointer handler already converts through
+   getBoundingClientRect().width, so a scaled canvas still maps clicks correctly. */
+#chase, #race-canvas, #arm {
   display: block; width: 100%; height: auto;
   border: 1px solid var(--rule-2); background: var(--paper);
 }

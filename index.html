@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=148a9e2a">
+<link rel="stylesheet" href="style.css?v=12ce0043">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="no-js">
@@ -256,28 +256,30 @@
             <li class="proj" data-reveal>
               <span class="proj__idx">06</span>
               <div class="proj__main">
-                <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/pincher-x100-puppet-control" target="_blank" rel="noopener">
-                    PincherX100 puppet control
-                    <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
-                  </a>
-                </h3>
+                <h3 class="proj__title">Robot foundation model</h3>
                 <p class="proj__desc">
-                  Vision-only teleoperation. Hand position maps to waist, shoulder, elbow and wrist; a
-                  thumb-index pinch drives the gripper through MoveIt 2. No headset, no controller, and
-                  not a defensible way to run a manipulator &mdash; a proof of concept for how quickly an
-                  intuitive interface can be prototyped.
+                  A flow-matching VLA, a latent world model and an RL-tuned reasoner on one backbone,
+                  with an orchestration layer above it that never touches the weights &mdash;
+                  <code>models/</code> does not import <code>orchestration/</code>, which is what keeps
+                  two philosophies from being stapled together. Every robot writes into one 32-D action
+                  space with a per-embodiment mask, and a competence head exports abstention so the
+                  layer above can ask &ldquo;can you do this?&rdquo; in a forward pass instead of a
+                  rollout. It trains on 3,008 episodes collected in robosuite and it has
+                  <strong>never once completed the task</strong> &mdash; 0 of 16. The one real result
+                  is the competence signal: prediction error separates failures at AUROC 0.946
+                  &plusmn; 0.008 against controls at 0.11, which the repo still refuses to call a win
+                  because the same checkpoint predicts the next latent worse than copying the present.
+                  Its own evidence index opens by counting twelve times a number looked healthy while
+                  the thing it stood for did nothing.
                 </p>
                 <ul class="chips">
-                  <li>ROS&nbsp;2 Humble</li><li>MediaPipe</li><li>MoveIt&nbsp;2</li>
+                  <li>PyTorch</li><li>Flow&nbsp;matching</li><li>GRPO</li><li>Pydantic</li><li>RDT-style&nbsp;action&nbsp;space</li>
                 </ul>
-                <a class="demo" href="https://www.youtube.com/watch?v=WEzc5oIadew" target="_blank" rel="noopener">
-                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the demo</span></a>
               </div>
               <dl class="proj__stats">
-                <div><dt>Tracking rate</dt><dd>30<span class="unit">fps</span></dd></div>
-                <div><dt>Hand-to-motion</dt><dd>~200<span class="unit">ms</span></dd></div>
-                <div><dt>Mapped joints</dt><dd>4</dd></div>
+                <div><dt>Action space</dt><dd>32<span class="unit">-D</span></dd></div>
+                <div><dt>Embodiments</dt><dd>7</dd></div>
+                <div><dt>Failure modes watched</dt><dd>9</dd></div>
               </dl>
             </li>
 

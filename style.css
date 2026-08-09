@@ -471,7 +471,10 @@ a.inline:hover { border-color: var(--signal); }
 
 @media (max-width: 860px) {
   :root { --gutter: 18px; }
-  .shell { grid-template-columns: 1fr; }
+  /* minmax(0, 1fr), not 1fr: a plain fr track takes its minimum from the
+     max-content of its items, so the widest thing in the rail or the main
+     column sets the page width and everything else scrolls sideways with it. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
 
   .rail {
     position: sticky; top: 0; z-index: 20;
@@ -482,7 +485,11 @@ a.inline:hover { border-color: var(--signal); }
     backdrop-filter: blur(8px);
   }
   .rail__top { flex: none; }
-  .rail__nav { margin: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  /* min-width:0 is what makes overflow-x:auto mean anything here. A flex item
+     defaults to min-width:auto, which floors it at the max-content width of the
+     nowrap link row -- 415px of it -- so the rail, and with it the page, was
+     wider than a phone and scrolled sideways. */
+  .rail__nav { margin: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .rail__nav::-webkit-scrollbar { display: none; }
   .rail__nav ol { display: flex; gap: 4px; }
   .rail__nav li + li { margin-top: 0; }
