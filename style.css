@@ -584,3 +584,70 @@ a.inline:hover { border-color: var(--signal); }
   .btn:active, .icolink:active { transform: none; }
   .runner__back:hover { gap: 8px; }
 }
+
+/* ── the other two accessibility preferences ──────────────────────────
+   Reduced motion was honoured and these two were not, which is half an
+   answer: the same reader who turns motion down is the one who turns
+   transparency or contrast up. Both have real targets on this page. */
+
+/* The mobile rail is the one translucent surface here -- a blurred bar
+   with content scrolling under it. Asked for less transparency, it
+   becomes an opaque bar with a hairline, which is the same structure
+   without the legibility cost of text over moving content. */
+@media (prefers-reduced-transparency: reduce) {
+  .rail {
+    background: var(--paper);
+    backdrop-filter: none;
+    border-bottom: 1px solid var(--rule-2);
+  }
+}
+
+/* More contrast means defined edges, not louder colour. The hairlines
+   this page is built from are deliberately quiet; at this setting they
+   need to be visible rather than felt. */
+@media (prefers-contrast: more) {
+  :root {
+    --rule:   #b9ad97;
+    --rule-2: #a2957e;
+    --ink-3:  #454c48;   /* 5.4:1 -> 7.4:1 on paper */
+  }
+  .btn, .tryit, .chips li, .proj__stats > div { border-color: var(--rule-2); }
+  .seg__btn.is-on, .tbtn:focus-visible { outline: 1px solid currentColor; }
+}
+
+/* ── print ───────────────────────────────────────────────────────────
+   A portfolio gets saved to PDF by people who want to read it later or
+   pass it on, and this printed as a rail full of nav, an interactive
+   callout to a page that cannot be printed, and every section still
+   invisible behind an IntersectionObserver that never fires because
+   print has no viewport to scroll. */
+@media print {
+  /* The reveal is the important one: without this the printed page is
+     mostly blank, because [data-reveal] starts at opacity 0 and nothing
+     ever adds .is-in. */
+  [data-reveal] { opacity: 1 !important; transform: none !important; }
+
+  :root { --paper: #fff; --paper-2: #fff; --paper-3: #fff; }
+  * { background: transparent !important; box-shadow: none !important; }
+  body { color: #000; }
+
+  /* Navigation, the skip link and the interactive callout are all things
+     you cannot act on from paper. */
+  .rail, .skip, .tryit, .viz, .viz-h { display: none !important; }
+  .shell { display: block; }
+
+  /* A link is useless in print unless it says where it goes. Internal
+     anchors and mailto stay silent -- printing "#work" helps nobody. */
+  .proj__title a[href^="http"]::after,
+  .contact a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font: 400 9pt/1 var(--mono);
+    color: #444;
+    word-break: break-all;
+  }
+
+  .sec, .proj, figure, .bench { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  .hero { padding-top: 0; }
+  a { text-decoration: underline; }
+}

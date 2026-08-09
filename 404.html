@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No path found — Mohammed Abdul Rahman</title>
+<meta name="description" content="That page does not exist. Back to the portfolio, or run the robots in your browser.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- Absolute paths, not relative: GitHub Pages serves this file for a miss at
+     any depth, so /demo/nope would resolve style.css against /demo/. -->
+<link rel="stylesheet" href="/style.css?v=97009e8b">
+<style>
+  .lost { min-height: 100vh; display: grid; place-content: center; text-align: center;
+          padding: var(--gutter); gap: 6px; }
+  .lost__code { font: 500 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+                color: var(--signal); }
+  .lost__title { font-family: var(--serif); font-weight: 600; font-size: clamp(2.4rem, 7vw, 4rem);
+                 line-height: 1.02; letter-spacing: -.03em; margin: 14px 0 0; }
+  .lost__lede { margin: 16px auto 0; max-width: 46ch; color: var(--ink-2); line-height: 1.6; }
+  .lost__acts { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></symbol>
+  </defs>
+</svg>
+
+<main class="lost" id="main">
+  <p class="lost__code">404 &middot; no path found</p>
+  <h1 class="lost__title">The planner<br>returned empty</h1>
+  <p class="lost__lede">
+    There is nothing at this address. Either the goal is outside the map or it is
+    sitting inside an obstacle &mdash; both come back the same way.
+  </p>
+  <div class="lost__acts">
+    <a class="btn btn--solid" href="/">
+      <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg><span>Back to the start pose</span>
+    </a>
+    <a class="btn" href="/demo.html">
+      <svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Run my robots</span>
+    </a>
+  </div>
+</main>
+
+</body>
+</html>
