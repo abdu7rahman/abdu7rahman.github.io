@@ -145,7 +145,8 @@
         <strong>Swap the controller and chase again.</strong> Same planner, same costmap, same
         cursor &mdash; only the thing following the plan changes, and they follow it differently
         enough to feel it. Each one draws what it is actually looking at: the point Pure Pursuit
-        steers at, the point Stanley measures its cross-track error from, the band TEB is deforming.
+        steers at, the point on the path nearest Stanley&rsquo;s front axle &mdash; not its centre, which
+        is the whole idea of the law &mdash; and the band TEB is deforming.
         Only DWA has a rollout fan, because only DWA scores a window of trajectories. MPPI is here
         too, but it runs in a worker: a tick costs about 580&nbsp;ms and that is one indivisible
         call, so on the main thread it would freeze the cursor instead of chasing it. Off the main
@@ -205,8 +206,9 @@
         holds the line.
       </p>
       <p class="chase__lede chase__lede--note">
-        MPPI is off by default, and not because it loses &mdash; it lands mid-pack, ahead of both
-        Stanley and TEB. It draws 1000
+        MPPI is off by default, and not because it loses &mdash; it lands third of four on both maps
+        of the package&rsquo;s own controller suite, ahead of TEB and behind Pure Pursuit and Stanley.
+        It draws 1000
         samples a tick and spends real time doing it: about <strong>470&nbsp;ms a tick in this
         tab</strong> against roughly 2&nbsp;ms for DWA, which is 18&nbsp;seconds of driving that
         takes three minutes to watch. The profile puts that cost in
