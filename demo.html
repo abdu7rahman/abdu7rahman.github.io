@@ -18,7 +18,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=786db9cb">
-<link rel="stylesheet" href="demo.css?v=62d6c0c6">
+<link rel="stylesheet" href="demo.css?v=26d5216a">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="runner-page no-js">
@@ -41,7 +41,7 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Seven things on this page, and none of them are a recording. Four of them download the Python
+      Six things on this page, and none of them are a recording. Four of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
@@ -52,14 +52,13 @@
       UR12e's workspace, block the arm, and watch it cancel and replan around your hand.
     </p>
     <p class="runner__lede">
-      The last three come from repositories that are private, so their modules are
+      The last two come from repositories that are private, so their modules are
       <strong>copied</strong> into <code>vendor/</code> rather than fetched &mdash; each with a
-      <code>PROVENANCE.md</code> naming the commit and a SHA-256 per file. They still execute: walk a
-      quadruped across the same course under two different cost functions and then break its physics
-      on purpose; run an eight-phase bimanual assembly controller against its own analytic plant; and
-      read a 32-dimensional action space and a nine-mode failure watchlist out of the model that
-      defines them. The two families are listed apart below because the difference between fetching
-      and copying is worth knowing before you read the byte counts in the console.
+      <code>PROVENANCE.md</code> naming the commit and a SHA-256 per file. They still execute: click
+      a point on a Go2 course and watch four cost functions drive to it, then put back the two
+      constants a physics cross-check refuted; or run a bimanual assembly controller against its own
+      analytic plant. Below those, a reference block reads a 32-dimensional action space out of the
+      model that defines it &mdash; structure rather than a demo, and labelled as such.
     </p>
     <p class="runner__tocl">Fetched from GitHub as this page loads</p>
     <ol class="runner__toc">
@@ -69,10 +68,9 @@
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
     </ol>
     <p class="runner__tocl">Copied in, because the repository is private</p>
-    <ol class="runner__toc runner__toc--3">
-      <li><a href="#terrain">Cross the ice</a><span>two cost functions, one Go2 course</span></li>
+    <ol class="runner__toc runner__toc--2">
+      <li><a href="#terrain">Send a Go2 anywhere</a><span>click the course, four cost functions race</span></li>
       <li><a href="#assemble">Seat a connector</a><span>eight phases, two UR5s</span></li>
-      <li><a href="#space">One action space, seven robots</a><span>32 dims, 9 failure modes</span></li>
     </ol>
   </header>
 
@@ -290,55 +288,12 @@
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/qlc/</code></p>
       <h2 class="chase__title">Cross the ice</h2>
       <p class="chase__lede">
-        A Unitree Go2 crossing a 12&nbsp;&times;&nbsp;12&nbsp;m course from
-        <a class="inline" href="#terrain-note">quadruped-learned-cost</a>. All four cost functions get
-        the same course, the same 13-channel observation, the same A* and the same DWA, and only the
-        cost function differs: <code>nav2_inflation</code> is default Nav2 &mdash; an obstacle layer
-        and an inflation layer, which is all occupancy can express &mdash; <code>reactive</code> is a
-        hand-tuned legged costmap, <code>learned</code> is a CNN regressed on measured traversal cost,
-        and <code>irl</code> is maximum-entropy inverse RL fitted to expert trajectories alone. The
-        dashed fifth line is a privileged oracle handed the exact per-cell cost the simulator
-        charges; it is a ceiling, not a competitor.
-      </p>
-      <p class="chase__lede">
-        The course is <code>course_suite(5, seed=1234)</code>, which is the benchmark's own suite, and
-        the loop is <code>qlc.eval.benchmark.run_episode</code>, which is the benchmark's own loop:
-        replan every <code>replan_period</code> ticks, DWA every tick, and a stuck counter so a stack
-        that paints itself into a corner is recorded as a planning failure rather than as a timeout.
-        Nothing here re-implements anything; the numbers under the plate come off the
-        <code>EpisodeResult</code>.
-      </p>
-      <p class="chase__lede">
-        <strong>Then break the physics on purpose.</strong> The switch puts <code>FALL_RATE</code>
-        back to 0.5 and the ice drag back to 0.95 &mdash; the two constants the surrogate shipped with
-        before a MuJoCo cross-check measured them. MuJoCo found the sign backwards (ice is the
-        <em>slowest</em> surface at drag 0.30, not the fastest) and found no falls at all on flat
-        low-friction ground, so <code>FALL_RATE</code> is now zero. That one constant produced 20 of
-        the 36 failures in the Nav2 row of the first results table. Removing it moved Nav2 from 70.0%
-        to <strong>87.5%</strong> over 120 courses and the effect the project was built to show
-        disappeared. Watch it happen on one course.
-      </p>
-      <p class="chase__lede chase__lede--note" id="terrain-note">
-        <strong>Two of the four are torch, and there is no wasm build of torch.</strong>
-        <code>qlc.cost.net</code> is the supervised CNN and the MaxEnt IRL cost, so their forward
-        pass cannot run here &mdash; but their <em>output</em> can. A cost model's only input is the
-        feature stack, and a course's feature stack is a pure function of its
-        <code>TerrainConfig</code>: the semantic confusion is drawn from an RNG seeded off
-        <code>TerrainConfig.seed</code>, so course <em>i</em> at seed 1234 has one learned cost field
-        and always will. <code>tools/bake_qlc_costs.py</code> computes those ten fields against the
-        repository's own checkpoints, and asserts per course that the episode a baked field produces
-        is identical to the episode the live model produces &mdash; same outcome, same step count,
-        same path length. So for those two rows the forward pass is replaced and nothing else is:
-        A*, the smoothing, the resampling, the DWA, the world and <code>run_episode</code>'s whole
-        loop still run in this tab, on that field. The console prints the byte count, and
-        <code>assets/qlc/index.json</code> records the source commit and the checkpoint digests.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        One course is not the table. Over the repository's 120: <code>nav2_inflation</code> 87.5%,
-        <code>learned</code> 86.7%, <code>reactive</code> 85.0%, <code>irl</code> 81.7%, oracle
-        93.3% &mdash; every interval overlapping every other. <strong>The four cost functions are
-        indistinguishable</strong>, and Nav2, the baseline the whole premise said had to lose, comes
-        out highest. That is the null result, and it is the finding.
+        <strong>Click anywhere on the course.</strong> Four cost functions for a Unitree Go2 plan and
+        drive to the point you pick &mdash; default Nav2 inflation, a hand-tuned legged costmap, a
+        supervised learned cost, and maximum-entropy IRL &mdash; over the same terrain, with the same
+        A* and the same DWA. The only thing that differs between the four routes is the cost function.
+        The dashed line is a privileged oracle handed the exact cost the simulator charges: a ceiling,
+        not a competitor.
       </p>
       <p class="chase__key">
         <span class="chase__pickl">Course</span>
@@ -374,13 +329,51 @@
         <span><i class="kx kx--learn"></i>learned</span>
         <span><i class="kx kx--irl"></i>irl</span>
         <span><i class="kx kx--orc"></i>oracle (ceiling)</span>
-        <span><i class="kx kx--plan"></i>its global plan</span>
       </p>
     </div>
     <div class="chase__stage">
-      <canvas id="qlc-canvas" width="1204" height="626" aria-label="A Unitree Go2 course drawn from above: ground truth materials with each cost function's route painted on as it drives."></canvas>
-      <p class="chase__read" id="qlc-read">press run &middot; two cost functions and a privileged ceiling, one course</p>
+      <canvas id="qlc-canvas" width="1204" height="626" aria-label="A Unitree Go2 course drawn from above. Click anywhere on it to set the goal; each cost function's route is painted on as it drives there."></canvas>
+      <p class="chase__read" id="qlc-read">click anywhere on the course &middot; four cost functions will drive there</p>
       <div class="lab-tablewrap"><table class="lab-table" id="qlc-table"></table></div>
+    </div>
+    <div class="chase__head chase__head--again">
+      <p class="chase__lede">
+        <strong>Then break the physics on purpose.</strong> The switch puts <code>FALL_RATE</code>
+        back to 0.5 and the ice drag back to 0.95 &mdash; the two constants the surrogate shipped with
+        before a MuJoCo cross-check measured them and found the sign backwards and no falls at all.
+        That one constant produced 20 of the 36 failures in the Nav2 row of the first results table.
+        Removing it moved Nav2 from 70.0% to <strong>87.5%</strong> over 120 courses and the effect
+        the project was built to show disappeared.
+      </p>
+      <details class="lab-more">
+        <summary>How much of this is really running</summary>
+        <p class="chase__lede">
+          The course comes from <code>course_suite(5, seed=1234)</code> and the loop is
+          <code>qlc.eval.benchmark.run_episode</code>, both the benchmark's own: replan every
+          <code>replan_period</code> ticks, DWA every tick, a stuck counter so a stack that paints
+          itself into a corner is recorded as a planning failure rather than a timeout. Setting the
+          goal is <code>qlc-goto</code>, which copies the recipe with a new <code>Pose2D</code> and
+          regenerates &mdash; so a goal inside a wall is refused rather than carved out.
+        </p>
+        <p class="chase__lede">
+          Two of the four are torch, and there is no wasm build of it, so their forward pass cannot
+          run here &mdash; but their output can. A cost model's only input is the feature stack, and a
+          course's feature stack is a pure function of its <code>TerrainConfig</code>, so course
+          <em>i</em> at seed 1234 has one learned cost field and always will.
+          <code>tools/bake_qlc_costs.py</code> computes those ten fields against the repository's own
+          checkpoints and asserts per course that the episode a baked field produces is identical to
+          the episode the live model produces. A* the smoothing, the resampling, the DWA, the world
+          and the whole loop still run in this tab. If a goal you set regenerates the terrain, those
+          two rows drop out rather than use a field that no longer belongs to the course.
+        </p>
+        <p class="chase__lede">
+          One course is not the table. Over the repository's 120: <code>nav2_inflation</code> 87.5%,
+          <code>learned</code> 86.7%, <code>reactive</code> 85.0%, <code>irl</code> 81.7%, oracle
+          93.3% &mdash; every interval overlapping every other. The four cost functions are
+          indistinguishable, and Nav2, the baseline the whole premise said had to lose, comes out
+          highest. That is the null result, and it is the finding.
+        </p>
+      </details>
     </div>
   </section>
 
@@ -389,55 +382,12 @@
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/oba/</code></p>
       <h2 class="chase__title">Seat a connector</h2>
       <p class="chase__lede">
-        Two UR5s on a NIST Assembly Task Board, from orchestrated-bimanual-assembly. What runs here is
-        the <em>controller</em>: <code>oba.sim.expert</code>'s eight-phase insertion machine and its
-        five-phase bimanual wire-routing machine, scored by <code>oba.sim.success</code> &mdash; the
-        same detectors the simulator arm uses &mdash; through <code>oba.sim.rollout.rollout</code>.
-      </p>
-      <p class="chase__lede">
-        <strong>The environment under it is not a simulator, and this is the one thing to read before
-        the plate.</strong> <code>oba.sim.plant</code> integrates commanded deltas, attaches an object
-        when a gripper shuts near it, and develops a reaction force when a body is pressed past a
-        surface. No friction, no compliance, no deformable wire mechanics. Its own docstring says it
-        must never produce a reported number, and the repository enforces that with a type rather than
-        a convention: <code>IS_ANALYTIC</code> is true, <code>rollout</code> refuses to record a phase
-        gate when this is the environment, and <code>PhaseGate.measured_by</code> has no member that
-        could describe it, so the mistake is rejected before a guard has to catch it. Every success
-        rate the project reports is read from Isaac Sim. There are none on this page.
-      </p>
-      <p class="chase__lede">
-        What is worth watching is the logic. <code>ALIGN</code> and <code>INSERT</code> are separate
-        phases because a gripper-transition heuristic cannot tell them apart and the difference
-        between them is the whole task. The socket's mating axis is published as its own frame rotated
-        180&deg; about X, so a controller that assumes &ldquo;insertion means descend&rdquo; fails here
-        rather than passing by luck. And the force band is ordered
-        <code>1.5 &lt; 8.0 &lt; 30 &lt; 45</code> N for a reason that cost a debugging session: with
-        the back-off derived as a fraction of the maximum it landed <em>below</em> the force a good
-        insertion produces, so every successful seat was aborted one step early and reported as
-        <code>NOT_GRASPED</code> &mdash; a number pointing at the gripper for a fault in a threshold.
-      </p>
-      <p class="chase__lede">
-        On <strong>wire routing</strong>, watch <code>REGRASP</code>. One link fills one clip, so
-        pressing the same grip point into three clips in succession empties each as it fills the next.
-        The controller has to let go and take hold further along. An earlier version did not, every
-        episode ended with exactly one clip occupied, and the reported reason blamed tension.
-      </p>
-      <p class="chase__lede">
-        <strong>It is over quickly, and that is the honest length.</strong> An episode is 105 steps
-        for the insertion and 136 for the wire, and <code>WorldState.sim_time_s</code> is
-        <code>step / 50</code> &mdash; so about two and three seconds at the plant's own rate, which
-        is the rate it plays back at. The Python underneath takes tens of milliseconds, and that is
-        the whole reason this fixture exists: a phase machine with eight states and two latches has
-        bugs that are about <em>logic</em>, and logic bugs are findable in CI, on a laptop, without
-        waiting for a simulator to load.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        This plant integrates translations only, so <code>ArmCommand.ee_delta_rot_rad</code> is
-        ignored and the connector is published already at the mated orientation. The detector's
-        angular tolerance is therefore <em>not</em> exercised by anything you see here &mdash; the
-        repository states that in the module rather than letting the fixture look like it covers more
-        than it does. It is covered by unit tests that build a misaligned state directly, and for real
-        by Isaac Sim.
+        Two UR5s on a NIST Assembly Task Board. An eight-phase insertion controller picks up a D-sub
+        connector and presses it into a socket; a five-phase bimanual one threads a wire through three
+        clips, letting go and taking hold further along each time. Both are
+        <code>oba.sim.expert</code>, scored by the same detectors the simulator arm uses. Watch the
+        force bar: a connector <em>resting on</em> a socket and one <em>seated in</em> it are
+        millimetres apart in position and an order of magnitude apart in newtons.
       </p>
       <p class="chase__key">
         <span class="chase__pickl">Task</span>
@@ -447,39 +397,58 @@
         </span>
         <button class="tbtn tbtn--sm" id="oba-run" type="button">Run the episode</button>
       </p>
-      <p class="chase__key">
-        <span><i class="kx kx--nav2"></i>right arm</span>
-        <span><i class="kx kx--react"></i>left arm</span>
-        <span><i class="kx kx--orc"></i>socket / clips</span>
-        <span><i class="kx kx--body"></i>connector, wire</span>
-      </p>
     </div>
     <div class="chase__stage">
-      <canvas id="oba-canvas" width="1204" height="506" aria-label="A NIST assembly task board seen from above and from the side, with both arms' end effectors, the connector and socket, and the current controller phase."></canvas>
+      <canvas id="oba-canvas" width="1204" height="506" aria-label="A NIST assembly task board seen from the side and from above, with both UR5 arms, the connector and socket, the force band and the current controller phase."></canvas>
       <p class="chase__read" id="oba-read">press run &middot; the phase machine, not the physics</p>
+    </div>
+    <div class="chase__head chase__head--again">
+      <details class="lab-more">
+        <summary>What this is not</summary>
+        <p class="chase__lede">
+          <strong>The environment under it is not a simulator.</strong> <code>oba.sim.plant</code>
+          integrates commanded deltas, attaches an object when a gripper shuts near it, and develops
+          a reaction force when a body is pressed past a surface. No friction, no compliance, no
+          deformable wire mechanics. Its own docstring says it must never produce a reported number,
+          and the repository enforces that with a type rather than a convention:
+          <code>IS_ANALYTIC</code> is true, <code>rollout</code> refuses to record a phase gate when
+          this is the environment, and <code>PhaseGate.measured_by</code> has no member that could
+          describe it. Every success rate the project reports is read from Isaac Sim. There are none
+          on this page, and the scripted expert is a positive control &mdash; it is built not to
+          fail.
+        </p>
+        <p class="chase__lede">
+          The arms are drawn as a two-link sketch to the end-effector position the plant integrates.
+          There are no joints in this fixture: <code>ArmState.joint_positions_rad</code> is
+          <code>(0.0,) * 6</code> and the module says so. Rotations are not integrated either, so the
+          detector's angular tolerance is not exercised by anything you see &mdash; that is covered
+          by unit tests that build a misaligned state directly, and for real by Isaac Sim.
+        </p>
+        <p class="chase__lede">
+          Worth knowing anyway: <code>ALIGN</code> and <code>INSERT</code> are separate phases because
+          a gripper-transition heuristic cannot tell them apart and the difference between them is
+          the whole task. The socket's mating axis is published rotated 180&deg; about X, so a
+          controller assuming &ldquo;insertion means descend&rdquo; fails rather than passing by
+          luck. And the force band is ordered <code>1.5 &lt; 8.0 &lt; 30 &lt; 45</code> N for a reason
+          that cost a debugging session: derived as a fraction of the maximum, the back-off landed
+          <em>below</em> the force a good insertion produces, so every successful seat was aborted one
+          step early and reported as <code>NOT_GRASPED</code>.
+        </p>
+      </details>
     </div>
   </section>
 
-  <section class="chase" id="space">
+  <section class="ref" id="space">
     <div class="chase__head">
-      <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/rfm/</code></p>
+      <p class="panel__label">Reference, not a demo &mdash; <code>vendor/rfm/</code></p>
       <h2 class="chase__title">One action space, seven robots</h2>
       <p class="chase__lede">
-        No robot and no plate here: this is structure, and structure is the part of
-        robot-foundation-model that is worth showing. Every embodiment in the mixture writes into one
-        32-dimensional vector, adapted from RDT-1B, and a per-embodiment mask decides which dimensions
-        are meaningful. <code>rfm.data.action_space.embodiment_mask</code> builds that mask; the strip
-        below <em>is</em> its output.
-      </p>
-      <p class="chase__lede">
-        The reason to prefer one masked space over a head per robot is transfer &mdash; a bimanual
-        episode teaches the shared representation something about single-arm reaching &mdash; and the
-        cost is that masking bugs go silent. Compare <code>single_arm_7dof</code> with
-        <code>single_arm_osc_pos</code>: the same physical arm under a Cartesian position controller
-        writes four dimensions, not fourteen. Running it under the 7-DoF mask left ten dimensions
-        supervised against a constant zero and diluted the gradient on the four that decide the task by
-        about 3.5&times;. That is why the enum carries a separate member for a controller rather than
-        for a robot.
+        No robot here: this is structure. Every embodiment in robot-foundation-model's mixture writes
+        into one 32-dimensional vector and a per-embodiment mask decides which dimensions are
+        meaningful. The strip is <code>rfm.data.action_space.embodiment_mask</code>'s output. Compare
+        <code>single_arm_7dof</code> with <code>single_arm_osc_pos</code>: the same arm under a
+        Cartesian controller writes four dimensions, not fourteen, and running it under the wrong mask
+        left ten supervised against a constant zero and diluted the gradient by about 3.5&times;.
       </p>
       <p class="chase__key">
         <span class="chase__pickl">Embodiment</span>
@@ -494,69 +463,58 @@
         </span>
         <button class="tbtn tbtn--sm" id="rfm-load" type="button">Load the module</button>
       </p>
-    </div>
-    <div class="chase__stage">
       <div class="lab-strip" id="rfm-strip"></div>
       <p class="chase__read chase__read--flush" id="rfm-read">press a robot &middot; the mask comes from the module, not from this page</p>
-    </div>
-    <div class="chase__head chase__head--again">
-      <h3 class="lab-h3">The watchlist</h3>
-      <p class="chase__lede">
-        Nine named failure modes, each with a metric, a threshold, a direction and a written
-        consequence, live in <code>rfm.eval.ablations.FAILURE_MODES</code>. They exist because this
-        project kept measuring healthy numbers over dead code paths &mdash; its own evidence index
-        opens by counting twelve of them. Move a slider and
-        <code>rfm.eval.metrics.check_alarms</code> scores the snapshot; what lights up is what that
-        function returned.
-      </p>
-      <p class="chase__lede chase__lede--note">
-        The defaults trip nothing. Two of the nine are greyed out because they are scored by
-        <code>check_trace_alarms</code> over a task's execution traces rather than by
-        <code>check_alarms</code> over a metric snapshot, and no slider here can reach them. FM-2 is
-        the one to push: the world model predicting <code>z_t</code> and calling it a prediction shows
-        a dynamics cosine around 0.95 while the head carries no information, which is exactly the
-        shape of the mistake the list was written to catch.
-      </p>
-    </div>
-    <div class="chase__stage">
-      <div class="lab-dials">
-        <label class="lab-dial"><span>VL probe score <em>(FM-1 &mdash; baseline 65.0)</em></span>
-          <input type="range" id="fm-vl" data-fm-input="vl_probe_score" min="55" max="65" step="0.5" value="64">
-          <output id="fm-vl-v">64</output></label>
-        <label class="lab-dial"><span>dynamics copy margin <em>(FM-2)</em></span>
-          <input type="range" id="fm-cm" data-fm-input="dynamics_copy_margin" min="0" max="0.3" step="0.005" value="0.2">
-          <output id="fm-cm-v">0.2</output></label>
-        <label class="lab-dial"><span>masked-dim action MSE <em>(FM-3)</em></span>
-          <input type="range" id="fm-mm" data-fm-input="masked_mse" min="0" max="0.01" step="0.0005" value="0">
-          <output id="fm-mm-v">0</output></label>
-        <label class="lab-dial"><span>flow sample variance <em>(FM-4)</em></span>
-          <input type="range" id="fm-fv" data-fm-input="flow_sample_variance" min="0" max="0.05" step="0.0005" value="0.02">
-          <output id="fm-fv-v">0.02</output></label>
-        <label class="lab-dial"><span>counterfactual accuracy <em>(FM-5)</em></span>
-          <input type="range" id="fm-ca" data-fm-input="reasoning_counterfactual_accuracy" min="0.3" max="1" step="0.01" value="0.82">
-          <output id="fm-ca-v">0.82</output></label>
-        <label class="lab-dial"><span>competence regret, s <em>(FM-6)</em></span>
-          <input type="range" id="fm-cr" data-fm-input="competence_regret_s" min="0" max="60" step="1" value="8">
-          <output id="fm-cr-v">8</output></label>
-        <label class="lab-dial"><span>p99 act latency, ms <em>(FM-8)</em></span>
-          <input type="range" id="fm-lat" data-fm-input="p99_latency_ms" min="40" max="300" step="5" value="90">
-          <output id="fm-lat-v">90</output></label>
-      </div>
-      <p class="chase__read chase__read--flush" id="rfm-count">press a robot or move a slider to load the module</p>
-      <ol class="lab-modes" id="rfm-modes"></ol>
-    </div>
-    <div class="chase__head chase__head--again">
-      <h3 class="lab-h3">Coverage, as the module prints it</h3>
-      <p class="chase__lede chase__lede--note">
-        <code>describe_coverage()</code>, rendered by the module itself. The one real result this
-        project has is not on this page and is not a robot doing anything: prediction error separates
-        failures at AUROC 0.946&nbsp;&plusmn;&nbsp;0.008 against controls at 0.11, and the repository
-        still declines to call it a win because the same checkpoint predicts the next latent worse
-        than copying the present one. The policy has never completed the task &mdash; 0 of 16.
-      </p>
-    </div>
-    <div class="chase__stage">
-      <pre class="lab-pre" id="rfm-coverage">describe_coverage() runs when the module loads</pre>
+
+      <details class="lab-more">
+        <summary>The nine-mode failure watchlist</summary>
+        <p class="chase__lede">
+          <code>rfm.eval.ablations.FAILURE_MODES</code>: nine named ways this can look healthy and be
+          dead, each with a metric, a threshold and a written consequence. They exist because the
+          project kept measuring healthy numbers over dead code paths &mdash; its own evidence index
+          opens by counting twelve. Move a slider and <code>rfm.eval.metrics.check_alarms</code>
+          scores the snapshot; what lights up is what that function returned. Two of the nine are
+          greyed because they are <code>check_trace_alarms</code> territory and no slider reaches
+          them.
+        </p>
+        <div class="lab-dials">
+          <label class="lab-dial"><span>VL probe score <em>(FM-1 &mdash; baseline 65.0)</em></span>
+            <input type="range" id="fm-vl" data-fm-input="vl_probe_score" min="55" max="65" step="0.5" value="64">
+            <output id="fm-vl-v">64</output></label>
+          <label class="lab-dial"><span>dynamics copy margin <em>(FM-2)</em></span>
+            <input type="range" id="fm-cm" data-fm-input="dynamics_copy_margin" min="0" max="0.3" step="0.005" value="0.2">
+            <output id="fm-cm-v">0.2</output></label>
+          <label class="lab-dial"><span>masked-dim action MSE <em>(FM-3)</em></span>
+            <input type="range" id="fm-mm" data-fm-input="masked_mse" min="0" max="0.01" step="0.0005" value="0">
+            <output id="fm-mm-v">0</output></label>
+          <label class="lab-dial"><span>flow sample variance <em>(FM-4)</em></span>
+            <input type="range" id="fm-fv" data-fm-input="flow_sample_variance" min="0" max="0.05" step="0.0005" value="0.02">
+            <output id="fm-fv-v">0.02</output></label>
+          <label class="lab-dial"><span>counterfactual accuracy <em>(FM-5)</em></span>
+            <input type="range" id="fm-ca" data-fm-input="reasoning_counterfactual_accuracy" min="0.3" max="1" step="0.01" value="0.82">
+            <output id="fm-ca-v">0.82</output></label>
+          <label class="lab-dial"><span>competence regret, s <em>(FM-6)</em></span>
+            <input type="range" id="fm-cr" data-fm-input="competence_regret_s" min="0" max="60" step="1" value="8">
+            <output id="fm-cr-v">8</output></label>
+          <label class="lab-dial"><span>p99 act latency, ms <em>(FM-8)</em></span>
+            <input type="range" id="fm-lat" data-fm-input="p99_latency_ms" min="40" max="300" step="5" value="90">
+            <output id="fm-lat-v">90</output></label>
+        </div>
+        <p class="chase__read chase__read--flush" id="rfm-count">press a robot or move a slider to load the module</p>
+        <ol class="lab-modes" id="rfm-modes"></ol>
+      </details>
+
+      <details class="lab-more">
+        <summary>Coverage, as <code>describe_coverage()</code> prints it</summary>
+        <p class="chase__lede chase__lede--note">
+          The one real result this project has is not on this page and is not a robot doing anything:
+          prediction error separates failures at AUROC 0.946&nbsp;&plusmn;&nbsp;0.008 against controls
+          at 0.11, and the repository still declines to call it a win because the same checkpoint
+          predicts the next latent worse than copying the present one. The policy has never completed
+          the task &mdash; 0 of 16.
+        </p>
+        <pre class="lab-pre" id="rfm-coverage">describe_coverage() runs when the module loads</pre>
+      </details>
     </div>
   </section>
 
@@ -564,7 +522,7 @@
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      All seven run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      All six run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
       and send nothing anywhere. For the first four the source is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page. The last
       three run in a second runtime that does not start until you press something in one of their
@@ -586,6 +544,6 @@
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 <script src="demo.js?v=d18f0ae7" defer></script>
-<script src="lab.js?v=e40ab5d2" defer></script>
+<script src="lab.js?v=a75bd3b6" defer></script>
 </body>
 </html>

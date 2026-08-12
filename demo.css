@@ -490,3 +490,37 @@
    section's first .chase__head sets the reading measure; the later ones keep
    it without re-opening the gap the first one leaves under the title. */
 .chase__head--again { margin-top: 34px; }
+
+/* Two entries in the copied family now, so the contents grid divides again. */
+.runner__toc--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* The course takes a click. Crosshair says so before the caption does, and
+   touch-action keeps a tap from being read as the start of a scroll. */
+#qlc-canvas { cursor: crosshair; touch-action: none; }
+
+/* Detail that would otherwise sit between the reader and the plate. Closed by
+   default: the demo is the argument, and the paragraphs are for whoever wants
+   to check it. */
+.lab-more { margin-top: 18px; }
+.lab-more > summary {
+  cursor: pointer; list-style: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border: 1px solid var(--rule-2); border-radius: var(--r-pill);
+  font: 500 12px/1 var(--sans); color: var(--ink-2);
+  transition: border-color .16s var(--ease), color .16s var(--ease);
+}
+.lab-more > summary::-webkit-details-marker { display: none; }
+.lab-more > summary::before {
+  content: "+"; font: 500 13px/1 var(--mono); color: var(--signal);
+}
+.lab-more[open] > summary::before { content: "\2212"; }
+.lab-more > summary:hover { border-color: var(--ink); color: var(--ink); }
+.lab-more > *:not(summary) { margin-top: 14px; }
+
+/* The action space is a reference block, not a demo, and is set back to say so. */
+.ref { margin-top: clamp(48px, 7vh, 88px); padding-top: clamp(28px, 4vh, 44px); position: relative; }
+.ref::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0;
+  height: 1px; background: var(--rule);
+}
+.ref .chase__title { font-size: clamp(1.4rem, 2.4vw, 1.9rem); }
