@@ -403,6 +403,15 @@
         The controller has to let go and take hold further along. An earlier version did not, every
         episode ended with exactly one clip occupied, and the reported reason blamed tension.
       </p>
+      <p class="chase__lede">
+        <strong>It is over quickly, and that is the honest length.</strong> An episode is 105 steps
+        for the insertion and 136 for the wire, and <code>WorldState.sim_time_s</code> is
+        <code>step / 50</code> &mdash; so about two and three seconds at the plant's own rate, which
+        is the rate it plays back at. The Python underneath takes tens of milliseconds, and that is
+        the whole reason this fixture exists: a phase machine with eight states and two latches has
+        bugs that are about <em>logic</em>, and logic bugs are findable in CI, on a laptop, without
+        waiting for a simulator to load.
+      </p>
       <p class="chase__lede chase__lede--note">
         This plant integrates translations only, so <code>ArmCommand.ee_delta_rot_rad</code> is
         ignored and the connector is published already at the mated orientation. The detector's
@@ -558,6 +567,6 @@
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 <script src="demo.js?v=d18f0ae7" defer></script>
-<script src="lab.js?v=9b031b5d" defer></script>
+<script src="lab.js?v=180dae8b" defer></script>
 </body>
 </html>
