@@ -1,0 +1,123 @@
+{
+  "source": "github.com/abdu7rahman/quadruped-learned-cost",
+  "commit": "cdc287cb30a8a82b45b60fc44d2b74e2685c48b8",
+  "seed": 1234,
+  "resolution": 0.05,
+  "note": "Cost fields only. The planner, the controller, the simulator and the benchmark's control loop all run live in the browser on these; see vendor/qlc/PROVENANCE.md.",
+  "checkpoints": {
+    "learned": "c20b356534ab0cbdead0d36abe5f9b1d82b593c214c2bd795db937dcf81af88c",
+    "irl": "e66ebae7934581af4379e742a126b5f70de0e3c9ee42f43c0ac8e479ee1651c1"
+  },
+  "fields": {
+    "ice_shortcut-000.learned.f32": {
+      "course": "ice_shortcut-000",
+      "stack": "learned",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "0e2ab3ad8ff789a3ec0d06f8eddbaf154f623e73b4a4479c1725c5b5387709d2",
+      "min": 1.734,
+      "max": 254.0
+    },
+    "mud_field-001.learned.f32": {
+      "course": "mud_field-001",
+      "stack": "learned",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "6bc65919ef4608a1c9a77c6a235ce0b5556786ef727602ec26d87e944551a034",
+      "min": 2.0483,
+      "max": 254.0
+    },
+    "stair_bench-002.learned.f32": {
+      "course": "stair_bench-002",
+      "stack": "learned",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "f4e96d1fb44692133a7dc00f613a2b55e56e29d3f3556aafb1342133ab812b32",
+      "min": 1.4181,
+      "max": 254.0
+    },
+    "rubble_slalom-003.learned.f32": {
+      "course": "rubble_slalom-003",
+      "stack": "learned",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "449bef4cbd4b16e65864daba70ca7d84178221f7cc1ec0219a994ad6b7fe4085",
+      "min": 2.2275,
+      "max": 254.0
+    },
+    "mixed-004.learned.f32": {
+      "course": "mixed-004",
+      "stack": "learned",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "b04b6c287009aec6e7bad6ec301dea4005a62c02dcf9755838e2ddf95e5191f1",
+      "min": 2.5244,
+      "max": 254.0
+    },
+    "ice_shortcut-000.irl.f32": {
+      "course": "ice_shortcut-000",
+      "stack": "irl",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "94cc960adc6153287ea66b3e67bc49eac73562dc1511bfc0d099b7adf424ec28",
+      "min": 0.0,
+      "max": 254.0
+    },
+    "mud_field-001.irl.f32": {
+      "course": "mud_field-001",
+      "stack": "irl",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "d815b0551c39da4247a030891d33296dbd6f0eb729bc5d8b74e615095d3d2ad1",
+      "min": 0.0,
+      "max": 254.0
+    },
+    "stair_bench-002.irl.f32": {
+      "course": "stair_bench-002",
+      "stack": "irl",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "dc0d524cef028895f90f11cedba617328b5b270740b4edc349ec8a91dd93368d",
+      "min": 0.0,
+      "max": 254.0
+    },
+    "rubble_slalom-003.irl.f32": {
+      "course": "rubble_slalom-003",
+      "stack": "irl",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "14760631e66e59e6d6fa946ac297f597acc20588a3811b24cafa626b21da8ced",
+      "min": 0.0,
+      "max": 254.0
+    },
+    "mixed-004.irl.f32": {
+      "course": "mixed-004",
+      "stack": "irl",
+      "shape": [
+        240,
+        240
+      ],
+      "sha256": "e67a1543fd4ec643b078d2fcbdb10aa73869f256ed4cef9ff3dca41d61c400cc",
+      "min": 0.0,
+      "max": 254.0
+    }
+  }
+}
