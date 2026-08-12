@@ -494,9 +494,14 @@
 /* Two entries in the copied family now, so the contents grid divides again. */
 .runner__toc--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-/* The course takes a click. Crosshair says so before the caption does, and
-   touch-action keeps a tap from being read as the start of a scroll. */
-#qlc-canvas { cursor: crosshair; touch-action: none; }
+/* The course takes a click, and the crosshair says so before the caption does.
+
+   `pan-y`, not `none`. The plate is full-width and about 440 px tall on a
+   phone, so `none` made it a region you could not scroll past -- a drag that
+   started on it was swallowed and the page stayed put. `pan-y` gives vertical
+   drags back to the scroller and keeps taps, which is all this needs: the goal
+   is set by a tap, never by a drag. */
+#qlc-canvas { cursor: crosshair; touch-action: pan-y; }
 
 /* Detail that would otherwise sit between the reader and the plate. Closed by
    default: the demo is the argument, and the paragraphs are for whoever wants
@@ -524,3 +529,8 @@
   height: 1px; background: var(--rule);
 }
 .ref .chase__title { font-size: clamp(1.4rem, 2.4vw, 1.9rem); }
+
+/* A segment with nothing behind it yet. It has to look unavailable, or it is
+   the same lie as a button that silently declines. */
+.seg__btn:disabled { opacity: .38; cursor: not-allowed; }
+.seg__btn:disabled.is-on { opacity: .6; }

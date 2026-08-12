@@ -2662,5 +2662,43 @@
   PRESETS.rooms();
   draw();
   logEl.textContent = "reactive_autonomous_nav / browser runtime";
-  boot();
+
+  /* Pyodide, numpy and the modules below them are about 24 MB, and this used to
+     fetch all of it before the reader had done anything at all -- including a
+     reader on cellular who opened the page, read the header and left. It is now
+     deferred to the first sign of engagement: a scroll, a pointer, a key, or
+     the plate coming into view.
+
+     Not deferred all the way to a button press, because the chase is supposed
+     to be alive when you reach it and the run button stays disabled until the
+     runtime is up. Anyone who actually reads this page triggers it within a
+     second; a preview crawler never does. */
+  var booted = false;
+  function bootOnce() {
+    if (booted) return;
+    booted = true;
+    boot();
+  }
+
+  /* Triggered by *these* plates coming into view, and by pressing one of their
+     own controls -- not by any interaction anywhere on the page. Watching for a
+     global pointerdown was the obvious thing and was wrong: pressing a control
+     in one of the vendored sections further down booted this runtime too, so a
+     reader who only wanted the assembly demo paid for numpy twice. */
+  if (window.IntersectionObserver) {
+    var io = new IntersectionObserver(function (entries) {
+      if (entries.some(function (en) { return en.isIntersecting; })) {
+        io.disconnect();
+        bootOnce();
+      }
+    }, { rootMargin: "300px" });
+    [cv, document.getElementById("chase"), document.getElementById("race-canvas"),
+     document.getElementById("arm")].forEach(function (el) { if (el) io.observe(el); });
+  } else {
+    bootOnce();
+  }
+  ["#plan", "#drive", "#race", "#reach"].forEach(function (sel) {
+    var host = document.querySelector(sel);
+    if (host) host.addEventListener("pointerdown", bootOnce, { once: true, passive: true });
+  });
 })();

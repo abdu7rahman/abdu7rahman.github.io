@@ -92,7 +92,16 @@
   // reveal is for content you scroll to, not for the first viewport.
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
-      if (!e.isIntersecting) return;
+      if (!e.isIntersecting) {
+        // Already gone past. A jump rather than a scroll -- a deep link, End,
+        // find-in-page, a restored position -- lands with whole sections above
+        // the viewport, and those never intersect again. Without this they sit
+        // at opacity 0 for the rest of the visit, which is the one thing this
+        // reveal must never do. Shown without the stagger, since the reader is
+        // not watching them arrive.
+        if (e.boundingClientRect.bottom < 0) { show(e.target); io.unobserve(e.target); }
+        return;
+      }
       var group = e.target.parentNode ? [].slice.call(
         e.target.parentNode.querySelectorAll("[data-reveal]")) : [e.target];
       var i = Math.max(0, group.indexOf(e.target));
@@ -106,4 +115,43 @@
     if (el.getBoundingClientRect().top < window.innerHeight * 0.9) show(el);
     else io.observe(el);
   });
+
+  /* IntersectionObserver alone leaves content invisible, and this page is long
+     enough to hit it. An observer only reports a *change*: a block that was
+     below the fold when it was observed, and is above the viewport by the time
+     anything is delivered, never intersects at either end, so its callback
+     never runs and it stays at opacity 0 for the rest of the visit. Any jump
+     rather than a scroll does that -- a deep link, End, find-in-page, a
+     restored position. Measured on the demo page: five blocks stranded.
+
+     So the observer keeps doing the nice part, the staggered arrival, and a
+     throttled scroll pass catches the two cases it structurally cannot: a
+     block already scrolled past, and one sitting in the bottom 12% of the
+     viewport at the end of the document, where the negative root margin can
+     never be satisfied because there is no scroll left. The listener removes
+     itself once nothing is waiting. */
+  var pending = nodes.filter(function (el) { return !el.classList.contains("is-in"); });
+
+  function sweep() {
+    var bottom = window.innerHeight + window.scrollY >=
+                 document.documentElement.scrollHeight - 4;
+    pending = pending.filter(function (el) {
+      if (el.classList.contains("is-in")) return false;
+      if (bottom || el.getBoundingClientRect().bottom < 0) {
+        show(el);
+        io.unobserve(el);
+        return false;
+      }
+      return true;
+    });
+    if (!pending.length) window.removeEventListener("scroll", onScroll);
+  }
+
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { sweep(); ticking = false; });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
 })();

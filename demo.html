@@ -18,7 +18,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=786db9cb">
-<link rel="stylesheet" href="demo.css?v=26d5216a">
+<link rel="stylesheet" href="demo.css?v=e0b0d769">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="runner-page no-js">
@@ -74,7 +74,7 @@
     </ol>
   </header>
 
-  <div class="runner__grid" id="plan">
+  <div class="runner__grid" id="plan" data-reveal>
 
     <!-- controls -->
     <aside class="panel">
@@ -141,7 +141,7 @@
 
 
   <section class="chase" id="drive">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">The whole stack, live</p>
       <h2 class="chase__title">Chase</h2>
       <p class="chase__lede">
@@ -197,14 +197,14 @@
         <span><i class="kx kx--infl"></i>inflation layer</span>
       </p>
     </div>
-    <div class="chase__stage">
+    <div class="chase__stage" data-reveal>
       <canvas id="chase" width="1204" height="616" aria-label="A robot that drives toward your cursor. A* plans the route and whichever local controller you pick follows it. Click to add obstacles and watch it re-plan."></canvas>
       <p class="chase__read" id="chase-read">move the cursor over the field &middot; click to drop an obstacle</p>
     </div>
   </section>
 
   <section class="chase" id="race">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">Five controllers, one plan</p>
       <h2 class="chase__title">Race</h2>
       <p class="chase__lede">
@@ -236,14 +236,14 @@
         <button class="tbtn tbtn--sm" id="race-run" type="button">Run the race</button>
       </p>
     </div>
-    <div class="chase__stage">
+    <div class="chase__stage" data-reveal>
       <canvas id="race-canvas" width="1204" height="680" aria-label="Five local controllers from the repository following the same A-star path across the same course, each on its own simulated robot."></canvas>
       <p class="chase__read" id="race-read">press run &middot; five controllers, one plan</p>
     </div>
   </section>
 
   <section class="chase" id="reach">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">Different repo, same idea</p>
       <h2 class="chase__title">Reach in</h2>
       <p class="chase__lede">
@@ -277,14 +277,14 @@
         executing and replans. Both are the cost of never reporting the robot as an obstacle.
       </p>
     </div>
-    <div class="chase__stage">
+    <div class="chase__stage" data-reveal>
       <canvas id="arm" width="1204" height="620" aria-label="A simulated RealSense view of a UR12e workspace. Move the cursor to place an obstacle and watch the real detection pipeline decide."></canvas>
       <p class="chase__read" id="arm-read">move the cursor over the camera plate</p>
     </div>
   </section>
 
   <section class="chase" id="terrain">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/qlc/</code></p>
       <h2 class="chase__title">Cross the ice</h2>
       <p class="chase__lede">
@@ -331,12 +331,12 @@
         <span><i class="kx kx--orc"></i>oracle (ceiling)</span>
       </p>
     </div>
-    <div class="chase__stage">
+    <div class="chase__stage" data-reveal>
       <canvas id="qlc-canvas" width="1204" height="626" aria-label="A Unitree Go2 course drawn from above. Click anywhere on it to set the goal; each cost function's route is painted on as it drives there."></canvas>
       <p class="chase__read" id="qlc-read">click anywhere on the course &middot; four cost functions will drive there</p>
       <div class="lab-tablewrap"><table class="lab-table" id="qlc-table"></table></div>
     </div>
-    <div class="chase__head chase__head--again">
+    <div class="chase__head chase__head--again" data-reveal>
       <p class="chase__lede">
         <strong>Then break the physics on purpose.</strong> The switch puts <code>FALL_RATE</code>
         back to 0.5 and the ice drag back to 0.95 &mdash; the two constants the surrogate shipped with
@@ -378,7 +378,7 @@
   </section>
 
   <section class="chase" id="assemble">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/oba/</code></p>
       <h2 class="chase__title">Seat a connector</h2>
       <p class="chase__lede">
@@ -398,11 +398,11 @@
         <button class="tbtn tbtn--sm" id="oba-run" type="button">Run the episode</button>
       </p>
     </div>
-    <div class="chase__stage">
+    <div class="chase__stage" data-reveal>
       <canvas id="oba-canvas" width="1204" height="506" aria-label="A NIST assembly task board seen from the side and from above, with both UR5 arms, the connector and socket, the force band and the current controller phase."></canvas>
       <p class="chase__read" id="oba-read">press run &middot; the phase machine, not the physics</p>
     </div>
-    <div class="chase__head chase__head--again">
+    <div class="chase__head chase__head--again" data-reveal>
       <details class="lab-more">
         <summary>What this is not</summary>
         <p class="chase__lede">
@@ -439,7 +439,7 @@
   </section>
 
   <section class="ref" id="space">
-    <div class="chase__head">
+    <div class="chase__head" data-reveal>
       <p class="panel__label">Reference, not a demo &mdash; <code>vendor/rfm/</code></p>
       <h2 class="chase__title">One action space, seven robots</h2>
       <p class="chase__lede">
@@ -518,7 +518,7 @@
     </div>
   </section>
 
-  <section class="console">
+  <section class="console" data-reveal>
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
@@ -543,7 +543,8 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="demo.js?v=d18f0ae7" defer></script>
-<script src="lab.js?v=886e6585" defer></script>
+<script src="main.js?v=6bcc448c" defer></script>
+<script src="demo.js?v=26a317b2" defer></script>
+<script src="lab.js?v=9512003d" defer></script>
 </body>
 </html>

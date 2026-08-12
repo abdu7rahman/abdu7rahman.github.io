@@ -145,6 +145,20 @@
     ];
     var LAYOUTS = ["ice_shortcut", "mud_field", "stair_bench", "rubble_slalom", "mixed"];
 
+    /* A control that does nothing when pressed is a lie about what the page can
+       do. The four cost views have nothing to show until their stack has
+       finished, and they used to look pressable the whole time and silently
+       decline -- so they are disabled until the plate they name exists, and
+       re-disabled the moment a new run clears them. */
+    function syncViews() {
+      document.querySelectorAll("[data-qlc-view]").forEach(function (b) {
+        var key = b.getAttribute("data-qlc-view");
+        var ready = key === "terrain" ? !!plate : !!costPlates[key];
+        b.disabled = !ready;
+        b.title = ready ? "" : "runs when " + key + " has finished";
+      });
+    }
+
     function specFor(key) {
       for (var i = 0; i < STACKS.length; i++) if (STACKS[i].key === key) return STACKS[i];
       return STACKS[0];
@@ -389,6 +403,7 @@
       if (busy) return;
       token++;
       episodes = []; costPlates = {}; course = null; plate = null; view = "terrain";
+      syncViews();
       document.querySelectorAll("[data-qlc-view]").forEach(function (b) {
         b.classList.toggle("is-on", b.getAttribute("data-qlc-view") === "terrain");
       });
@@ -405,6 +420,7 @@
       if (m.token !== token) return;
       course = m.course;
       plate = bake(rgbPlate(b64bytes(course.plate)));
+      syncViews();
       live("qlc-canvas");
       draw(null);
       if (!course.reachable) {
@@ -433,6 +449,7 @@
       var ep = m.episode;
       episodes.push(ep);
       costPlates[ep.stack] = bake(rgbPlate(b64bytes(ep.cost)));
+      syncViews();
       log("qlc: " + ep.stack + " -> " + ep.outcome + ", " + ep.steps + " ticks, " +
           ep.path_length + " m, " + ep.replans + " replans (" + ep.wall_ms + " ms here)",
           ep.outcome === "success" ? "ok" : "err");
@@ -492,9 +509,22 @@
     }
 
     function init() {
+      syncViews();
       if (runBtn) runBtn.addEventListener("click", function () { goal = null; run(); });
+      /* A tap sets the goal; a drag scrolls the page. Tracking the press and
+         only acting if the pointer barely moved is what separates the two --
+         `touch-action: pan-y` hands vertical drags to the scroller, and this
+         stops the tail of such a drag being read as a goal. */
+      var press = null;
       cv.addEventListener("pointerdown", function (ev) {
-        if (busy) return;
+        press = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+      });
+      cv.addEventListener("pointercancel", function () { press = null; });
+      cv.addEventListener("pointerup", function (ev) {
+        var p0 = press; press = null;
+        if (!p0 || busy) return;
+        if (Math.abs(ev.clientX - p0.x) > 8 || Math.abs(ev.clientY - p0.y) > 8) return;
+        if (Date.now() - p0.t > 700) return;
         var g2 = goalFromEvent(ev);
         if (!g2) return;
         ev.preventDefault();
@@ -524,6 +554,9 @@
       document.querySelectorAll("[data-qlc-view]").forEach(function (b) {
         b.addEventListener("click", function () {
           var want = b.getAttribute("data-qlc-view");
+          // Cannot happen from the UI any more -- syncViews keeps a button
+          // without a plate behind it disabled -- but a plate is only there
+          // once its stack has finished, so the guard stays.
           if (want !== "terrain" && !costPlates[want]) return;
           view = want;
           document.querySelectorAll("[data-qlc-view]").forEach(function (o) {

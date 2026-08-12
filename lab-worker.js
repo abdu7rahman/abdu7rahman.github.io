@@ -8,9 +8,10 @@
    the page at which that can be interrupted -- run it on the main thread and
    the scroll stops for as long as it takes.
 
-   It also keeps scipy and pydantic off the critical path. Nothing here loads
-   until the reader presses something in one of these three sections, so a
-   visitor who only wants the nav demos never pays for a second runtime.
+   Nothing here loads until the reader presses something in one of these three
+   sections, so a visitor who only wants the nav demos never pays for a second
+   runtime -- and scipy, a 45 MB wheel that only the quadruped tree imports,
+   waits for the first run that actually needs it.
 
    Every message back is JSON. Pyodide can hand typed arrays across directly,
    but the conversion rules differ by type and by pyodide version, and the one
@@ -129,18 +130,39 @@ var GLUE = [
   "_stub_rich()",
   "_stub_tyro()",
   "_quiet = io.StringIO()",
+  "QLC_READY = False",
+  "",
+  "",
+  "def import_qlc():",
+  "    \"\"\"Import the quadruped tree, on the first run that needs it.",
+  "",
+  "    Separate from the boot because it is the only thing here that needs",
+  "    scipy, and scipy is a 45 MB wheel -- larger than pyodide, numpy and",
+  "    pydantic put together. Someone who presses the assembly demo has no use",
+  "    for it and should not wait for it.",
+  "    \"\"\"",
+  "    global QLC_READY",
+  "    if QLC_READY:",
+  "        return",
+  "    with contextlib.redirect_stdout(_quiet):",
+  "        import qlc  # noqa: F401",
+  "        from qlc.schemas import (BenchConfig, CostModelKind, MATERIAL_TRUTH, Material,",
+  "                                 Pose2D)",
+  "        from qlc.terrain.heightmap import course_suite, generate",
+  "        from qlc.cost.registry import build_cost_model, build_stacks",
+  "        from qlc.eval import benchmark as qbench",
+  "        from qlc.eval.oracle import OracleCost",
+  "        from qlc.cli.render import MATERIAL_COLOURS, cost_image, truth_image",
+  "        from qlc.sim.expert import expert_plan",
+  "        from qlc.sim.world import QuadrupedWorld",
+  "        import qlc.sim.world as qworld",
+  "    globals().update(locals())",
+  "    globals()['ICE_DRAG_MEASURED'] = MATERIAL_TRUTH[Material.ICE].drag",
+  "    QLC_READY = True",
+  "",
+  "",
   "with contextlib.redirect_stdout(_quiet):",
-  "    import qlc, oba, rfm",
-  "    from qlc.schemas import (BenchConfig, CostModelKind, MATERIAL_TRUTH, Material,",
-  "                             Pose2D)",
-  "    from qlc.terrain.heightmap import course_suite, generate",
-  "    from qlc.cost.registry import build_cost_model, build_stacks",
-  "    from qlc.eval import benchmark as qbench",
-  "    from qlc.eval.oracle import OracleCost",
-  "    from qlc.cli.render import MATERIAL_COLOURS, cost_image, truth_image",
-  "    from qlc.sim.expert import expert_plan",
-  "    from qlc.sim.world import QuadrupedWorld",
-  "    import qlc.sim.world as qworld",
+  "    import oba, rfm",
   "    from oba.schemas import AssemblyTask",
   "    from oba.sim.tasks import CONNECTOR_INSERTION, WIRE_ROUTING",
   "    from oba.sim.plant import AnalyticPlant, IS_ANALYTIC",
@@ -163,7 +185,7 @@ var GLUE = [
   "# FALL_RATE is read as a module global inside QuadrupedWorld._lost_footing,",
   "# and the ice drag is read out of MATERIAL_TRUTH when the truth field is",
   "# built, which happens once per course in prepare_course.",
-  "ICE_DRAG_MEASURED = MATERIAL_TRUTH[Material.ICE].drag",
+  "# ICE_DRAG_MEASURED is bound by import_qlc, off the module it comes from.",
   "ICE_DRAG_AS_FIRST_WRITTEN = 0.95",
   "FALL_RATE_AS_FIRST_WRITTEN = 0.5",
   "",
@@ -534,6 +556,18 @@ var GLUE = [
 ].join("\n");
 
 var py = null;
+var qlcReady = false;
+
+/* scipy is a 45 MB wheel and only the quadruped tree imports it, so it is
+   fetched on the first run that needs one rather than at boot. */
+async function ensureQlc() {
+  if (qlcReady) return;
+  note("loading scipy for the quadruped stack — 45 MB, once…");
+  await py.loadPackage("scipy");
+  py.runPython("import_qlc()");
+  qlcReady = true;
+  note("scipy ready; qlc imported", "ok");
+}
 
 function say(type, payload) { self.postMessage(Object.assign({ type: type }, payload)); }
 function note(msg, cls) { say("log", { msg: msg, cls: cls || "" }); }
@@ -542,9 +576,9 @@ async function boot() {
   note("loading pyodide runtime for the vendored demos…");
   py = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" });
   note("pyodide " + py.version, "ok");
-  note("loading numpy, scipy, pydantic…");
-  await py.loadPackage(["numpy", "scipy", "pydantic"]);
-  note("numpy, scipy, pydantic ready", "ok");
+  note("loading numpy and pydantic…");
+  await py.loadPackage(["numpy", "pydantic"]);
+  note("numpy and pydantic ready", "ok");
 
   var bytes = 0;
   for (var i = 0; i < FILES.length; i++) {
@@ -613,6 +647,7 @@ self.onmessage = async function (ev) {
     if (!py) throw new Error("runtime not booted");
 
     if (msg.cmd === "qlc") {
+      await ensureQlc();
       var course = call("qlc_course", [msg.index, msg.physics, msg.goal || null]);
       say("qlc-course", { course: course, token: msg.token });
       if (!course.reachable) { say("qlc-done", { token: msg.token }); return; }
