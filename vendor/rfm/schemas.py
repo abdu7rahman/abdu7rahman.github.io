@@ -142,6 +142,27 @@ class TrainingStage(StrEnum):
     STAGE4_CALIBRATION = "stage4_calibration"
 
 
+class MuscleKind(StrEnum):
+    """Which policy provides the muscle -- the ``act`` half of the exported contract.
+
+    The instruments (world model, competence head, reasoner) read backbone features and
+    do not care which policy produced them, so the muscle is a runtime choice rather
+    than a fork. That is what makes ablation **A-M1** runnable: identical Conductor,
+    identical harness, identical tasks, one variable.
+
+    ``RFM``
+        This repository's own backbone plus flow-matching expert, trained here.
+    ``PI05``
+        pi0.5 via openpi, LoRA-finetuned. The muscle is the commodity half of the
+        design -- ``docs/ARCHITECTURE.md`` s.1.4 describes the RFM as occupying
+        "exactly pi0.5's role under Maestro" -- so being able to substitute the real
+        thing is a test of whether building one was worth the compute.
+    """
+
+    RFM = "rfm"
+    PI05 = "pi05"
+
+
 class LatentTarget(StrEnum):
     """Prediction target for the world model. Defaults to ``FROZEN_TOWER_EMA``.
 
@@ -643,12 +664,209 @@ class CompetenceConfig(BaseModel):
                            description="Expected calibration error budget (failure mode FM-6).")
 
 
+PI05_REQUIRED_IMAGE_KEYS: tuple[str, ...] = (
+    "base_0_rgb",
+    "left_wrist_0_rgb",
+    "right_wrist_0_rgb",
+)
+"""The image keys pi0.5 requires, mirrored from ``openpi.models.model.IMAGE_KEYS``.
+
+Mirrored rather than imported because openpi is an optional dependency and this module
+must stay importable without it. :meth:`Pi05Muscle.assert_camera_keys_expected` checks
+the live constant at load time, so drift between the two surfaces as an error instead of
+as a wrong image in the wrong slot.
+
+Two properties of openpi's contract that shape the code around this:
+
+* ``preprocess_observation`` validates with
+  ``set(image_keys).issubset(observation.images)`` -- so **all three keys must be
+  supplied**, not merely a subset of them. An embodiment with no left wrist camera still
+  has to pass ``left_wrist_0_rgb``, zero-filled and masked, which is the convention
+  :class:`ViewName` already states ("absent views are zero-filled and view-masked, never
+  dropped").
+* There is no fourth key. ``ViewName.OVERHEAD`` has nowhere to go, so it is absent from
+  the default mapping rather than pointed at an invented ``base_1_rgb``.
+"""
+
+
+class Pi05Config(BaseModel):
+    """pi0.5 as the muscle, via openpi.
+
+    Why this exists: ``docs/CURRICULUM.md`` allocates ~60% of the training budget to
+    STAGE1, whose entire output is a subtask muscle -- the component
+    ``docs/ARCHITECTURE.md`` s.1.6 ranks *third* of four in the honest hierarchy, and
+    which s.1.4 describes as occupying "exactly pi0.5's role under Maestro". Substituting
+    a pretrained pi0.5 buys that component instead of building it, and turns
+    "was the custom RFM worth it" into ablation A-M1 rather than an opinion.
+
+    What it costs: with the backbone frozen or LoRA-adapted there is no backbone
+    training, so ablations A-K1/A-K2/A-K3 (knowledge insulation, unfreezing depth) have
+    nothing to vary, and openpi owns the action loss so A-E1/A-E2 go with them. Five
+    arms, all of which either reproduce a published result or justify a hyperparameter.
+    """
+
+    model_config = _Strict
+
+    config_name: str = Field(
+        description="openpi TrainConfig name, e.g. 'pi05_libero'. Recorded in "
+                    "MuscleProvenance so two finetunes cannot be crossed.",
+    )
+    checkpoint_dir: Path = Field(description="Directory holding the finetuned pi0.5 weights.")
+    d_model: int = Field(
+        gt=0,
+        description="Feature width the instruments are built against. Must be read from "
+                    "the loaded model, never assumed -- see Pi05Muscle.load_pretrained.",
+    )
+    d_tower: int | None = Field(
+        default=None,
+        description="Frozen vision-tower width, if the checkpoint exposes one. None "
+                    "makes the world model's collapse-freedom argument empirical rather "
+                    "than structural (docs/ARCHITECTURE.md s.3); DynamicsConfig.target "
+                    "must then be set deliberately, not defaulted.",
+    )
+    lora_rank: int = Field(default=32, gt=0, description="LoRA rank for finetuning.")
+
+    camera_keys: dict[ViewName, str] = Field(
+        default_factory=lambda: {
+            ViewName.BASE: "base_0_rgb",
+            ViewName.WRIST_RIGHT: "right_wrist_0_rgb",
+            ViewName.WRIST_LEFT: "left_wrist_0_rgb",
+        },
+        description="ViewName -> openpi image key. openpi keys images by name; this repo "
+                    "keys them by ViewName ordinal, and nothing about a tensor says which "
+                    "camera produced it.\n\n"
+                    "The three defaults are openpi's entire vocabulary -- see "
+                    "PI05_REQUIRED_IMAGE_KEYS. There is deliberately no OVERHEAD entry: "
+                    "openpi has no fourth key, so mapping one would name an image the "
+                    "model never reads. Verified against the live constant at load time.",
+    )
+    action_slot_map: list[int] = Field(
+        description="Native pi0.5 action index i -> unified ACTION_LAYOUT index "
+                    "action_slot_map[i]. Required and never defaulted.\n\n"
+                    "pi0.5 is trained with **32-dim actions** -- the same width as "
+                    "ACTION_DIM -- so an identity copy type-checks, shape-checks and is "
+                    "wrong. For a 7-DoF arm plus gripper, openpi pads a native 8-vector "
+                    "(joints 0-6, gripper 7) up to 32, while ACTION_LAYOUT puts the right "
+                    "gripper at index 14. Identity would drive the gripper command into "
+                    "left_arm_joint_vel[0]: a real joint, on the other arm, with a healthy "
+                    "loss curve throughout.",
+    )
+
+    @model_validator(mode="after")
+    def _slot_map_is_injective_and_in_range(self) -> Pi05Config:
+        bad = [i for i in self.action_slot_map if not 0 <= i < 32]
+        if bad:
+            raise ValueError(f"action_slot_map indices outside [0, 32): {bad}")
+        if len(set(self.action_slot_map)) != len(self.action_slot_map):
+            dupes = sorted({i for i in self.action_slot_map
+                            if self.action_slot_map.count(i) > 1})
+            raise ValueError(
+                f"action_slot_map maps two native dimensions onto unified slots {dupes}. "
+                "One would silently overwrite the other."
+            )
+        return self
+
+
+def single_arm_osc_pos_slot_map() -> list[int]:
+    """Slot map for robosuite's OSC_POSITION controller: native ``[dx, dy, dz, grip]``.
+
+    **This encodes a conflict in the repo, and the conflict is the reason it is a named
+    function rather than an inline literal.**
+
+    ``RobosuiteEnv.to_sim_action`` reads ``unified[0:7][:action_dim-1]`` for the arm and
+    ``unified[14]`` for the gripper. With ``action_dim=4`` that is ``unified[0:3]`` --
+    so the *executed* path puts **Cartesian end-effector deltas into slots
+    ``ACTION_LAYOUT`` names ``right_arm_joint_vel``**, while a dedicated
+    ``right_ee_delta_pos`` sits unused at 16:19.
+
+    This map follows what actually executes, because a semantically-correct map onto
+    16:19 would be silently ignored by the simulator and the arm would never move.
+
+    The cost of that choice is stated rather than hidden: the unified space's premise is
+    that every slot has one fixed physical meaning across embodiments
+    (``docs/ARCHITECTURE.md`` s.8). Under this map, slots 0-2 mean joint velocity for a
+    7-DoF arm and metres of Cartesian displacement for this one. Any cross-embodiment
+    transfer that mixes the two is training one head on two different quantities, and
+    ablation A-E1 would measure that as a property of the unified space rather than as
+    the bug it is.
+
+    Resolving it means changing either ``_RIGHT_ARM`` in ``rfm/sim/robosuite_env.py`` or
+    the layout, and both invalidate existing checkpoints -- so it is left as a decision
+    with its consequence written down.
+
+    Returns:
+        A 4-element map, native index -> unified index.
+    """
+    grip = next(s for s in ACTION_LAYOUT if s.name == "right_gripper")
+    return [0, 1, 2, grip.start]
+
+
+# The LIBERO observation/action contract, which the pi0.5 checkpoints this project runs were
+# trained under. Mirrored here because rfm.models.muscle needs them and scripts/_libero_format.py
+# cannot be imported from the package (it is deliberately dependency-light and lives in scripts/).
+LIBERO_STATE_DIM: int = 8
+"""LIBERO proprioception: concat(eef_pos[3], eef_axisangle[3], gripper_qpos[2])."""
+
+LIBERO_ACTION_DIM: int = 7
+"""LIBERO actions: six OSC pose deltas plus one absolute gripper command."""
+
+
+def libero_osc_slot_map() -> list[int]:
+    """Slot map for pi0.5's LIBERO head: ``[dx, dy, dz, drx, dry, drz, grip]``.
+
+    This is the map that matches the checkpoint this project actually runs. pi05_libero emits
+    seven meaningful dimensions -- six OSC pose deltas and one absolute gripper command -- and
+    ``rfm.sim.robosuite_env.to_sim_action`` reads the arm from unified ``0:7`` and the gripper
+    from unified ``14``. So the deltas occupy 0-5 and the gripper goes to 14.
+
+    **Why not :func:`single_arm_osc_pos_slot_map`.** That map is ``[0, 1, 2, 14]``: four
+    entries, for a native ``[dx, dy, dz, grip]``. Applied to a LIBERO action it consumes
+    native indices 0-3, so ``drx`` lands in the gripper slot and the real gripper command at
+    native index 6 is dropped entirely. The arm would receive three correct translations and a
+    gripper driven by a rotation delta -- which shape-checks, runs, and produces a plausible
+    success rate on a task where the gripper is the whole difficulty. It was used against a
+    LIBERO checkpoint once (see ``results/a_m1_verdict.md`` on the two evaluators) and is
+    retained only for the 4-dim export it was written for.
+
+    Returns:
+        A 7-element map, native index -> unified index.
+    """
+    grip = next(s for s in ACTION_LAYOUT if s.name == "right_gripper")
+    return [0, 1, 2, 3, 4, 5, grip.start]
+
+
+def single_arm_7dof_slot_map() -> list[int]:
+    """Slot map for a 7-DoF arm with one gripper: openpi ``[j0..j6, grip]``.
+
+    Derived from :data:`ACTION_LAYOUT` rather than hardcoded, so it follows the layout if
+    the layout moves. The gripper is the whole point: it sits at native index 7 and
+    unified index 14, and every naive mapping gets it wrong.
+
+    Returns:
+        An 8-element map, native index -> unified index.
+    """
+    arm = next(s for s in ACTION_LAYOUT if s.name == "right_arm_joint_vel")
+    grip = next(s for s in ACTION_LAYOUT if s.name == "right_gripper")
+    return [*range(arm.start, arm.start + 7), grip.start]
+
+
 class RFMConfig(BaseModel):
     """The complete trained artifact: backbone + action expert + dynamics + reasoning +
     competence. This is what gets checkpointed and what the policy server loads."""
 
     model_config = _Strict
 
+    muscle: MuscleKind = Field(
+        default=MuscleKind.RFM,
+        description="Which policy provides `act`. Switching this changes the muscle "
+                    "only: the instruments are rebuilt against the new feature widths "
+                    "and everything in `orchestration/` is untouched, because the "
+                    "Conductor sees only the four exported endpoints.",
+    )
+    pi05_config: Pi05Config | None = Field(
+        default=None,
+        description="Required when muscle is PI05, ignored otherwise.",
+    )
     backbone: BackboneConfig = Field(default_factory=BackboneConfig)
     action_expert: ActionExpertConfig = Field(default_factory=ActionExpertConfig)
     dynamics: DynamicsConfig = Field(default_factory=DynamicsConfig)
@@ -672,6 +890,37 @@ class RFMConfig(BaseModel):
                 "A-W1) or neither."
             )
         return self
+
+    @model_validator(mode="after")
+    def _pi05_needs_its_config(self) -> RFMConfig:
+        if self.muscle is MuscleKind.PI05 and self.pi05_config is None:
+            raise ValueError(
+                "muscle=PI05 requires pi05_config (openpi config name, checkpoint dir and "
+                "feature widths). Defaulting these would silently build instrument heads "
+                "against the wrong widths."
+            )
+        return self
+
+    @property
+    def d_model(self) -> int:
+        """Backbone feature width for the active muscle.
+
+        Instrument heads are constructed from this rather than from ``backbone.d_model``,
+        so switching muscle rebuilds them at the right width instead of producing heads
+        that are shape-valid and semantically wrong.
+        """
+        if self.muscle is MuscleKind.PI05:
+            assert self.pi05_config is not None  # guaranteed by _pi05_needs_its_config
+            return self.pi05_config.d_model
+        return self.backbone.d_model
+
+    @property
+    def d_tower(self) -> int | None:
+        """Frozen-tower width for the active muscle, or None if it exposes none."""
+        if self.muscle is MuscleKind.PI05:
+            assert self.pi05_config is not None
+            return self.pi05_config.d_tower
+        return self.backbone.d_tower
 
 
 # ===========================================================================
@@ -1234,6 +1483,71 @@ class TrainingState(BaseModel):
     started_at: _dt.datetime = Field(default_factory=lambda: _dt.datetime.now(_dt.UTC))
 
 
+class MuscleProvenance(BaseModel):
+    """The feature-space identity a head was trained against.
+
+    An instrument head -- dynamics, competence, reasoner soft prefix -- is a function of
+    whatever backbone produced its inputs. Trained on RFM features it is meaningless on
+    pi0.5 features, and the shapes may well agree, because ``d_model`` is a round number
+    in both cases and nothing in a state dict records what the numbers *meant*.
+
+    This project has already paid for that class of bug once. The A3 scorer defaulted to
+    horizons ``[4, 8, 16]`` against a checkpoint trained on ``[15, 30, 60]``; each
+    ``pred_latents`` slot means the offset it was trained on, so every prediction was
+    misaligned against the wrong future. The shapes agreed, no error was raised, and
+    every number produced before the fix was void
+    (``results/README.md``, recurring-failure item 7).
+
+    So the guard is provenance rather than shape: a checkpoint records which muscle,
+    which widths and which horizons it was trained against, and loading refuses on any
+    mismatch. No coercion, no warn-and-continue -- both of those reintroduce exactly the
+    silent-misalignment failure this exists to prevent.
+    """
+
+    model_config = _Strict
+
+    muscle: MuscleKind = Field(description="Which policy produced the features.")
+    muscle_id: str = Field(
+        description="Concrete checkpoint identity, e.g. the HF repo or openpi config "
+                    "name. Distinguishes two pi0.5 finetunes from each other.",
+    )
+    d_model: int = Field(gt=0, description="Backbone feature width the heads were built on.")
+    d_tower: int | None = Field(
+        default=None,
+        description="Frozen-tower width, or None when the muscle exposes no frozen "
+                    "tower. None is not a neutral value: it means the world model's "
+                    "collapse-freedom argument is empirical rather than structural.",
+    )
+    n_views: int = Field(gt=0, description="Camera slots. Changes N_pre and the latent shape.")
+    horizons: list[int] = Field(
+        description="Dynamics prediction offsets. Slot i means offset horizons[i]; a "
+                    "mismatch misaligns every prediction and cannot raise on shape.",
+    )
+    action_dim: int = Field(gt=0, description="Unified action width.")
+    action_horizon: int = Field(gt=0, description="Chunk length H_a.")
+
+    def assert_compatible(self, other: MuscleProvenance) -> None:
+        """Raise unless ``other`` describes the same feature space.
+
+        Args:
+            other: Provenance of the model being loaded into.
+
+        Raises:
+            ValueError: On any mismatch, listing every differing field.
+        """
+        diffs = [
+            f"  {f}: checkpoint={getattr(self, f)!r} model={getattr(other, f)!r}"
+            for f in type(self).model_fields
+            if getattr(self, f) != getattr(other, f)
+        ]
+        if diffs:
+            raise ValueError(
+                "checkpoint/model provenance mismatch -- these heads were trained "
+                "against a different feature space and their outputs would be "
+                "meaningless here:\n" + "\n".join(diffs)
+            )
+
+
 class CheckpointMeta(BaseModel):
     """What is in a checkpoint directory, so a loader never has to guess."""
 
@@ -1243,6 +1557,7 @@ class CheckpointMeta(BaseModel):
     rfm_config: RFMConfig
     training_state: TrainingState
     manifest_version: str
+    provenance: MuscleProvenance | None = None
     has_reasoning_lora: bool = False
     has_competence_head: bool = False
     competence_temperature: float | None = None
