@@ -711,3 +711,125 @@ a.inline:hover { border-color: var(--signal); }
   .hero { padding-top: 0; }
   a { text-decoration: underline; }
 }
+
+
+/* ============================================================
+   Scroll-driven motion.
+
+   All of this runs on `animation-timeline`, which the compositor drives off
+   the scroll position with no JavaScript on the scroll path at all. That is
+   the whole reason it is allowed to be this expressive: the page can be
+   grinding through a Pyodide episode and none of it drops a frame, because
+   none of it is on the main thread.
+
+   Everything below is inside three gates, and the order matters:
+
+     @supports  -- browsers without scroll timelines keep the JS reveal in
+                   main.js, which still works and still cannot strand content
+     reduced-motion -- nothing travels, nothing scales; the fade stays
+     print      -- style.css already forces every reveal target visible with
+                   !important, which beats an animation
+
+   A positional timeline also removes a whole class of bug. A JS reveal has to
+   be told when an element arrived; a view() timeline *is* the arrival, so a
+   deep link or a jump to the bottom lands mid-timeline at exactly the right
+   progress rather than at opacity 0.
+   ============================================================ */
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+
+    /* The reveal, with some presence. 44 px and a 4% scale rather than the
+       14 px lift the transition did -- far enough to read as arriving, short
+       enough not to look like a slide deck. `entry 5% / 60%` means a block is
+       fully itself well before it reaches the middle of the screen, so you are
+       never reading something that is still moving. */
+    [data-reveal] {
+      opacity: 1;
+      transform: none;
+      transition: none;
+      animation: reveal-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 5% entry 60%;
+    }
+    @keyframes reveal-rise {
+      from { opacity: 0; transform: translateY(44px) scale(.96); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Stagger comes free. Every element carries its own timeline keyed to its
+       own position, so a row of cards resolves in the order you meet them
+       without a single hand-set delay -- and it stays correct at any scroll
+       speed, in either direction. */
+
+    /* The hero hands the page over as you leave it, rather than just scrolling
+       off. `exit` is the range where the element is on its way out. */
+    .hero__name, .hero__lede, .hero__meta, .hero__actions {
+      animation: hero-part linear both;
+      animation-timeline: view();
+      animation-range: exit 0% exit 90%;
+    }
+    @keyframes hero-part {
+      from { opacity: 1; transform: none; }
+      to   { opacity: 0; transform: translateY(-30px) scale(.97); }
+    }
+
+    /* Benchmark bars draw themselves as the figure arrives. scaleX off the
+       left edge, so it is a transform rather than a width and never touches
+       layout -- a width animation on a table cell would reflow the row on
+       every frame. */
+    .bar {
+      transform-origin: 0 50%;
+      animation: bar-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 20% entry 75%;
+    }
+    @keyframes bar-draw {
+      from { transform: scaleX(0); }
+      to   { transform: scaleX(1); }
+    }
+
+    /* The section number tracks its own section: it arrives with weight and
+       settles. Only on the index, where .tag exists. */
+    /* Lift and fade, and deliberately no scale.
+
+       Two attempts here were wrong and the overflow sweep caught both. The
+       first animated `letter-spacing`, which is layout rather than compositing
+       -- the rule at the top of this block exists precisely to forbid that --
+       and it widened the tag to 1,274 px on a 1024 px viewport, taking the
+       whole document sideways. The second kept a 1.3x scale, which is no
+       better: `.tag` is `display: block` inside a `grid-column: 1 / 4` label,
+       so it is a ~1,200 px box that happens to contain two digits, and scaling
+       it scales the box, not the number. */
+    .sec__label .tag {
+      animation: tag-settle linear both;
+      animation-timeline: view();
+      animation-range: entry 10% entry 70%;
+    }
+    @keyframes tag-settle {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+}
+
+/* A read-position bar. scroll(root) is the document's own scroll timeline, so
+   this is two pixels of accent that cost nothing and tell you exactly how much
+   of a long page is left -- which this page needed more than it needed another
+   effect. Above the sticky chrome at z-index 40. */
+@supports (animation-timeline: scroll()) {
+  body::after {
+    content: "";
+    position: fixed; left: 0; right: 0; top: 0; height: 2px; z-index: 60;
+    background: var(--signal);
+    transform-origin: 0 50%;
+    animation: read-progress linear both;
+    animation-timeline: scroll(root block);
+    pointer-events: none;
+  }
+  @keyframes read-progress {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  @media print { body::after { display: none; } }
+}
