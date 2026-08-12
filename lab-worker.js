@@ -213,6 +213,35 @@ var GLUE = [
   "    })",
   "",
   "",
+  "class BakedCost:",
+  "    \"\"\"A cost field computed by qlc.cost.net offline, replayed here.",
+  "",
+  "    The supervised and IRL costs are torch and there is no wasm build of it. A",
+  "    cost model's only input is the feature stack, and a course's feature stack",
+  "    is a pure function of its TerrainConfig -- the semantic confusion is drawn",
+  "    from an RNG seeded off TerrainConfig.seed -- so course i at seed 1234 has",
+  "    one learned cost field and always will. tools/bake_qlc_costs.py computes",
+  "    it against the repository's own checkpoints and asserts, per course, that",
+  "    the episode it produces is identical to the episode the live model",
+  "    produces: same outcome, same step count, same path length.",
+  "",
+  "    So this replaces the forward pass and nothing else. A*, the smoothing, the",
+  "    resampling, the DWA, the world and run_episode's whole loop run here on",
+  "    the field exactly as they do for the two analytic stacks.",
+  "    \"\"\"",
+  "",
+  "    def __init__(self, kind, grid):",
+  "        self.kind = kind",
+  "        self._grid = grid",
+  "",
+  "    def cost_grid(self, features):",
+  "        if features.shape != self._grid.shape:",
+  "            msg = (f'baked field is {self._grid.shape} and this course is '",
+  "                   f'{features.shape}; the field belongs to a different course')",
+  "            raise ValueError(msg)",
+  "        return self._grid",
+  "",
+  "",
   "def qlc_episode(stack):",
   "    \"\"\"Run one stack on the prepared course, through benchmark.run_episode.\"\"\"",
   "    if stack == 'oracle':",
@@ -220,6 +249,14 @@ var GLUE = [
   "                                        learned_checkpoint=None))[0]",
   "        model = OracleCost(_COURSE.terrain, _BENCH.robot, _COURSE.truth)",
   "        kind = CostModelKind.LEARNED",
+  "    elif stack in ('learned', 'irl'):",
+  "        kind = CostModelKind(stack)",
+  "        spec = build_stacks(BenchConfig(stacks=[kind], learned_checkpoint=None,",
+  "                                        irl_checkpoint=None))[0]",
+  "        rows, cols = _COURSE.terrain.shape",
+  "        raw = np.fromfile(f'/baked/{_COURSE.terrain.config.name}.{stack}.f32',",
+  "                          dtype='<f4')",
+  "        model = BakedCost(kind, raw.reshape(rows, cols))",
   "    else:",
   "        kind = CostModelKind(stack)",
   "        spec = [s for s in build_stacks(_BENCH) if s.kind is kind][0]",
@@ -457,6 +494,35 @@ async function boot() {
   say("ready", {});
 }
 
+var BAKED = new URL("assets/qlc/", self.location.href).href;
+var bakedSeen = {};
+
+/* Lay one precomputed cost field into the Pyodide filesystem.
+
+   Raw little-endian float32, written by tools/bake_qlc_costs.py against the
+   repository's own checkpoints, with assets/qlc/index.json recording the source
+   commit, the checkpoint digests and a digest per field. Returns false rather
+   than throwing if a field is missing: a torch stack that cannot be offered is
+   a row absent from the table, not a broken demo. */
+async function bakedField(course, stack) {
+  var name = course + "." + stack + ".f32";
+  if (bakedSeen[name]) return true;
+  try {
+    var res = await fetch(BAKED + name, { cache: "force-cache" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    var buf = new Uint8Array(await res.arrayBuffer());
+    py.FS.mkdirTree("/baked");
+    py.FS.writeFile("/baked/" + name, buf);
+    bakedSeen[name] = true;
+    note(name + "  " + buf.length.toLocaleString() + " bytes  (cost field only — the " +
+         "planner, controller and simulator run here on it)", "ok");
+    return true;
+  } catch (e) {
+    note("no baked field for " + stack + " on " + course + ": " + e.message, "err");
+    return false;
+  }
+}
+
 /* One call per message. Everything the glue returns is a JSON string, so the
    only thing crossing back is a string and a parse on the far side. */
 function call(fn, args) {
@@ -476,9 +542,21 @@ self.onmessage = async function (ev) {
     if (msg.cmd === "qlc") {
       var course = call("qlc_course", [msg.index, msg.physics]);
       say("qlc-course", { course: course, token: msg.token });
+      // The two torch fields for this course, fetched only once and only if a
+      // stack that needs one is actually being run. 230 KB each, and a reader
+      // who never presses this section pays for neither.
+      var stacks = [];
       for (var i = 0; i < msg.stacks.length; i++) {
+        var key = msg.stacks[i];
+        if (key === "learned" || key === "irl") {
+          var ok = await bakedField(course.name, key);
+          if (!ok) continue;
+        }
+        stacks.push(key);
+      }
+      for (var j = 0; j < stacks.length; j++) {
         var t0 = Date.now();
-        var ep = call("qlc_episode", [msg.stacks[i]]);
+        var ep = call("qlc_episode", [stacks[j]]);
         ep.wall_ms = Date.now() - t0;
         say("qlc-episode", { episode: ep, token: msg.token });
       }

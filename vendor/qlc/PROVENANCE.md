@@ -76,12 +76,29 @@ then update the commit, date and hashes above.
 
 ## Two things this copy cannot do, and the page says so
 
-**The learned stacks are absent.** `qlc.cost.net` — the supervised CNN and the
-MaxEnt IRL cost — needs torch, and there is no wasm build of torch. The
-registry imports it lazily, on the two paths that need it and nowhere else, so
-`nav2_inflation`, `reactive` and the privileged oracle run here untouched while
-`learned` and `irl` simply are not offered. Their numbers are in the
-repository's table, measured on the same 120 courses.
+**`qlc.cost.net` is not vendored, and cannot be.** The supervised CNN and the
+MaxEnt IRL cost are torch, and there is no wasm build of torch. The registry
+imports it lazily, on the two paths that need it and nowhere else, so
+`nav2_inflation`, `reactive` and the privileged oracle run here untouched.
+
+Those two rows are not dropped, though: their cost *fields* are baked. A cost
+model's only input is the feature stack, and a course's feature stack is a pure
+function of its `TerrainConfig` — the semantic confusion is drawn from an RNG
+seeded off `TerrainConfig.seed` — so course *i* at seed 1234 has one learned
+cost field and always will. `tools/bake_qlc_costs.py` computes the ten fields
+against the repository's own checkpoints and writes them to `assets/qlc/`, with
+`index.json` recording the source commit and a SHA-256 per checkpoint and per
+field. It also verifies, per course, two things it would be easy to assume:
+that the feature stack does not move when the demo's physics switch moves
+`FALL_RATE` and the ice drag (it must not — those are hidden physics and a cost
+model that could see them would be cheating), and that the episode a baked
+field produces is identical to the episode the live torch model produces —
+same outcome, same step count, same path length.
+
+So for `learned` and `irl` the forward pass is replaced and nothing else is.
+A\*, the smoothing, the resampling, the DWA, the world and `run_episode`'s
+whole loop run in the browser on that field, exactly as they do for the
+analytic two.
 
 **`rich` is stubbed at the import boundary.** `qlc.eval.benchmark` imports
 `Console` and `Table` for its progress output. Both are replaced with

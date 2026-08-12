@@ -143,12 +143,25 @@
       [190, 181, 172],   // 6 rubble
       [29, 29, 31]       // 7 wall
     ];
+    /* All four cost functions, plus the ceiling. The first four take the hues
+       the repository's own figures give them -- red, orange, blue, green -- so
+       a reader holding this next to its README is looking at the same colours.
+       The oracle is dashed rather than a fifth hue, because it is a privileged
+       ceiling and not a candidate, and the table under the plate names every
+       row for anyone the four hues do not separate. */
     var STACKS = [
       { key: "nav2_inflation", label: "nav2_inflation", col: SIGNAL },
       { key: "reactive", label: "reactive", col: SUN },
-      { key: "oracle", label: "oracle (ceiling)", col: ACCENT }
+      { key: "learned", label: "learned", col: "#2a6ebb", baked: true },
+      { key: "irl", label: "irl", col: ACCENT, baked: true },
+      { key: "oracle", label: "oracle (ceiling)", col: INK2, dashed: true }
     ];
     var LAYOUTS = ["ice_shortcut", "mud_field", "stair_bench", "rubble_slalom", "mixed"];
+
+    function specFor(key) {
+      for (var i = 0; i < STACKS.length; i++) if (STACKS[i].key === key) return STACKS[i];
+      return STACKS[0];
+    }
 
     var course = null, plate = null, costPlates = {}, episodes = [], token = 0;
     var view = "terrain", layout = 0, physics = "calibrated";
@@ -280,12 +293,12 @@
 
       for (var i = 0; i < episodes.length; i++) {
         var ep = episodes[i];
-        var spec = STACKS[i] || STACKS[0];
+        var spec = specFor(ep.stack);
         // The global plan the cost field produced, before anything drove it.
         if (ep.plan.length) {
           g.save();
-          g.globalAlpha = .32; g.setLineDash([5, 4]);
-          g.strokeStyle = spec.col; g.lineWidth = 1.5;
+          g.globalAlpha = .22; g.setLineDash([5, 4]);
+          g.strokeStyle = spec.col; g.lineWidth = 1.2;
           g.beginPath();
           for (var j = 0; j < ep.plan.length; j++) {
             var p = px(ep.plan[j][0], ep.plan[j][1]);
@@ -297,13 +310,17 @@
         if (now !== null && !reduced) {
           upto = Math.min(ep.poses.length, Math.floor((now - t0) / 1000 / ep.dt * speed) + 1);
         }
-        g.strokeStyle = spec.col; g.lineWidth = 2.2; g.lineJoin = "round";
+        g.save();
+        g.strokeStyle = spec.col; g.lineWidth = spec.dashed ? 1.6 : 2.2;
+        g.lineJoin = "round";
+        if (spec.dashed) { g.setLineDash([7, 5]); g.globalAlpha = .55; }
         g.beginPath();
         for (var k = 0; k < upto; k++) {
           var w = px(ep.poses[k][0], ep.poses[k][1]);
           if (k === 0) g.moveTo(w[0], w[1]); else g.lineTo(w[0], w[1]);
         }
         g.stroke();
+        g.restore();
         var last = ep.poses[Math.max(0, upto - 1)];
         if (last) {
           var b = px(last[0], last[1]);
@@ -349,8 +366,8 @@
 
     function renderTable() {
       if (!tableEl) return;
-      var rows = episodes.map(function (ep, i) {
-        var spec = STACKS[i] || STACKS[0];
+      var rows = episodes.map(function (ep) {
+        var spec = specFor(ep.stack);
         var ratio = ep.optimal_length && ep.path_length
           ? (ep.path_length / ep.optimal_length).toFixed(2) + "×" : "—";
         return '<tr><th scope="row"><i class="kx" style="background:' + spec.col +

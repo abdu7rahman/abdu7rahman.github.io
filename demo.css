@@ -344,9 +344,16 @@
 .seg--wrap .seg__btn { flex: 0 0 auto; padding: 8px 11px; }
 .seg--wrap .seg__btn + .seg__btn::before { display: none; }
 
+/* The first four take the hues the quadruped repository's own figures give
+   them, so the plate and its README read as the same picture. The oracle is a
+   dashed rule rather than a fifth hue: it is a privileged ceiling, not a
+   candidate, and the table under the plate names every row for anyone four
+   hues do not separate. */
 .kx--nav2  { background: var(--signal); height: 3px; border-radius: 2px; }
 .kx--react { background: var(--sun); height: 3px; border-radius: 2px; }
-.kx--orc   { background: var(--accent); height: 3px; border-radius: 2px; }
+.kx--learn { background: #2a6ebb; height: 3px; border-radius: 2px; }
+.kx--irl   { background: var(--accent); height: 3px; border-radius: 2px; }
+.kx--orc   { background: repeating-linear-gradient(90deg, var(--ink-2) 0 5px, transparent 5px 8px); height: 3px; }
 .kx--body  { background: var(--ink); height: 3px; border-radius: 2px; }
 
 #qlc-canvas, #oba-canvas {
