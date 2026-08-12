@@ -114,18 +114,21 @@
         <div class="sec__label">
           <span class="tag">02</span>
           <h2>Work</h2>
-          <p class="sec__note">Six systems worth showing. Everything else lives on GitHub.</p>
+          <p class="sec__note">Eight systems worth showing. Everything else lives on GitHub.</p>
         </div>
 
         <div class="sec__body">
           <a class="tryit" href="demo.html" data-reveal>
             <span class="tryit__tag">Interactive</span>
             <span class="tryit__body">
-              <b>Four of them run in your browser.</b> Draw a map and search it with A*, Theta*,
+              <b>Seven of them run in your browser.</b> Draw a map and search it with A*, Theta*,
               RRT, SMAC or the hybrid; drive a TurtleBot with your cursor using any of five local
               controllers; race all five over one plan; block a UR12e mid-motion and watch it cancel
-              and replan around your hand. Not videos &mdash; the Python is downloaded from these
-              repos and executed as you watch.
+              and replan around your hand; walk a Go2 across a course under two cost functions and
+              then put the two constants a physics cross-check refuted back in; run an eight-phase
+              bimanual assembly controller against its own analytic plant. Not videos &mdash; four
+              download the Python from these repos as the page loads and three run copies, marked as
+              copies, because those repos are private.
             </span>
             <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
           </a>
@@ -282,11 +285,77 @@
                 <ul class="chips">
                   <li>PyTorch</li><li>Flow&nbsp;matching</li><li>GRPO</li><li>Pydantic</li><li>RDT-style&nbsp;action&nbsp;space</li>
                 </ul>
+                <a class="demo" href="demo.html#space">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Read the action space</span></a>
               </div>
               <dl class="proj__stats">
                 <div><dt>Action space</dt><dd>32<span class="unit">-D</span></dd></div>
                 <div><dt>Embodiments</dt><dd>7</dd></div>
                 <div><dt>Failure modes watched</dt><dd>9</dd></div>
+              </dl>
+            </li>
+
+            <li class="proj" data-reveal>
+              <span class="proj__idx">07</span>
+              <div class="proj__main">
+                <h3 class="proj__title">Orchestrated bimanual assembly</h3>
+                <p class="proj__desc">
+                  The same instrument stack &mdash; latent world model, calibrated competence head,
+                  RL-tuned reasoner, Conductor and harness &mdash; driving a LoRA-finetuned
+                  <strong>&pi;0.5</strong> on the NIST Assembly Task Board in Isaac Sim, two UR5s on a
+                  shared workspace. The question is narrow on purpose: does the instrument stack earn
+                  its place with the policy and the task held fixed, harness on against harness off.
+                  Nothing broader. The muscle changes and the instruments do not &mdash; they are
+                  ported by <em>import</em>, so there is one definition of <code>copy_margin</code>
+                  rather than two that will drift, and &ldquo;ported wholesale&rdquo; is a claim you
+                  can check with <code>grep</code>. Eight of the fourteen tensor widths change in the
+                  swap and three agree by luck, which is exactly when an unasserted assumption
+                  survives, so all fourteen are asserted and printed at run start. Six phases, each
+                  gated by a passing artefact the CLI checks rather than by discipline; the reasoner
+                  GRPO phase is the highest-risk one and <strong>has never run</strong>.
+                </p>
+                <ul class="chips">
+                  <li>Isaac&nbsp;Sim</li><li>&pi;0.5&nbsp;/&nbsp;openpi</li><li>LoRA</li><li>GRPO</li><li>ROS&nbsp;2</li><li>UR5&nbsp;&times;&nbsp;2</li>
+                </ul>
+                <a class="demo" href="demo.html#assemble">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Run the phase machine</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Gated phases</dt><dd>6</dd></div>
+                <div><dt>Tensor widths asserted</dt><dd>14</dd></div>
+                <div><dt>P0 gate</dt><dd>&gt;90<span class="unit">%</span></dd></div>
+              </dl>
+            </li>
+
+            <li class="proj" data-reveal>
+              <span class="proj__idx">08</span>
+              <div class="proj__main">
+                <h3 class="proj__title">Quadruped navigation cost, and the constant that faked it</h3>
+                <p class="proj__desc">
+                  Four cost functions for a Unitree Go2 &mdash; default Nav2 inflation, a hand-tuned
+                  legged costmap, a supervised learned cost and maximum-entropy IRL &mdash; sharing one
+                  planner, one controller and one 120-course suite so that only the cost function
+                  varies. The first table showed Nav2 losing decisively at 70.0%, with 20 of its 36
+                  failures being slips on ice an occupancy costmap has no channel to represent. It
+                  came from <code>FALL_RATE</code>, a constant in my own simulator I had tuned by hand
+                  until the methods separated. A MuJoCo cross-check against the real Go2 MJCF found the
+                  drag sign <em>backwards</em> &mdash; ice is the slowest surface at 0.30, not the
+                  fastest at 0.95 &mdash; and no falls at all on flat low-friction ground. With the
+                  invented hazard removed, <strong>Nav2 goes to 87.5% and the effect disappears</strong>.
+                  All four are now indistinguishable and every interval overlaps. Everyone building a
+                  robot-learning evaluation writes a surrogate like this; almost nobody validates it,
+                  and the null result is the evidence for doing so.
+                </p>
+                <ul class="chips">
+                  <li>MuJoCo</li><li>Nav2</li><li>MaxEnt&nbsp;IRL</li><li>PyTorch</li><li>Unitree&nbsp;Go2</li><li>ROS&nbsp;2</li>
+                </ul>
+                <a class="demo" href="demo.html#terrain">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Break the physics yourself</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Courses</dt><dd>120</dd></div>
+                <div><dt>Nav2, before &rarr; after</dt><dd>70.0 &rarr; 87.5<span class="unit">%</span></dd></div>
+                <div><dt>MuJoCo cross-check</dt><dd>33<span class="unit">&times; realtime</span></dd></div>
               </dl>
             </li>
 
@@ -497,9 +566,9 @@
         </div>
         <div class="sec__body">
           <dl class="stack">
-            <div><dt>Frameworks</dt><dd>ROS / ROS 2 (Humble, Jazzy) · MoveIt 2 · Nav2 · Gazebo · RViz · Isaac Sim · Autoware</dd></div>
+            <div><dt>Frameworks</dt><dd>ROS / ROS 2 (Humble, Jazzy) · MoveIt 2 · Nav2 · Gazebo · RViz · Isaac Sim · MuJoCo · Autoware</dd></div>
             <div><dt>Planning</dt><dd>A* · Theta* · SMAC · RRT / RRT-Connect · BIT* · DWA · Pure Pursuit · Stanley · TEB · MPPI</dd></div>
-            <div><dt>Physical AI</dt><dd>ACT · Diffusion Policy · smolVLA · inverse RL · sim-to-real transfer · foundation models</dd></div>
+            <div><dt>Physical AI</dt><dd>ACT · Diffusion Policy · smolVLA · π0.5 / openpi · flow matching · GRPO · inverse RL (MaxEnt) · sim-to-real transfer</dd></div>
             <div><dt>Perception</dt><dd>YOLO · OpenCV · depth estimation · sensor fusion · OctoMap · visual SLAM (PySLAM)</dd></div>
             <div><dt>Hardware</dt><dd>UR12e / UR5 · Robotiq Hand-E &amp; 2F-85 · TurtleBot3/4 · Unitree Go2 · Jetson Nano · Arduino</dd></div>
             <div><dt>Sensors</dt><dd>LiDAR · IMU · wheel encoders · Intel RealSense D435i · GPS/GNSS RTK</dd></div>
