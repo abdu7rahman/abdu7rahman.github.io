@@ -317,3 +317,169 @@
   .tbtn:active, .seg__btn:active, .run:active:not(:disabled) { transform: none; }
   #map, #chase, #arm, #race-canvas { transition: opacity 150ms var(--ease); }
 }
+
+
+/* ── the three vendored demos ─────────────────────────────────────────
+   Same vocabulary as the four above -- .chase sections, .seg controls,
+   .chase__read for the live line. What is new here is a table, a strip of
+   32 dimensions, and a list of failure modes, none of which the first four
+   needed.
+   ------------------------------------------------------------------- */
+
+/* The header's contents list is one grid per family, because the rule that
+   keeps it from growing a stray rule through the block is "as many columns as
+   entries". Four fetched, three copied; seven in one grid divides by nothing. */
+.runner__tocl {
+  margin: 30px 0 -22px;
+  font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.runner__toc--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Five course names or seven embodiment names do not fit one track each on a
+   narrow column, so this variant wraps. The dividers are dropped with it: a
+   vertical hairline between segments that have wrapped onto different rows
+   points at nothing. */
+.seg--wrap { display: inline-flex; flex-wrap: wrap; gap: 3px; vertical-align: middle; }
+.seg--wrap .seg__btn { flex: 0 0 auto; padding: 8px 11px; }
+.seg--wrap .seg__btn + .seg__btn::before { display: none; }
+
+.kx--nav2  { background: var(--signal); height: 3px; border-radius: 2px; }
+.kx--react { background: var(--sun); height: 3px; border-radius: 2px; }
+.kx--orc   { background: var(--accent); height: 3px; border-radius: 2px; }
+.kx--body  { background: var(--ink); height: 3px; border-radius: 2px; }
+
+#qlc-canvas, #oba-canvas {
+  display: block; width: 100%; height: auto;
+  border: 0; border-radius: var(--r-lg);
+  background: var(--paper-3);
+  box-shadow: var(--lift-1);
+}
+#qlc-canvas, #oba-canvas { opacity: 0; transition: opacity 320ms var(--ease); }
+.no-js #qlc-canvas, .no-js #oba-canvas { opacity: 1; }
+#qlc-canvas.is-live, #oba-canvas.is-live { opacity: 1; }
+
+/* The outcome table. Tabular numerals and a hairline per row, matching the
+   benchmark figures on the index rather than inventing a second table style. */
+/* Seven columns of nowrap numbers do not fit a 390 px phone, and the honest
+   fix for a table is a scroller rather than a smaller font or fewer columns.
+   The wrapper is what scrolls, so the page itself never gains a sideways
+   scrollbar. */
+.lab-tablewrap { overflow-x: auto; margin-top: 14px; }
+.lab-table {
+  width: 100%; border-collapse: collapse;
+  font: 400 13px/1.4 var(--sans); font-variant-numeric: tabular-nums;
+}
+.lab-table:empty { display: none; }
+.lab-table th, .lab-table td {
+  text-align: right; padding: 9px 8px; border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.lab-table thead th {
+  font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); border-bottom-color: var(--rule-2);
+}
+.lab-table thead th:first-child { text-align: left; }
+.lab-table tbody th {
+  text-align: left; font-weight: 500; color: var(--ink);
+  display: flex; align-items: center; gap: 8px;
+}
+.lab-table tbody th .kx { flex: none; width: 14px; }
+.lab-table td { color: var(--ink-2); }
+.lab-table .is-bad { color: var(--signal); font-weight: 500; }
+
+/* The 32-D action space. One block per slice, one cell per dimension: a
+   dimension that is masked out of the loss is drawn as an empty well rather
+   than hidden, because "this exists and your robot does not use it" is the
+   thing the layout is for. */
+.lab-strip {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 18px;
+  padding: 18px; border-radius: var(--r-lg);
+  background: var(--paper-2);
+}
+.lab-strip:empty { display: none; }
+.lab-slice { min-width: 0; }
+.lab-slice.is-off { opacity: .42; }
+.lab-slice__n {
+  margin: 0 0 6px; font: 500 11px/1.2 var(--mono); color: var(--ink);
+}
+.lab-slice__n span { display: block; margin-top: 3px; font-weight: 400; color: var(--ink-3); }
+.lab-slice__d { display: flex; gap: 3px; }
+.lab-dim {
+  width: 11px; height: 20px; border-radius: 3px; display: block;
+  background: transparent; box-shadow: inset 0 0 0 1px var(--rule-2);
+  transition: background var(--dur-hover) var(--ease);
+}
+.lab-dim.is-live { background: var(--ink); box-shadow: none; }
+
+.lab-h3 {
+  margin: 40px 0 0; font-size: 1.25rem; letter-spacing: -.02em;
+}
+.chase__read--flush { margin-top: 12px; }
+
+/* Sliders. One accent, and the thumb is the only thing in the block that is
+   the accent colour, because it is the only thing you can drag. */
+.lab-dials {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px 26px; margin-top: 20px;
+}
+.lab-dial { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; }
+.lab-dial > span {
+  grid-column: 1 / -1;
+  font: 500 12px/1.35 var(--sans); color: var(--ink-2);
+}
+.lab-dial > span em { font-style: normal; color: var(--ink-3); }
+.lab-dial input[type="range"] { width: 100%; accent-color: var(--signal); }
+.lab-dial output {
+  font: 500 12px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
+  min-width: 4ch; text-align: right;
+}
+
+/* The watchlist. A tripped mode gets the accent and its consequence text; an
+   untripped one keeps the text, because the consequence is the reason the
+   threshold is where it is and hiding it would leave a row of bare numbers. */
+.lab-modes { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 1px; }
+.lab-fm {
+  padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--paper-2);
+  border-left: 3px solid transparent;
+}
+.lab-fm.is-trace { opacity: .5; }
+.lab-fm.is-tripped { background: var(--signal-w); border-left-color: var(--signal); }
+.lab-fm__h {
+  margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  font: 400 13.5px/1.3 var(--sans); color: var(--ink);
+}
+.lab-fm__h b { font: 500 11px/1 var(--mono); color: var(--ink-3); }
+.lab-fm.is-tripped .lab-fm__h b { color: var(--signal); }
+.lab-fm__t {
+  margin-left: auto; font: 400 11px/1 var(--mono); color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.lab-fm__v {
+  font: 500 11px/1 var(--mono); color: var(--signal); font-variant-numeric: tabular-nums;
+}
+.lab-fm__c { margin: 6px 0 0; font-size: .8125rem; line-height: 1.5; color: var(--ink-3); }
+
+.lab-pre {
+  margin-top: 16px; padding: 16px 18px; border-radius: var(--r-lg);
+  background: var(--night); color: var(--night-ink);
+  font: 400 11.5px/1.6 var(--mono); overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .runner__toc--3 { grid-template-columns: 1fr; }
+  .lab-table { font-size: 12px; }
+  .lab-table th, .lab-table td { padding: 7px 5px; }
+  .lab-strip { padding: 14px; gap: 10px 14px; }
+  .lab-dim { width: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #qlc-canvas, #oba-canvas { transition: opacity 150ms var(--ease); }
+}
+
+/* A second prose block inside a section, after a full-width widget. The
+   section's first .chase__head sets the reading measure; the later ones keep
+   it without re-opening the gap the first one leaves under the title. */
+.chase__head--again { margin-top: 34px; }
