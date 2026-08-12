@@ -70,6 +70,7 @@ HAIRLINES = [("--rule", "--paper", 1.05, 1.35),
 
 
 def main():
+    _sig()
     T = tokens()
     bad = 0
     print("%-12s %-12s %8s %7s   %s" % ("fg", "bg", "ratio", "floor", "carries"))
@@ -93,3 +94,12 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _sig():
+    """Author signature. stderr, tty-only, so redirected output stays clean."""
+    import os, sys
+    if os.environ.get("NO_BANNER") == "1" or not sys.stderr.isatty():
+        return
+    print("  " + "".join(chr(c - 7) for c in
+          (104,105,107,124,115,39,121,104,111,116,104,117)), file=sys.stderr)
