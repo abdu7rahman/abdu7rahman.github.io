@@ -216,8 +216,8 @@
       // Right-aligned, so the two columns stay inside the plate whatever the
       // legend width works out to at this canvas size.
       g.textAlign = "right";
-      g.fillText("drag", x + q.legend - 52, y);
-      g.fillText("traction", x + q.legend - 8, y);
+      g.fillText("drag", x + q.legend - 64, y);
+      g.fillText("traction", x + q.legend - 6, y);
       g.textAlign = "left";
       y += 8;
       course.materials.forEach(function (m) {
@@ -235,8 +235,8 @@
         g.fillText(m.name, x + 17, y);
         g.font = "400 11px " + mono;
         g.textAlign = "right";
-        g.fillText(m.drag.toFixed(2), x + q.legend - 52, y);
-        g.fillText(m.traction.toFixed(2), x + q.legend - 8, y);
+        g.fillText(m.drag.toFixed(2), x + q.legend - 64, y);
+        g.fillText(m.traction.toFixed(2), x + q.legend - 6, y);
         g.textAlign = "left";
       });
       y += 26;
@@ -260,7 +260,19 @@
       g.strokeRect(q.x + .5, q.y + .5, q.side - 1, q.side - 1);
       drawLegend(q);
 
-      function px(x, y) { return [q.x + x * q.m, q.y + q.side - y * q.m]; }
+      /* Screen y runs the same way the grid's rows do. The terrain plate is an
+         ImageData whose row 0 is drawn at the top, and the course's own
+         convention is `row = y / resolution` -- so world y increases *down*
+         the plate, exactly as it does in the repository's own renderer
+         (`qlc/cli/render.py:draw_path`, and the figures in its README).
+
+         This read the other way round at first: paths and markers were drawn
+         y-up over a y-down map, which mirrors the two against each other. The
+         robots appeared to walk through walls and the start marker sat inside
+         one. Same episodes, same outcomes -- 0 wall cells under the path when
+         the material map is sampled the way the course defines it, 40 when it
+         is sampled mirrored. It was only ever the drawing. */
+      function px(x, y) { return [q.x + x * q.m, q.y + y * q.m]; }
 
       var sc = course.resolution;
       var sp = px(course.start[1] * sc, course.start[0] * sc);
@@ -296,7 +308,9 @@
         if (last) {
           var b = px(last[0], last[1]);
           g.save();
-          g.translate(b[0], b[1]); g.rotate(-last[2]);
+          // Positive canvas rotation is +x toward +y, and world yaw is +x toward
+          // +y as well now that the plate is not flipped, so the sign follows.
+          g.translate(b[0], b[1]); g.rotate(last[2]);
           g.fillStyle = spec.col;
           // The Go2's own footprint, 0.70 x 0.31 m, at the plate's scale.
           g.fillRect(-0.35 * q.m, -0.155 * q.m, 0.70 * q.m, 0.31 * q.m);
@@ -505,7 +519,15 @@
     var runBtn = document.getElementById("oba-run");
 
     var run = null, frame = 0, raf = null, task = "connector_insertion", seed = 0, busy = false;
-    var token = 0;
+    var token = 0, t0 = 0;
+
+    // The plant's own rate: WorldState.sim_time_s is step / 50, so an episode
+    // plays back on the clock it was integrated on and nothing is sped up. It
+    // was advancing two frames per animation frame before, which put a
+    // 105-step episode on screen for about a second -- eight phases inside
+    // eight hundred milliseconds, which is a flicker rather than a
+    // demonstration.
+    var PLANT_HZ = 50;
 
     // Board frame, metres. Fixed rather than fitted to the episode so the two
     // tasks are drawn at the same scale and a wire that leaves the board reads
@@ -761,9 +783,10 @@
       ladder(f);
     }
 
-    function animate() {
+    function animate(now) {
       if (!run) return;
-      frame += reduced ? run.frames.length : 2;
+      frame = reduced ? run.frames.length
+                      : Math.floor((now - t0) / 1000 * PLANT_HZ);
       if (frame >= run.frames.length) {
         frame = run.frames.length - 1;
         draw(); readout(true); raf = null;
@@ -777,7 +800,8 @@
       if (!readEl) return;
       var f = run.frames[Math.min(frame, run.frames.length - 1)];
       var spec = run.spec;
-      var bits = ["step " + f.step + " / " + run.steps,
+      var bits = ["step " + f.step + " / " + run.steps + "  (" + f.t.toFixed(2) +
+                  " s at the plant's 50 Hz)",
                   "phase " + (f.phase || "—"),
                   "right " + f.grasp[0] + ", left " + f.grasp[1],
                   "progress " + Math.round(f.progress * 100) + "%"];
@@ -831,6 +855,7 @@
       log("oba: " + run.spec.task + " " + (run.success ? "seated" : run.reason) + " in " +
           run.steps + " steps (" + run.wall_ms + " ms of python) · " + seen.join(" → "), "ok");
       if (raf) cancelAnimationFrame(raf);
+      t0 = performance.now();
       raf = requestAnimationFrame(animate);
     });
 
