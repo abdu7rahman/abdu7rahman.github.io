@@ -18,7 +18,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=786db9cb">
-<link rel="stylesheet" href="demo.css?v=df52bb97">
+<link rel="stylesheet" href="demo.css?v=62d6c0c6">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="runner-page no-js">
@@ -291,12 +291,14 @@
       <h2 class="chase__title">Cross the ice</h2>
       <p class="chase__lede">
         A Unitree Go2 crossing a 12&nbsp;&times;&nbsp;12&nbsp;m course from
-        <a class="inline" href="#terrain-note">quadruped-learned-cost</a>. Two cost functions get the
-        same course, the same 13-channel observation, the same A* and the same DWA, and only the cost
-        function differs: <code>nav2_inflation</code> is default Nav2 &mdash; an obstacle layer and an
-        inflation layer, which is all occupancy can express &mdash; and <code>reactive</code> is a
-        hand-tuned legged costmap. The third line is a privileged oracle handed the exact per-cell
-        cost the simulator charges; it is a ceiling, not a competitor.
+        <a class="inline" href="#terrain-note">quadruped-learned-cost</a>. All four cost functions get
+        the same course, the same 13-channel observation, the same A* and the same DWA, and only the
+        cost function differs: <code>nav2_inflation</code> is default Nav2 &mdash; an obstacle layer
+        and an inflation layer, which is all occupancy can express &mdash; <code>reactive</code> is a
+        hand-tuned legged costmap, <code>learned</code> is a CNN regressed on measured traversal cost,
+        and <code>irl</code> is maximum-entropy inverse RL fitted to expert trajectories alone. The
+        dashed fifth line is a privileged oracle handed the exact per-cell cost the simulator
+        charges; it is a ceiling, not a competitor.
       </p>
       <p class="chase__lede">
         The course is <code>course_suite(5, seed=1234)</code>, which is the benchmark's own suite, and
@@ -317,13 +319,26 @@
         disappeared. Watch it happen on one course.
       </p>
       <p class="chase__lede chase__lede--note" id="terrain-note">
-        The two learned stacks are missing here and not by choice: <code>qlc.cost.net</code> is the
-        supervised CNN and the MaxEnt IRL cost, both torch, and there is no wasm build of torch. The
-        registry imports it lazily so the analytic stacks run without it. Their numbers &mdash;
-        <code>learned</code> 86.7%, <code>irl</code> 81.7%, against <code>nav2_inflation</code>'s
-        87.5% and <code>reactive</code>'s 85.0%, every interval overlapping every other &mdash; are in
-        the repository, measured on the same 120 courses. The comparison is a null result and the
-        repository says so.
+        <strong>Two of the four are torch, and there is no wasm build of torch.</strong>
+        <code>qlc.cost.net</code> is the supervised CNN and the MaxEnt IRL cost, so their forward
+        pass cannot run here &mdash; but their <em>output</em> can. A cost model's only input is the
+        feature stack, and a course's feature stack is a pure function of its
+        <code>TerrainConfig</code>: the semantic confusion is drawn from an RNG seeded off
+        <code>TerrainConfig.seed</code>, so course <em>i</em> at seed 1234 has one learned cost field
+        and always will. <code>tools/bake_qlc_costs.py</code> computes those ten fields against the
+        repository's own checkpoints, and asserts per course that the episode a baked field produces
+        is identical to the episode the live model produces &mdash; same outcome, same step count,
+        same path length. So for those two rows the forward pass is replaced and nothing else is:
+        A*, the smoothing, the resampling, the DWA, the world and <code>run_episode</code>'s whole
+        loop still run in this tab, on that field. The console prints the byte count, and
+        <code>assets/qlc/index.json</code> records the source commit and the checkpoint digests.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        One course is not the table. Over the repository's 120: <code>nav2_inflation</code> 87.5%,
+        <code>learned</code> 86.7%, <code>reactive</code> 85.0%, <code>irl</code> 81.7%, oracle
+        93.3% &mdash; every interval overlapping every other. <strong>The four cost functions are
+        indistinguishable</strong>, and Nav2, the baseline the whole premise said had to lose, comes
+        out highest. That is the null result, and it is the finding.
       </p>
       <p class="chase__key">
         <span class="chase__pickl">Course</span>
@@ -347,13 +362,17 @@
         <span class="chase__pickl">Plate</span>
         <span class="seg seg--wrap" role="radiogroup" aria-label="What the plate shows">
           <button class="seg__btn is-on" data-qlc-view="terrain" role="radio" aria-checked="true" type="button">ground truth</button>
-          <button class="seg__btn" data-qlc-view="nav2_inflation" role="radio" aria-checked="false" type="button">nav2_inflation cost</button>
-          <button class="seg__btn" data-qlc-view="reactive" role="radio" aria-checked="false" type="button">reactive cost</button>
+          <button class="seg__btn" data-qlc-view="nav2_inflation" role="radio" aria-checked="false" type="button">nav2_inflation</button>
+          <button class="seg__btn" data-qlc-view="reactive" role="radio" aria-checked="false" type="button">reactive</button>
+          <button class="seg__btn" data-qlc-view="learned" role="radio" aria-checked="false" type="button">learned</button>
+          <button class="seg__btn" data-qlc-view="irl" role="radio" aria-checked="false" type="button">irl</button>
         </span>
       </p>
       <p class="chase__key">
         <span><i class="kx kx--nav2"></i>nav2_inflation</span>
         <span><i class="kx kx--react"></i>reactive</span>
+        <span><i class="kx kx--learn"></i>learned</span>
+        <span><i class="kx kx--irl"></i>irl</span>
         <span><i class="kx kx--orc"></i>oracle (ceiling)</span>
         <span><i class="kx kx--plan"></i>its global plan</span>
       </p>
@@ -567,6 +586,6 @@
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 <script src="demo.js?v=d18f0ae7" defer></script>
-<script src="lab.js?v=180dae8b" defer></script>
+<script src="lab.js?v=e40ab5d2" defer></script>
 </body>
 </html>
