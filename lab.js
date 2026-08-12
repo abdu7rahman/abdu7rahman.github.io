@@ -164,8 +164,9 @@
     }
 
     var course = null, plate = null, costPlates = {}, episodes = [], token = 0;
-    var view = "terrain", layout = 0, physics = "calibrated";
+    var view = "terrain", layout = 0, physics = "calibrated", goal = null;
     var raf = null, t0 = 0, busy = false, speed = 4;
+    var lastGeom = null;   // so a click can be turned back into metres
 
     function plateFrom(shade, material) {
       var n = course.rows * course.cols;
@@ -263,6 +264,7 @@
       g.clearRect(0, 0, cv._w, cv._h);
       if (!course) return;
       var q = geom();
+      lastGeom = q;
       var img = view === "terrain" ? plate : costPlates[view];
       if (img) {
         g.imageSmoothingEnabled = false;
@@ -411,7 +413,7 @@
       setBusy(true, "Running…");
       if (readEl) readEl.textContent = "booting the runtime · this takes a minute the first time";
       runtime.send({
-        cmd: "qlc", token: token, index: layout, physics: physics,
+        cmd: "qlc", token: token, index: layout, physics: physics, goal: goal,
         stacks: STACKS.map(function (s) { return s.key; })
       });
     }
@@ -422,11 +424,22 @@
       plate = bake(plateFrom(b64bytes(course.shade), b64bytes(course.material)));
       live("qlc-canvas");
       draw(null);
+      if (!course.reachable) {
+        // The course is not re-cleared around a goal you set, so ground the gait
+        // rejects is genuinely unreachable rather than quietly carved out.
+        setBusy(false, "Run the course");
+        episodes = []; renderTable();
+        if (readEl) {
+          readEl.textContent = "that point is " + course.goal_material + " — the gait rejects it, " +
+            "and the course is not re-cleared around a goal you set. Pick somewhere it could stand.";
+        }
+        return;
+      }
       var p = course.physics;
       if (readEl) {
-        readEl.textContent = course.name + " · FALL_RATE " + p.fall_rate +
-          " · ice drag " + p.ice_drag + ", traction " + p.ice_traction +
-          " · planning…";
+        readEl.textContent = course.name + " · goal (" + course.goal_m[0] + ", " +
+          course.goal_m[1] + ") m on " + course.goal_material +
+          " · FALL_RATE " + p.fall_rate + " · ice drag " + p.ice_drag + " · planning…";
       }
       log("qlc: " + course.name + " prepared, " + course.cols + "x" + course.rows +
           " cells; FALL_RATE " + p.fall_rate + ", ice drag " + p.ice_drag, "ok");
@@ -462,8 +475,9 @@
       if (reduced) draw(null); else raf = requestAnimationFrame(animate);
       var slipped = episodes.filter(function (e) { return e.outcome !== "success"; });
       if (readEl) {
-        readEl.textContent = course.name + " · " + (episodes.length - slipped.length) +
-          " of " + episodes.length + " reached the goal" +
+        readEl.textContent = "goal (" + course.goal_m[0] + ", " + course.goal_m[1] + ") m · " +
+          (episodes.length - slipped.length) +
+          " of " + episodes.length + " reached it · click the plate to send them elsewhere" +
           (slipped.length ? " · " + slipped.map(function (e) {
             return e.stack + " " + e.outcome;
           }).join(", ") : "");
@@ -476,8 +490,34 @@
       if (readEl) readEl.textContent = "the runtime failed: " + m.msg;
     });
 
+    /* Point at the course to send the robots somewhere else.
+
+       This is `qlc-goto --x --y`, the repository's own headline demo, and it is
+       what makes the four cost functions disagree: on the suite's own goal they
+       mostly agree, which is the finding but also the dullest possible picture.
+       The click is converted to metres through the same geometry the plate is
+       drawn with, so where you press is where the goal goes. */
+    function goalFromEvent(ev) {
+      if (!course || !lastGeom) return null;
+      var r = cv.getBoundingClientRect();
+      var q = lastGeom;
+      var x = ((ev.clientX - r.left) * (cv._w / r.width) - q.x) / q.m;
+      var y = ((ev.clientY - r.top) * (cv._h / r.height) - q.y) / q.m;
+      var span = course.cols * course.resolution;
+      if (x < 0 || y < 0 || x > span || y > span) return null;
+      return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
+    }
+
     function init() {
-      if (runBtn) runBtn.addEventListener("click", run);
+      if (runBtn) runBtn.addEventListener("click", function () { goal = null; run(); });
+      cv.addEventListener("pointerdown", function (ev) {
+        if (busy) return;
+        var g2 = goalFromEvent(ev);
+        if (!g2) return;
+        ev.preventDefault();
+        goal = g2;
+        run();
+      });
       document.querySelectorAll("[data-qlc-layout]").forEach(function (b) {
         b.addEventListener("click", function () {
           layout = LAYOUTS.indexOf(b.getAttribute("data-qlc-layout"));
@@ -565,14 +605,24 @@
 
     var INSET = 26;   // room for the axis ticks inside each panel
 
+    /* The two arms are anchored off the board, one either side, and drawn as a
+       two-link sketch reaching to the end-effector the plant integrates.
+
+       This is a sketch and the page says so. The plant has no kinematics --
+       `ArmState.joint_positions_rad` is `(0.0,) * 6` and its docstring says
+       joints are not modelled -- so an elbow drawn here is a drawing decision,
+       not a joint angle. What is real is the end point: that is the position
+       the controller commanded and the plant integrated. Drawing the reach at
+       all is worth it because two circles floating over a grid read as a
+       scatter plot, and the thing being shown is two arms working a board. */
+    // Just outside the frame, so the arms enter from the near corners and read
+    // as mounted off the board rather than floating on it.
+    var SHOULDER = { right: [0.17, -0.13, 0.23], left: [-0.17, -0.13, 0.23] };
+
     function proj(p, box, mode) {
+      var top = box.top || 22;
       var u = (p[0] - X0) / (X1 - X0);
       var v = mode === "top" ? (p[1] - Y0) / (Y1 - Y0) : (p[2] - Z0) / (Z1 - Z0);
-      // `top` is how much of the panel is spoken for above the data: the
-      // caption on the left plate, the caption plus the threshold gauge on
-      // the right one. Without it the gauge sits on top of the plot and hides
-      // whichever arm happens to be parked high.
-      var top = box.top || 22;
       return [box.x + INSET + u * (box.w - INSET - 12),
               box.y + box.h - INSET - v * (box.h - INSET - top)];
     }
@@ -583,17 +633,14 @@
       g.fillText(text, box.x + 12, box.y + 15);
     }
 
-    /* A 5 cm graticule with the board frame's own origin marked. There is no
-       board outline: the repository does not publish the ATB's extent, and an
-       invented rectangle would be the only drawn thing on the plate that is
-       not a number out of the module. */
+    /* A 5 cm graticule with the board frame's own origin marked. */
     function graticule(box, mode) {
       g.font = "400 9px " + tok("--mono", "monospace");
       g.strokeStyle = RULE; g.lineWidth = 1;
       var lo = mode === "top" ? Y0 : Z0, hi = mode === "top" ? Y1 : Z1;
       for (var x = -0.15; x <= 0.1501; x += 0.05) {
         var a = proj([x, lo, lo], box, mode), b = proj([x, hi, hi], box, mode);
-        g.globalAlpha = Math.abs(x) < 1e-9 ? 1 : .55;
+        g.globalAlpha = Math.abs(x) < 1e-9 ? 1 : .5;
         g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
         g.globalAlpha = 1;
         g.fillStyle = INK3;
@@ -601,7 +648,7 @@
       }
       for (var v = Math.ceil(lo / 0.05) * 0.05; v <= hi + 1e-9; v += 0.05) {
         var c = proj([X0, v, v], box, mode), d = proj([X1, v, v], box, mode);
-        g.globalAlpha = Math.abs(v) < 1e-9 ? 1 : .55;
+        g.globalAlpha = Math.abs(v) < 1e-9 ? 1 : .5;
         g.beginPath(); g.moveTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.stroke();
         g.globalAlpha = 1;
         g.fillStyle = INK3;
@@ -611,18 +658,89 @@
       g.fillText("cm", box.x + 6, box.y + box.h - 10);
     }
 
-    // Where each end effector has been, up to the frame on screen. The phase
-    // machine is a sequence and a single dot cannot show a sequence.
+    /* The task board. Its extent is not published by the repository, so this is
+       drawn from the span the task's own bodies occupy rather than from an
+       invented datasheet figure -- it is a surface to work against, and it is
+       the reason "pressed into the board" is a claim you can see. */
+    function board(box, mode, f) {
+      if (!f) return;
+      var xs = [], ys = [];
+      for (var name in f.bodies) { xs.push(f.bodies[name][0]); ys.push(f.bodies[name][1]); }
+      if (!xs.length) return;
+      var pad = 0.045;
+      var x0 = Math.min.apply(null, xs) - pad, x1 = Math.max.apply(null, xs) + pad;
+      var y0 = Math.min.apply(null, ys) - pad, y1 = Math.max.apply(null, ys) + pad;
+      g.save();
+      if (mode === "top") {
+        var a = proj([x0, y0, 0], box, mode), b = proj([x1, y1, 0], box, mode);
+        g.fillStyle = "#f0f0f3"; g.strokeStyle = RULE2; g.lineWidth = 1;
+        g.beginPath();
+        if (g.roundRect) g.roundRect(a[0], b[1], b[0] - a[0], a[1] - b[1], 4);
+        else g.rect(a[0], b[1], b[0] - a[0], a[1] - b[1]);
+        g.fill(); g.stroke();
+      } else {
+        var c = proj([x0, 0, 0.019], box, mode), d = proj([x1, 0, 0.019], box, mode);
+        g.fillStyle = "#f0f0f3"; g.strokeStyle = RULE2; g.lineWidth = 1;
+        g.beginPath();
+        g.rect(c[0], c[1], d[0] - c[0], 7);
+        g.fill(); g.stroke();
+      }
+      g.restore();
+    }
+
+    // Where each end effector has been, up to the frame on screen.
     function trail(box, mode, side, colour) {
       var upto = Math.min(frame, run.frames.length - 1);
       if (upto < 2) return;
-      g.strokeStyle = colour; g.lineWidth = 1.2; g.globalAlpha = .38;
+      g.strokeStyle = colour; g.lineWidth = 1.2; g.globalAlpha = .3;
       g.beginPath();
       for (var i = 0; i <= upto; i += 2) {
         var q = proj(run.frames[i][side], box, mode);
         if (i === 0) g.moveTo(q[0], q[1]); else g.lineTo(q[0], q[1]);
       }
       g.stroke(); g.globalAlpha = 1;
+    }
+
+    /* Shoulder -> elbow -> wrist, with the elbow placed by bisecting the reach
+       and lifting it. Cosmetic, and the caption says so. */
+    function arm(box, mode, side, colour, f) {
+      var ee = f[side];
+      var sh = SHOULDER[side];
+      var a = proj(sh, box, mode), b = proj(ee, box, mode);
+      var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      var dx = b[0] - a[0], dy = b[1] - a[1];
+      var len = Math.hypot(dx, dy) || 1;
+      var lift = Math.min(26, len * 0.20);
+      var ex = mx + (-dy / len) * lift * (side === "right" ? 1 : -1);
+      var ey = my + (dx / len) * lift * (side === "right" ? 1 : -1);
+
+      g.save();
+      g.strokeStyle = colour; g.lineCap = "round"; g.lineJoin = "round";
+      g.globalAlpha = .30; g.lineWidth = 9;
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(ex, ey); g.lineTo(b[0], b[1]); g.stroke();
+      g.globalAlpha = 1; g.lineWidth = 2.4;
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(ex, ey); g.lineTo(b[0], b[1]); g.stroke();
+      g.fillStyle = PAPER3;
+      [[a, 4], [[ex, ey], 3.5]].forEach(function (j) {
+        g.beginPath(); g.arc(j[0][0], j[0][1], j[1], 0, 6.2832); g.fill(); g.stroke();
+      });
+      g.restore();
+      return b;
+    }
+
+    function gripper(q, colour, closed, holding) {
+      // Fingers apart when open, shut when not, filled when something is in them.
+      var d = closed ? 2.5 : 6.5;
+      g.save();
+      g.strokeStyle = colour; g.lineWidth = 2.4; g.lineCap = "round";
+      g.beginPath();
+      g.moveTo(q[0] - d, q[1] - 12); g.lineTo(q[0] - d, q[1] - 2);
+      g.moveTo(q[0] + d, q[1] - 12); g.lineTo(q[0] + d, q[1] - 2);
+      g.moveTo(q[0] - d, q[1] - 12); g.lineTo(q[0] + d, q[1] - 12);
+      g.stroke();
+      if (holding) { g.fillStyle = colour; g.globalAlpha = .25;
+                     g.fillRect(q[0] - d, q[1] - 10, d * 2, 8); }
+      g.restore();
     }
 
     function panel(box, mode, f) {
@@ -633,6 +751,7 @@
       else g.rect(box.x + .5, box.y + .5, box.w - 1, box.h - 1);
       g.fill(); g.stroke();
       graticule(box, mode);
+      board(box, mode, f);
       label(box, mode === "top" ? "board frame, from above  (x, y)"
                                 : "board frame, from the side  (x, z)");
       if (!f) return;
@@ -640,61 +759,50 @@
       var spec = run.spec;
       trail(box, mode, "right", SIGNAL);
       trail(box, mode, "left", SUN);
-      // The board surface, in the side view only: everything sits on z = 0.02
-      // and "pressed into the board" is a claim about that line.
-      if (mode === "side") {
-        var a = proj([X0, 0, 0.019], box, mode), b = proj([X1, 0, 0.019], box, mode);
-        g.strokeStyle = RULE2; g.setLineDash([3, 3]); g.lineWidth = 1;
-        g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
-        g.setLineDash([]);
-      }
 
       if (task === "wire_routing") {
         var pts = [];
         for (var i = 0; i < spec.n_wire_links; i++) {
-          var p = f.bodies[spec.prefix + String(i).padStart(3, "0")];
-          if (p) pts.push(proj(p, box, mode));
+          var wp = f.bodies[spec.prefix + String(i).padStart(3, "0")];
+          if (wp) pts.push(proj(wp, box, mode));
         }
-        g.strokeStyle = INK2; g.lineWidth = 2.4; g.lineJoin = "round";
+        g.strokeStyle = INK; g.lineWidth = 2.6; g.lineJoin = "round"; g.lineCap = "round";
         g.beginPath();
-        pts.forEach(function (p, i) { if (i === 0) g.moveTo(p[0], p[1]); else g.lineTo(p[0], p[1]); });
+        pts.forEach(function (q, i) { if (i === 0) g.moveTo(q[0], q[1]); else g.lineTo(q[0], q[1]); });
         g.stroke();
-        spec.clips.forEach(function (name) {
+        var occ = (f.detail && f.detail.occupied_clips) || 0;
+        spec.clips.forEach(function (name, i) {
           var c = f.bodies[name];
           if (!c) return;
           var q = proj(c, box, mode);
-          g.strokeStyle = ACCENT; g.lineWidth = 2;
-          g.beginPath(); g.arc(q[0], q[1], 6, 0, 6.2832); g.stroke();
+          g.strokeStyle = ACCENT; g.lineWidth = 2.2;
+          g.beginPath(); g.arc(q[0], q[1], 7, 0, 6.2832); g.stroke();
+          if (i < occ) { g.fillStyle = ACCENT; g.globalAlpha = .3; g.fill(); g.globalAlpha = 1; }
         });
       } else {
         var sock = f.bodies[spec.socket], conn = f.bodies[spec.connector];
         if (sock) {
-          var s = proj(sock, box, mode);
-          g.strokeStyle = ACCENT; g.lineWidth = 2;
-          g.strokeRect(s[0] - 9, s[1] - 6, 18, 12);
+          // A shroud, open at the mating face, so "into" is a direction.
+          var sp = proj(sock, box, mode);
+          g.strokeStyle = ACCENT; g.lineWidth = 2.4; g.lineCap = "butt";
+          g.beginPath();
+          g.moveTo(sp[0] - 11, sp[1] - 8); g.lineTo(sp[0] - 11, sp[1] + 7);
+          g.lineTo(sp[0] + 11, sp[1] + 7); g.lineTo(sp[0] + 11, sp[1] - 8);
+          g.stroke();
         }
         if (conn) {
-          var c2 = proj(conn, box, mode);
+          var cp = proj(conn, box, mode);
           g.fillStyle = INK;
-          g.fillRect(c2[0] - 7, c2[1] - 4, 14, 8);
+          g.fillRect(cp[0] - 7.5, cp[1] - 5, 15, 10);
+          g.fillStyle = PAPER3;
+          g.fillRect(cp[0] - 4.5, cp[1] - 2, 9, 4);
         }
       }
 
-      [["right", SIGNAL], ["left", SUN]].forEach(function (pair) {
-        var p = f[pair[0]];
-        if (!p) return;
-        var q = proj(p, box, mode);
-        var closed = f.width[pair[0] === "right" ? 0 : 1] < 0.01;
-        g.strokeStyle = pair[1]; g.lineWidth = 2.2;
-        g.beginPath(); g.arc(q[0], q[1], 8, 0, 6.2832); g.stroke();
-        // The two finger pads, drawn apart when the gripper is open and shut
-        // when it is not, so a closed-on-nothing grasp is visible as a state
-        // rather than only as a word in the readout.
-        var d = closed ? 2.5 : 6;
-        g.beginPath();
-        g.moveTo(q[0] - d, q[1] - 11); g.lineTo(q[0] - d, q[1] - 4);
-        g.moveTo(q[0] + d, q[1] - 11); g.lineTo(q[0] + d, q[1] - 4);
-        g.stroke();
+      [["right", SIGNAL, 0], ["left", SUN, 1]].forEach(function (pair) {
+        if (!f[pair[0]]) return;
+        var q = arm(box, mode, pair[0], pair[1], f);
+        gripper(q, pair[1], f.width[pair[2]] < 0.01, f.grasp[pair[2]] === "holding");
       });
     }
 
@@ -802,14 +910,16 @@
 
     function animate(now) {
       if (!run) return;
-      frame = reduced ? run.frames.length
-                      : Math.floor((now - t0) / 1000 * PLANT_HZ);
-      if (frame >= run.frames.length) {
-        frame = run.frames.length - 1;
-        draw(); readout(true); raf = null;
-        return;
-      }
-      draw(); readout(false);
+      // The timestamp a frame callback receives belongs to the frame that is
+      // already in flight, so it can be a fraction of a millisecond *behind*
+      // the performance.now() taken when the callback was scheduled. Unclamped
+      // that makes the first index -1, and the frame it indexes undefined.
+      var want = reduced ? run.frames.length
+                         : Math.floor(Math.max(0, now - t0) / 1000 * PLANT_HZ);
+      var done = want >= run.frames.length;
+      frame = Math.max(0, Math.min(want, run.frames.length - 1));
+      draw(); readout(done);
+      if (done) { raf = null; return; }
       raf = requestAnimationFrame(animate);
     }
 
