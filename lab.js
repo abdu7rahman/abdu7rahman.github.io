@@ -130,19 +130,6 @@
     var tableEl = document.getElementById("qlc-table");
     var runBtn = document.getElementById("qlc-run");
 
-    // Ground truth colours. Ice reads cool and pale on purpose: it is the one
-    // surface that looks like clean floor to a depth camera, which is the
-    // whole reason an occupancy costmap cannot represent it.
-    var MATERIAL = [
-      [216, 216, 221],   // 0 smooth
-      [201, 214, 195],   // 1 grass
-      [205, 201, 192],   // 2 gravel
-      [230, 220, 192],   // 3 sand
-      [176, 158, 134],   // 4 mud
-      [201, 224, 236],   // 5 ice
-      [190, 181, 172],   // 6 rubble
-      [29, 29, 31]       // 7 wall
-    ];
     /* All four cost functions, plus the ceiling. The first four take the hues
        the repository's own figures give them -- red, orange, blue, green -- so
        a reader holding this next to its README is looking at the same colours.
@@ -168,31 +155,27 @@
     var raf = null, t0 = 0, busy = false, speed = 4;
     var lastGeom = null;   // so a click can be turned back into metres
 
-    function plateFrom(shade, material) {
-      var n = course.rows * course.cols;
-      var img = new ImageData(course.cols, course.rows);
-      for (var i = 0; i < n; i++) {
-        var c = MATERIAL[material[i]] || MATERIAL[0];
-        // Elevation as a +/-14% lightness ramp on the material's own colour.
-        // Relief has to read without competing with the material, because the
-        // material is the thing geometry cannot see.
-        var k = 0.86 + 0.28 * (shade[i] / 255);
-        img.data[i * 4] = Math.min(255, c[0] * k);
-        img.data[i * 4 + 1] = Math.min(255, c[1] * k);
-        img.data[i * 4 + 2] = Math.min(255, c[2] * k);
-        img.data[i * 4 + 3] = 255;
-      }
-      return img;
-    }
+    /* Both plates are the repository's own figures.
 
-    function costPlate(bytes) {
+       `qlc.cli.render.truth_image` colours the material map and shades it with
+       a Lambertian hillshade off the ground gradient -- flat ground keeps its
+       true colour and only slopes darken. This page used to normalise absolute
+       elevation into a +/-14% lightness ramp instead, which laid a soft wash
+       across the whole plate and read as if the map were out of focus; it was
+       also washing out a palette invented here that had far less contrast than
+       the repository's own. `cost_image` is the same story for the cost view,
+       including giving lethal cells their own hue rather than the dark end of
+       a ramp, because "expensive or impassable" is not a question a continuous
+       ramp can answer.
+
+       So nothing is coloured here any more. What arrives is RGB. */
+    function rgbPlate(bytes) {
       var n = course.rows * course.cols;
       var img = new ImageData(course.cols, course.rows);
       for (var i = 0; i < n; i++) {
-        var v = bytes[i] / 255;
-        img.data[i * 4] = 255 - 140 * v;
-        img.data[i * 4 + 1] = 255 - 210 * v;
-        img.data[i * 4 + 2] = 255 - 200 * v;
+        img.data[i * 4] = bytes[i * 3];
+        img.data[i * 4 + 1] = bytes[i * 3 + 1];
+        img.data[i * 4 + 2] = bytes[i * 3 + 2];
         img.data[i * 4 + 3] = 255;
       }
       return img;
@@ -236,7 +219,7 @@
       y += 8;
       course.materials.forEach(function (m) {
         y += 19;
-        var c = MATERIAL[m.value] || MATERIAL[0];
+        var c = m.rgb;
         g.fillStyle = "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
         g.fillRect(x, y - 9, 11, 11);
         g.strokeStyle = RULE2; g.lineWidth = 1;
@@ -421,7 +404,7 @@
     runtime.on("qlc-course", function (m) {
       if (m.token !== token) return;
       course = m.course;
-      plate = bake(plateFrom(b64bytes(course.shade), b64bytes(course.material)));
+      plate = bake(rgbPlate(b64bytes(course.plate)));
       live("qlc-canvas");
       draw(null);
       if (!course.reachable) {
@@ -449,7 +432,7 @@
       if (m.token !== token) return;
       var ep = m.episode;
       episodes.push(ep);
-      costPlates[ep.stack] = bake(costPlate(b64bytes(ep.cost)));
+      costPlates[ep.stack] = bake(rgbPlate(b64bytes(ep.cost)));
       log("qlc: " + ep.stack + " -> " + ep.outcome + ", " + ep.steps + " ticks, " +
           ep.path_length + " m, " + ep.replans + " replans (" + ep.wall_ms + " ms here)",
           ep.outcome === "success" ? "ok" : "err");
