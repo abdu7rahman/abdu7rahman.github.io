@@ -14,9 +14,9 @@
 
    Every message back is JSON. Pyodide can hand typed arrays across directly,
    but the conversion rules differ by type and by pyodide version, and the one
-   array big enough to care about -- the 57,600-cell material map -- goes as
-   base64 instead. One rule for everything, and no proxy lifetimes to manage
-   across a postMessage boundary. */
+   array big enough to care about -- the 240x240 RGB plate -- goes as base64
+   instead. One rule for everything, and no proxy lifetimes to manage across a
+   postMessage boundary. */
 
 "use strict";
 
@@ -69,7 +69,9 @@ var FILES = [
   "qlc/sim/expert.py",
   "qlc/eval/__init__.py",
   "qlc/eval/benchmark.py",
-  "qlc/eval/oracle.py"
+  "qlc/eval/oracle.py",
+  "qlc/cli/__init__.py",
+  "qlc/cli/render.py"
 ];
 
 /* The glue. It imports the vendored modules and exposes one function per
@@ -80,7 +82,12 @@ var FILES = [
 
    * `rich`, because qlc.eval.benchmark imports Console and Table for its
      progress output. run_episode never calls either.
-   * nothing else. There is no third.
+   * `tyro`, because qlc.cli.render imports it for an entry point this page
+     never calls. That module is here for truth_image and cost_image, so the
+     plate is the repository's own figure rather than a palette invented in
+     JavaScript.
+
+   Nothing below either import is touched, and there is no third.
 
    The modules print an author signature on import, twenty lines of it across
    the three trees, so stdout is swallowed for the duration of the import and
@@ -107,7 +114,20 @@ var GLUE = [
   "    rich.table = tab",
   "    sys.modules.update({'rich': rich, 'rich.console': con, 'rich.table': tab})",
   "",
+  "",
+  "def _stub_tyro():",
+  "    \"\"\"qlc.cli.render imports tyro for its entry point, which is never called.",
+  "",
+  "    The module is imported for truth_image and cost_image -- the plate this",
+  "    page draws is the repository's own figure rather than a palette invented",
+  "    here -- and tyro has no business in a browser.",
+  "    \"\"\"",
+  "    tyro = types.ModuleType('tyro')",
+  "    tyro.cli = lambda *a, **k: None",
+  "    sys.modules['tyro'] = tyro",
+  "",
   "_stub_rich()",
+  "_stub_tyro()",
   "_quiet = io.StringIO()",
   "with contextlib.redirect_stdout(_quiet):",
   "    import qlc, oba, rfm",
@@ -117,6 +137,7 @@ var GLUE = [
   "    from qlc.cost.registry import build_cost_model, build_stacks",
   "    from qlc.eval import benchmark as qbench",
   "    from qlc.eval.oracle import OracleCost",
+  "    from qlc.cli.render import MATERIAL_COLOURS, cost_image, truth_image",
   "    from qlc.sim.expert import expert_plan",
   "    from qlc.sim.world import QuadrupedWorld",
   "    import qlc.sim.world as qworld",
@@ -245,9 +266,7 @@ var GLUE = [
   "    # traversable mask is the truth field's own, not a guess about walls.",
   "    goal_row, goal_col = t.goal_cell",
   "    reachable = bool(_COURSE.truth.traversable[goal_row, goal_col])",
-  "    ground = np.asarray(t.ground, dtype=np.float32)",
-  "    lo, hi = float(np.percentile(ground, 2)), float(np.percentile(ground, 98))",
-  "    shade = np.clip((ground - lo) / max(hi - lo, 1e-6), 0.0, 1.0)",
+  "    plate = truth_image(np.asarray(t.material), np.asarray(t.ground))",
   "    return json.dumps({",
   "        'name': cfg.name, 'layout': cfg.layout, 'seed': cfg.seed,",
   "        'moved': moved, 'reachable': reachable,",
@@ -262,10 +281,10 @@ var GLUE = [
   "                       'drag': MATERIAL_TRUTH[m].drag,",
   "                       'traction': MATERIAL_TRUTH[m].traction,",
   "                       'mire_rate': MATERIAL_TRUTH[m].mire_rate,",
-  "                       'share': round(float((t.material == int(m)).mean()), 4)}",
+  "                       'share': round(float((t.material == int(m)).mean()), 4),",
+  "                       'rgb': list(MATERIAL_COLOURS[m])}",
   "                      for m in Material],",
-  "        'material': base64.b64encode(np.asarray(t.material, dtype=np.uint8).tobytes()).decode(),",
-  "        'shade': base64.b64encode((shade * 255).astype(np.uint8).tobytes()).decode(),",
+  "        'plate': base64.b64encode(np.ascontiguousarray(plate).tobytes()).decode(),",
   "    })",
   "",
   "",
@@ -332,9 +351,7 @@ var GLUE = [
   "        qbench.QuadrupedWorld = real",
   "    poses = sink[0] if sink else []",
   "",
-  "    finite = np.isfinite(cost)",
-  "    ceiling = float(np.percentile(cost[finite], 99)) if finite.any() else 1.0",
-  "    field = np.clip(np.where(finite, cost, ceiling) / max(ceiling, 1e-6), 0.0, 1.0)",
+  "    field = cost_image(np.asarray(cost, dtype=np.float32))",
   "    return json.dumps({",
   "        'stack': stack,",
   "        'outcome': result.outcome.value,",
@@ -350,7 +367,7 @@ var GLUE = [
   "        'dt': spec.controller.dt,",
   "        'plan': [[round(float(p[0]), 3), round(float(p[1]), 3)] for p in plan],",
   "        'poses': [[round(p[0], 3), round(p[1], 3), round(p[2], 3)] for p in poses],",
-  "        'cost': base64.b64encode((field * 255).astype(np.uint8).tobytes()).decode(),",
+  "        'cost': base64.b64encode(np.ascontiguousarray(field).tobytes()).decode(),",
   "    })",
   "",
   "",
