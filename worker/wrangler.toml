@@ -1,0 +1,28 @@
+name = "portfolio-analytics"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Nothing in this file is a secret. The three that are -- the OAuth client
+# secret, the session signing key and the visitor salt -- are set with
+# `wrangler secret put` and live in Cloudflare, never in the repository. That
+# split is the only reason this repository can stay public.
+[vars]
+SITE_ORIGIN    = "https://abdu7rahman.github.io"
+ADMIN_LOGIN    = "abdu7rahman"
+ADMIN_USER_ID  = "78921503"
+RETENTION_DAYS = "400"
+# From the GitHub OAuth app; public by design, it travels in the authorize URL.
+GITHUB_CLIENT_ID = ""
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "portfolio-analytics"
+database_id   = "local"   # any value works for --local; replace with the id from `wrangler d1 create`
+
+# Retention runs nightly rather than on the write path, so a slow delete can
+# never sit in front of a reader's page load.
+[triggers]
+crons = ["17 4 * * *"]
+
+[observability]
+enabled = true

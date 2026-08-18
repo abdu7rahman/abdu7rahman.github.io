@@ -74,7 +74,7 @@
     </ol>
   </header>
 
-  <div class="runner__grid" id="plan" data-reveal>
+  <div class="runner__grid" id="plan" data-demo="plan" data-reveal>
 
     <!-- controls -->
     <aside class="panel">
@@ -140,7 +140,7 @@
   </div>
 
 
-  <section class="chase" id="drive">
+  <section class="chase" id="drive" data-demo="drive">
     <div class="chase__head" data-reveal>
       <p class="panel__label">The whole stack, live</p>
       <h2 class="chase__title">Chase</h2>
@@ -203,7 +203,7 @@
     </div>
   </section>
 
-  <section class="chase" id="race">
+  <section class="chase" id="race" data-demo="race">
     <div class="chase__head" data-reveal>
       <p class="panel__label">Five controllers, one plan</p>
       <h2 class="chase__title">Race</h2>
@@ -242,7 +242,7 @@
     </div>
   </section>
 
-  <section class="chase" id="reach">
+  <section class="chase" id="reach" data-demo="reach">
     <div class="chase__head" data-reveal>
       <p class="panel__label">Different repo, same idea</p>
       <h2 class="chase__title">Reach in</h2>
@@ -283,7 +283,7 @@
     </div>
   </section>
 
-  <section class="chase" id="terrain">
+  <section class="chase" id="terrain" data-demo="terrain">
     <div class="chase__head" data-reveal>
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/qlc/</code></p>
       <h2 class="chase__title">Cross the ice</h2>
@@ -377,7 +377,7 @@
     </div>
   </section>
 
-  <section class="chase" id="assemble">
+  <section class="chase" id="assemble" data-demo="assemble">
     <div class="chase__head" data-reveal>
       <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/oba/</code></p>
       <h2 class="chase__title">Seat a connector</h2>
@@ -545,6 +545,9 @@
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 <script src="main.js?v=6bcc448c" defer></script>
+<!-- Analytics. Paste the worker URL from worker/README.md into data-analytics
+     to switch this on; while it is empty the collector does nothing. -->
+<script src="analytics.js?v=8a38aca2" data-analytics="" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
 <script src="demo.js?v=26a317b2" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
