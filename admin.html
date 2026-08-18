@@ -49,15 +49,16 @@
        serves the numbers. None of that can be done by a page on GitHub Pages,
        which is why it is not here.</p>
     <hr>
-    <ol>
-      <li>Deploy the worker &mdash; the steps are in <code>worker/README.md</code>.</li>
-      <li>Put its URL in <code>data-analytics</code> on the
-          <code>analytics.js</code> tag in <code>index.html</code> and
-          <code>demo.html</code>, as <code>https://your-worker/e</code>.</li>
-      <li>Put the same origin in <code>WORKER</code> at the bottom of this file.</li>
-    </ol>
-    <p class="mut">Until step 2 the collector sends nothing at all, so the site
-       behaves exactly as it does now.</p>
+    <p>One command does all of it:</p>
+    <p><code>cd worker &amp;&amp; ./setup.sh</code></p>
+    <p class="mut">It creates the database, deploys, generates and stores the
+       secrets, and points this page and the site at the result. It stops twice
+       for the two steps that need a browser &mdash; signing in to Cloudflare,
+       and creating the GitHub OAuth app &mdash; and tells you exactly what to
+       paste. Safe to re-run. The long version is in
+       <code>worker/README.md</code>.</p>
+    <p class="mut">Until it has run, the collector sends nothing at all, so the
+       site behaves exactly as it does now.</p>
   </div>
 </main>
 

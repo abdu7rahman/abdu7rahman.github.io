@@ -31,6 +31,20 @@ That is the Plausible construction, and it is why this needs no consent banner.
 
 You need a Cloudflare account (the free tier is enough) and about ten minutes.
 
+```sh
+cd worker && ./setup.sh
+```
+
+That does everything below: creates the database, applies the schema, deploys,
+generates and stores the two random secrets, and rewrites `index.html`,
+`demo.html` and `admin.html` to point at the result. It stops twice, for the
+two steps that genuinely need a browser -- signing wrangler in to Cloudflare,
+and registering the GitHub OAuth app -- and prints the exact callback URL to
+paste, which is the step that otherwise goes wrong. It is safe to re-run.
+
+The rest of this section is the same thing by hand, if you would rather see
+each step.
+
 **1. A GitHub OAuth app** &mdash; <https://github.com/settings/developers> &rarr;
 *New OAuth App*.
 
