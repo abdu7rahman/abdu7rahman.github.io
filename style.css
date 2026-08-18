@@ -526,6 +526,20 @@ a.inline:hover { border-color: var(--signal); }
 .foot__r { grid-column: 7 / 13; text-align: right; color: var(--ink-3); }
 .foot p { font: 400 13px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-3); }
 
+/* The visit count sits on its own row under the name, and is hidden until a
+   real number arrives -- see visits.js. A counter that is down leaves the
+   footer exactly as it was rather than parking a 0 under the byline.
+   Tabular figures so the count-up animates in place instead of nudging the
+   line left and right as digit widths change. */
+.foot__count {
+  grid-column: 1 / 13;
+  margin-top: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.foot__count[hidden] { display: none; }
+.foot__count [data-count] { font-family: var(--mono); color: var(--ink-2); }
+
 /* ── responsive ────────────────────────────────────────────── */
 @media (max-width: 1080px) {
   /* The hero is one centred column at every width now, so the old per-element
@@ -553,8 +567,11 @@ a.inline:hover { border-color: var(--signal); }
 
   .stack > div, .path > li { grid-template-columns: 1fr; gap: 6px; }
   .viz-h, .viz { display: none; }
-  .foot__l, .foot__r { grid-column: 1 / 13; text-align: left; }
+  .foot__l, .foot__r, .foot__count { grid-column: 1 / 13; text-align: left; }
   .foot__r { margin-top: 6px; }
+  /* Once the byline stacks, a right-aligned count is the only thing on the
+     footer's other edge, which reads as a stray rather than a column. */
+  .foot__count { margin-top: 10px; }
 }
 
 @media (max-width: 560px) {
