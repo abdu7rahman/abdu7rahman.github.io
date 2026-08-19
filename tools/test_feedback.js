@@ -21,10 +21,11 @@ let pass = 0, fail = 0;
 const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                                : (fail++, console.log('  FAIL  ' + n + (d ? '  <- ' + d : '')));
 
-// The shipped file waits 30s of engaged time. The tests shorten it to keep the
-// suite quick, and assert the real constant separately in section E -- so a
-// value accidentally left small in the repo still fails here.
+// The shipped file waits 10s of engaged time. The tests shorten it further to
+// keep the suite quick, and assert the real constant separately in section E,
+// so a value accidentally left at the test's own is still caught.
 const FAST = 1200;
+const SHIPPED = 10000;
 
 const srv = http.createServer((rq, rs) => {
   const rel = decodeURIComponent(rq.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
@@ -34,7 +35,7 @@ const srv = http.createServer((rq, rs) => {
     if (rel.endsWith('.html') || rel === 'feedback.js') {
       body = String(b)
         .replace(/data-analytics="[^"]*"/, 'data-analytics="' + EP + '"')
-        .replace('var AFTER = 30000;', 'var AFTER = ' + FAST + ';');
+        .replace('var AFTER = ' + SHIPPED + ';', 'var AFTER = ' + FAST + ';');
       body = Buffer.from(body);
     }
     rs.writeHead(200, { 'Content-Type': TYPES[path.extname(rel)] || 'application/octet-stream' });
@@ -158,10 +159,14 @@ async function session() {
     await c.close();
   }
 
-  console.log('\nE. the file that ships really waits 30 seconds');
+  console.log('\nE. the file that ships waits the full interval');
   {
+    // The rewrite above only works if the constant is exactly what this
+    // expects, so a mismatch would silently leave the shipped value in place
+    // and make every timing test above wait it out. Checked directly.
     const src = fs.readFileSync(path.join(ROOT, 'feedback.js'), 'utf8');
-    ok('AFTER is 30000 in the repository', /var AFTER = 30000;/.test(src),
+    ok('AFTER is ' + SHIPPED + ' in the repository',
+       new RegExp('var AFTER = ' + SHIPPED + ';').test(src),
        (src.match(/var AFTER = \d+;/) || ['not found'])[0]);
   }
 

@@ -1,14 +1,14 @@
 /* The comment box, and the prompt that offers it.
  *
  * Two ways in, deliberately: a form at the foot of the page for anyone who
- * goes looking, and a quiet prompt after half a minute of actual reading for
+ * goes looking, and a quiet prompt after ten seconds of actual reading for
  * anyone who would not have.
  *
  * The prompt is the part that can go wrong, so the rules it follows are:
  *
- *   - it counts engaged time, not wall clock. Thirty seconds means thirty
- *     seconds of a visible tab, so a page left open in the background never
- *     earns one.
+ *   - it counts engaged time, not wall clock. Ten seconds means ten seconds
+ *     of a visible tab, so a page left open in the background never earns
+ *     one.
  *   - it never interrupts. It is a bar at the bottom of the window, not a
  *     modal over the middle of it; the page stays readable and scrollable
  *     underneath, and nothing takes focus away from what someone was doing.
@@ -34,7 +34,12 @@
   if (!host) return;
 
   var LEFT = "comment-left", HID = "comment-hidden";
-  var AFTER = 30000;
+  // Ten seconds of engaged reading, not thirty. A bar along the bottom edge
+  // costs a reader almost nothing to ignore, so it can afford to arrive while
+  // they are still on the page rather than waiting until they have nearly
+  // finished with it. A modal at ten seconds would be indefensible; this is
+  // not a modal.
+  var AFTER = 10000;
 
   function flag(k) { try { return localStorage.getItem(k) === "1"; } catch (e) { return false; } }
   function setFlag(k) { try { localStorage.setItem(k, "1"); } catch (e) {} }
