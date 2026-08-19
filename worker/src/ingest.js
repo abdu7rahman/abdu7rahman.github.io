@@ -40,7 +40,7 @@ function num(v, max) {
  * It changes when they change network or browser, so it drifts. It undercounts
  * returning visitors rather than over-counting them, which is the right way
  * round for a number that is about to be believed. */
-async function visitorHash(req, env) {
+export async function visitorHash(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "";
   const ua = req.headers.get("user-agent") || "";
   const data = new TextEncoder().encode(`${env.VISITOR_SALT || "salt"}|${ip}|${ua}`);
@@ -48,7 +48,7 @@ async function visitorHash(req, env) {
   return [...new Uint8Array(digest).slice(0, 8)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-function corsHeaders(req, env) {
+export function corsHeaders(req, env) {
   const origin = req.headers.get("origin") || "";
   const allowed = (env.SITE_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean);
   const ok = allowed.includes(origin);

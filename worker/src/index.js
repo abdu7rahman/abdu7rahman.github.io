@@ -13,6 +13,7 @@
 import { currentAdmin, login, callback, logout } from "./auth.js";
 import { ingest, preflight, prune } from "./ingest.js";
 import { stats } from "./stats.js";
+import { comment, comments } from "./comments.js";
 import { dashboard, signedOut } from "./dashboard.js";
 
 const SECURITY = {
@@ -46,6 +47,14 @@ export default {
       return new Response("method not allowed\n", { status: 405 });
     }
 
+    // The second public door. Same origin rule, much tighter limits -- see
+    // comments.js for why it is treated as the more dangerous of the two.
+    if (path === "/c") {
+      if (req.method === "OPTIONS") return preflight(req, env);
+      if (req.method === "POST") return comment(req, env);
+      return new Response("method not allowed\n", { status: 405 });
+    }
+
     if (!env.SESSION_SECRET || !env.GITHUB_CLIENT_ID) {
       return html("<h1>Not configured</h1><p>Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and " +
         "SESSION_SECRET before using this. See worker/README.md.</p>", 503);
@@ -60,6 +69,11 @@ export default {
     if (path === "/api/stats") {
       if (!admin) return json({ error: "not signed in" }, 401);
       return json(await stats(env, url.searchParams.get("days")));
+    }
+
+    if (path === "/api/comments") {
+      if (!admin) return json({ error: "not signed in" }, 401);
+      return json(await comments(env, url.searchParams.get("limit")));
     }
 
     if (path === "/") {
