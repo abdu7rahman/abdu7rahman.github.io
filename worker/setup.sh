@@ -108,8 +108,26 @@ TXT
       /GITHUB_CLIENT_ID\s*=\s*"[^"]*"/, `GITHUB_CLIENT_ID = "'"$CLIENT_ID"'"`));'
   ok "client id saved to wrangler.toml"
 else
+  # The app was made ahead of time, so its redirect URI was necessarily a
+  # guess -- the worker URL did not exist yet. This is the one setting that
+  # fails with a message pointing nowhere near the cause, so it gets checked
+  # rather than assumed.
   ok "client id already set: $CLIENT_ID"
-  note "if the callback URL on the GitHub app is not $URL/callback, fix it there"
+  say "Check the app's redirect URI before going on"
+  cat <<TXT
+
+    Open   https://github.com/settings/developers  ->  OAuth Apps  ->  your app
+
+    Its callback must be exactly this, including the scheme and /callback.
+    Newer GitHub labels this field "Redirect URI"; it is the same setting.
+
+      $bold$URL/callback$off
+
+    Anything else fails at sign-in with redirect_uri_mismatch, which reads
+    like a problem with the worker and is not one.
+
+TXT
+  read -r -p "    Press enter once it is saved. " _ </dev/tty || true
 fi
 
 # ---------------------------------------------------------------- 5. secrets
