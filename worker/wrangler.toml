@@ -12,7 +12,7 @@ ADMIN_LOGIN    = "abdu7rahman"
 ADMIN_USER_ID  = "78921503"
 RETENTION_DAYS = "400"
 # From the GitHub OAuth app; public by design, it travels in the authorize URL.
-GITHUB_CLIENT_ID = ""
+GITHUB_CLIENT_ID = "Ov23limBZMnxwM2RMztj"
 
 [[d1_databases]]
 binding       = "DB"
