@@ -21,7 +21,12 @@ CREATE TABLE IF NOT EXISTS event (
   country TEXT,               -- from request.cf, which never requires storing the address
   region  TEXT,
   city    TEXT,
-  device  TEXT                -- 'mobile' | 'desktop', derived and coarse on purpose
+  device  TEXT,               -- 'mobile' | 'desktop', derived and coarse on purpose
+  org     TEXT                -- the network a request arrived over: "Comcast",
+                              -- "Northeastern University", "Google LLC". This is
+                              -- the answer to "who is looking at this" that an IP
+                              -- address is usually wanted for, and unlike an IP it
+                              -- describes an organisation rather than a person.
 );
 
 -- Every dashboard query is "this kind of thing, over this window", so the
@@ -30,6 +35,7 @@ CREATE TABLE IF NOT EXISTS event (
 CREATE INDEX IF NOT EXISTS event_day        ON event (day);
 CREATE INDEX IF NOT EXISTS event_kind_day   ON event (kind, day);
 CREATE INDEX IF NOT EXISTS event_session    ON event (session, ts);
+CREATE INDEX IF NOT EXISTS event_visitor    ON event (visitor, day);
 
 -- Rate limiting lives in the database rather than in memory because a worker
 -- instance is not around long enough to remember anything useful.

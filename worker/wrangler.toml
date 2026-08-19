@@ -10,7 +10,7 @@ compatibility_date = "2025-01-01"
 SITE_ORIGIN    = "https://abdu7rahman.github.io"
 ADMIN_LOGIN    = "abdu7rahman"
 ADMIN_USER_ID  = "78921503"
-RETENTION_DAYS = "400"
+RETENTION_DAYS = "0"   # 0 keeps everything; the dashboard is for the long view
 # From the GitHub OAuth app; public by design, it travels in the authorize URL.
 GITHUB_CLIENT_ID = "Ov23limBZMnxwM2RMztj"
 

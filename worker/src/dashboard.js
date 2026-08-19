@@ -74,8 +74,12 @@ td.n,th.n{text-align:right;padding-right:0;font-family:var(--mono);font-size:12.
 @media (max-width:720px){
   /* Six columns do not fit a phone. Device and page count are the two that
      answer the least, so they are the two that go. */
+  /* Seven columns do not fit a phone. Network, device and page count are the
+     three that answer the least in a feed whose point is who / what / how long. */
   #recent th:nth-child(3),#recent td:nth-child(3),
-  #recent th:nth-child(5),#recent td:nth-child(5){display:none}
+  #recent th:nth-child(4),#recent td:nth-child(4),
+  #recent th:nth-child(6),#recent td:nth-child(6){display:none}
+  #loyal th:nth-child(2),#loyal td:nth-child(2){display:none}
   .wrap{padding-left:16px;padding-right:16px}
   td,th{padding-right:8px}
 }
@@ -130,6 +134,7 @@ export function dashboard(admin) {
   <button class="range" data-days="7">7 days</button>
   <button class="range" data-days="30" aria-pressed="true">30 days</button>
   <button class="range" data-days="90">90 days</button>
+  <button class="range" data-days="all">All time</button>
 </div>
 
 <dl class="tiles" id="tiles"></dl>
@@ -148,18 +153,31 @@ export function dashboard(admin) {
 <section><h2>Demos</h2><div class="card" id="demos"></div></section>
 <section><h2>Pages</h2><div class="card" id="pages"></div></section>
 <section><h2>Where from</h2><div class="card" id="places"></div></section>
+<section><h2>Networks</h2><div class="card" id="orgs"></div></section>
 <section><h2>Links out</h2><div class="card" id="outbound"></div></section>
+<section><h2>Regulars</h2><div class="card" id="loyal"></div></section>
 <section><h2>Recent sessions</h2><div class="card" id="recent"></div></section>
 
 <p class="foot">
-  No IP addresses, user-agent strings or cookies are stored. A visitor is a hash
-  over a salt that rotates at midnight UTC, so the same reader on two days is two
-  unrelated values and nothing follows anyone across a day boundary.
-  A visit is a session; a bounce is one page with no demo and no outbound click.
-  A demo is <em>opened</em> when a reader touches it and <em>engaged</em> once it has
-  held a visible screen for five seconds after that, so scrolling past six sections
-  on the way down the page is not six demos. All times are engaged time: a tab left
-  open contributes nothing.
+  No IP addresses, user-agent strings, referrers or cookies are stored. A visitor is
+  a one-way hash of an address and a browser against a secret salt &mdash; the address
+  itself is never written down, and without the salt nobody can test a given address
+  against this table. The hash no longer rotates daily, which is what makes
+  <em>Returning</em> and <em>Regulars</em> answerable at all: the same reader is
+  recognisable across months. That is a persistent pseudonymous identifier, which is
+  tracking in the ordinary sense of the word, and the site says so. It changes when
+  someone changes network or browser, so it drifts and undercounts rather than over-counts.
+  <br><br>
+  <em>Networks</em> is the organisation a request arrived over, which Cloudflare
+  resolves at the edge &mdash; a university, an employer, or an internet provider.
+  It is the question a raw address is usually wanted for, answered without keeping
+  anything that points at a person.
+  <br><br>
+  Nothing is ever deleted. A visit is a session; a bounce is one page with no demo and
+  no outbound click. A demo is <em>opened</em> when a reader touches it and
+  <em>engaged</em> once it has held a visible screen for five seconds after that, so
+  scrolling past six sections on the way down the page is not six demos. All times are
+  engaged time: a tab left open contributes nothing.
 </p>
 </div>
 <script>${CLIENT}</script></body></html>`;
@@ -277,9 +295,14 @@ function chart(series){
 
 function render(s){
   var t=s.totals;
+  var w=s.window;
+  var span = w.all
+    ? (w.first ? "everything since "+w.first : "no data yet")
+    : "sessions in "+w.days+" days";
   document.getElementById("tiles").innerHTML=[
-    ["Visits",n(t.visits),"sessions in "+s.window.days+" days"],
-    ["Unique visitors",n(t.visitors),"salted daily, not tracked"],
+    ["Visits",n(t.visits),span],
+    ["Unique visitors",n(t.visitors),n(w.visitorsEver)+" ever, across "+n(w.daysWithData)+" days"],
+    ["Returning",n(t.returning),"here on more than one day"],
     ["Pages read",n(t.views),""],
     ["Median time",dur(t.medianDwellMs),"engaged, not tab-open"],
     ["Bounce",pct(t.bounceRate),"one page, nothing else"]
@@ -311,16 +334,34 @@ function render(s){
     {h:"Visits",n:1,get:function(r){return n(r.visits);}}
   ],s.places,"visits");
 
+  document.getElementById("orgs").innerHTML=table([
+    {h:"Network",get:function(r){return esc(r.org);}},
+    {h:"Visits",n:1,get:function(r){return n(r.visits);}},
+    {h:"People",n:1,get:function(r){return n(r.visitors);}}
+  ],s.orgs||[],"visits");
+
   document.getElementById("outbound").innerHTML=table([
     {h:"Destination",get:function(r){return esc(r.label);}},
     {h:"Clicks",n:1,get:function(r){return n(r.clicks);}},
     {h:"Visits",n:1,get:function(r){return n(r.sessions);}}
   ],s.outbound,"clicks");
 
+  document.getElementById("loyal").innerHTML=table([
+    {h:"Where",get:function(r){
+      var f=flag(r.country);return (f?f+" ":"")+esc(r.city||r.country||"unknown");}},
+    {h:"Network",get:function(r){return r.org?esc(r.org):'<span class="mut">--</span>';}},
+    {h:"Days",n:1,get:function(r){return n(r.days);}},
+    {h:"Visits",n:1,get:function(r){return n(r.visits);}},
+    {h:"Demos",n:1,get:function(r){return n(r.demos);}},
+    {h:"First",get:function(r){return esc(new Date(r.first_ts).toISOString().slice(0,10));}},
+    {h:"Last",get:function(r){return esc(new Date(r.last_ts).toISOString().slice(0,10));}}
+  ],s.loyal||[],"days");
+
   document.getElementById("recent").innerHTML=table([
     {h:"When",get:function(r){return esc(new Date(r.started).toISOString().slice(5,16).replace("T"," "));}},
     {h:"Where",get:function(r){
       var f=flag(r.country);return (f?f+" ":"")+esc(r.city||r.country||"unknown");}},
+    {h:"Network",get:function(r){return r.org?esc(r.org):'<span class="mut">--</span>';}},
     {h:"On",get:function(r){return esc(r.device||"");}},
     {h:"Ran",get:function(r){return r.ran.length?esc(r.ran.join(", ")):'<span class="mut">--</span>';}},
     {h:"Pages",n:1,get:function(r){return n(r.views);}},
@@ -342,7 +383,7 @@ document.querySelectorAll(".range").forEach(function(b){
   b.addEventListener("click",function(){
     document.querySelectorAll(".range").forEach(function(o){o.removeAttribute("aria-pressed");});
     b.setAttribute("aria-pressed","true");
-    days=+b.dataset.days; load();
+    days=b.dataset.days; load();
   });
 });
 load();

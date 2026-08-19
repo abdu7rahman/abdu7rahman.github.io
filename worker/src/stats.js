@@ -17,12 +17,21 @@ const MEDIAN = (where) => `
   ) WHERE rn IN ((c + 1) / 2, (c + 2) / 2)`;
 
 export async function stats(env, days) {
-  const d = Math.min(Math.max(parseInt(days, 10) || 30, 1), 365);
-  const since = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  // days = "all" (or 0) means no window at all. A date far enough in the past
+  // is used rather than dropping the WHERE clause, so every query below stays
+  // one shape and the indexes still apply.
+  const all = String(days) === "all" || parseInt(days, 10) === 0;
+  const d = all ? 0 : Math.min(Math.max(parseInt(days, 10) || 30, 1), 3650);
+  const since = all ? "0001-01-01" : new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
   const q = (sql, ...bind) => env.DB.prepare(sql).bind(...bind);
 
   const [
-    totals, series, pages, demos, outbound, places, devices, dwell, recent, bounce,
+    // This list is positional -- it must match the order of the batch below,
+    // statement for statement. Adding a query in the middle and appending its
+    // name here shifts every result after it onto the wrong variable, which is
+    // not a crash but a dashboard quietly showing the wrong table.
+    totals, series, pages, demos, outbound, places, devices, orgs, dwell, recent,
+    bounce, returning, span, loyal,
   ] = await env.DB.batch([
     // A "visit" is a session, matching what the footer counter on the site
     // means by the word, so the two numbers can be compared without a
@@ -66,6 +75,15 @@ export async function stats(env, days) {
     q(`SELECT COALESCE(device, 'unknown') device, COUNT(DISTINCT session) visits
        FROM event WHERE day >= ?1 GROUP BY device`, since),
 
+    // Which networks the readers came over. A university or a company name
+    // here is the thing an IP address is usually wanted for, arrived at
+    // without keeping anything that points at a person.
+    q(`SELECT COALESCE(NULLIF(org, ''), 'unknown') org,
+              COUNT(DISTINCT session) visits,
+              COUNT(DISTINCT visitor) visitors
+       FROM event WHERE day >= ?1
+       GROUP BY org ORDER BY visits DESC LIMIT 30`, since),
+
     q(MEDIAN("kind = 'session_end' AND day >= ?1"), since),
 
     // "Who does what from where, and how long" -- one row per session, in the
@@ -76,6 +94,7 @@ export async function stats(env, days) {
               COALESCE(MAX(e.country), '??') country,
               COALESCE(MAX(e.city), '')     city,
               COALESCE(MAX(e.device), '')   device,
+              COALESCE(MAX(e.org), '')      org,
               SUM(e.kind = 'pageview')   views,
               SUM(e.kind = 'demo_start') demos,
               MAX(CASE WHEN e.kind = 'session_end' THEN e.ms END) ms,
@@ -91,18 +110,52 @@ export async function stats(env, days) {
          GROUP BY session
          HAVING SUM(kind = 'pageview') <= 1
             AND SUM(kind IN ('demo_start', 'outbound')) = 0)`, since),
+
+    // Someone who has been here on more than one day. Only answerable because
+    // the visitor hash is stable now; under the old daily-rotating salt this
+    // number could not exist.
+    q(`SELECT COUNT(*) n FROM (
+         SELECT visitor FROM event
+         WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1)
+         GROUP BY visitor HAVING COUNT(DISTINCT day) > 1)`, since),
+
+    // The whole span the table covers, independent of the window, so the
+    // dashboard can say how far back "all time" actually reaches.
+    q(`SELECT MIN(day) first, MAX(day) last,
+              COUNT(DISTINCT day) days, COUNT(DISTINCT visitor) visitors
+       FROM event`),
+
+    // Who keeps coming back. The hash is the only handle on a person here and
+    // it is not shown -- what is shown is how often, from where, and when.
+    q(`SELECT COUNT(DISTINCT day)     days,
+              COUNT(DISTINCT session) visits,
+              MIN(ts)                 first_ts,
+              MAX(ts)                 last_ts,
+              COALESCE(MAX(country), '??') country,
+              COALESCE(MAX(city), '')      city,
+              COALESCE(MAX(org), '')       org,
+              SUM(kind = 'demo_start')     demos
+       FROM event
+       WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1)
+       GROUP BY visitor
+       HAVING days > 1
+       ORDER BY days DESC, visits DESC LIMIT 25`, since),
   ]);
 
   const t = totals.results[0] || { visits: 0, visitors: 0, views: 0 };
+  const sp = span.results[0] || {};
   return {
-    window: { days: d, since },
+    window: { days: d, since, all, first: sp.first || null, last: sp.last || null,
+              daysWithData: sp.days || 0, visitorsEver: sp.visitors || 0 },
     totals: {
       visits: t.visits || 0,
       visitors: t.visitors || 0,
       views: t.views || 0,
+      returning: (returning.results[0] || {}).n || 0,
       medianDwellMs: Math.round((dwell.results[0] || {}).v || 0),
       bounceRate: t.visits ? (bounce.results[0] || {}).bounced / t.visits : null,
     },
+    loyal: loyal.results,
     series: series.results,
     pages: pages.results,
     demos: demos.results.map(r => ({
@@ -112,6 +165,7 @@ export async function stats(env, days) {
     outbound: outbound.results,
     places: places.results,
     devices: devices.results,
+    orgs: orgs.results,
     recent: recent.results.map(r => ({
       ...r,
       ran: r.ran ? [...new Set(String(r.ran).split(","))].filter(Boolean) : [],
