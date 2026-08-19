@@ -242,6 +242,66 @@ const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
     ok("comments have their own, tighter rate limit", last === 429, "last=" + last);
   }
 
+  console.log("\nI. crawlers are flagged, not counted");
+  {
+    const cookie = "admin_session=" + await session({ login: "abdu7rahman", id: 78921503, exp: Date.now() + 3e5 });
+    const human = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    const before = human.totals.visits;
+
+    // Something that says what it is. This is the reliable signal: a crawler
+    // that does not run JavaScript never reaches the collector at all, so the
+    // ones left to catch are the ones driving a real browser engine.
+    ok("a self-identifying bot is accepted", (await send([
+      ev("crawl-1", "pageview", { path: "/" }),
+    ], { ua: "Mozilla/5.0 (compatible; SomeBot/1.0; +http://example.com/bot)" })).status === 204);
+
+    ok("so is a headless browser", (await send([
+      ev("crawl-2", "pageview", { path: "/" }),
+    ], { ua: "Mozilla/5.0 HeadlessChrome/120.0.0.0" })).status === 204);
+
+    const after = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    ok("but neither is counted as a visit", after.totals.visits === before,
+       before + " -> " + after.totals.visits);
+    ok("and the crawler table names them", after.crawlers.length >= 1, JSON.stringify(after.crawlers));
+    ok("with a reason attached", after.crawlers.every(c => !!c.why), JSON.stringify(after.crawlers.map(c => c.why)));
+
+    // Nothing is deleted -- asking for them puts them back, because the
+    // hosting heuristic can be wrong about a person.
+    const withBots = await (await fetch(BASE + "/api/stats?days=all&bots=1", { headers: { cookie } })).json();
+    ok("bots=1 counts them again", withBots.totals.visits === before + 2,
+       before + " + 2 -> " + withBots.totals.visits);
+    ok("and the window says which mode it is in",
+       withBots.window.withBots === true && after.window.withBots === false,
+       JSON.stringify([after.window.withBots, withBots.window.withBots]));
+
+    ok("a plain browser is not flagged", (await send([
+      ev("real-1", "pageview", { path: "/", ref: "linkedin.com/feed" }),
+    ], { ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15" })).status === 204);
+    const now = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    ok("and is counted", now.totals.visits === before + 1, before + " + 1 -> " + now.totals.visits);
+
+    console.log("\nJ. referrers");
+    const li = now.refs.find(r => r.ref === "linkedin.com/feed");
+    ok("a referrer is recorded", !!li, JSON.stringify(now.refs));
+    ok("a visit with none is called direct", now.refs.some(r => r.ref === "(direct)"),
+       JSON.stringify(now.refs.map(r => r.ref)));
+
+    // The client strips the query string before sending, but the column is
+    // capped here too so a hand-rolled POST cannot stuff it.
+    await send([ev("real-2", "pageview", { path: "/", ref: "x".repeat(200) })],
+               { ua: "Mozilla/5.0 (X11; Linux x86_64) Safari/537.36" });
+    const capped = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    ok("an overlong referrer is truncated, not rejected",
+       capped.refs.some(r => r.ref.length === 64), JSON.stringify(capped.refs.map(r => r.ref.length)));
+
+    // ref only means anything on a pageview.
+    await send([ev("real-3", "outbound", { label: "github.com", ref: "should-be-ignored" })],
+               { ua: "Mozilla/5.0 (X11; Linux x86_64) Safari/537.36" });
+    const ign = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    ok("a referrer on a non-pageview is dropped",
+       !ign.refs.some(r => r.ref === "should-be-ignored"), JSON.stringify(ign.refs.map(r => r.ref)));
+  }
+
   console.log("\nE. a stuck loop gets throttled");
   {
     const ua = "flooder";

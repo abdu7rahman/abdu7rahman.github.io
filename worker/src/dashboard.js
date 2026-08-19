@@ -41,8 +41,12 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.022em}
 .range{font:500 13px var(--sans);padding:6px 14px;border:1px solid var(--rule-2);
   border-radius:var(--r-pill);background:var(--paper-3);color:var(--ink-2);cursor:pointer}
 .range[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.range--sep{margin-left:auto}
 
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:30px}
+/* 148px rather than 160px so all six headline figures sit on one row at the
+   page's full width. At 160 the sixth wrapped onto a line of its own, which
+   read as an afterthought rather than one of the set. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:30px}
 .tile{background:var(--paper-3);border:1px solid var(--rule);border-radius:var(--r-lg);padding:16px 18px}
 .tile dt{font-size:12px;color:var(--ink-3);letter-spacing:0}
 .tile dd{margin-top:6px;font:600 27px/1 var(--sans);letter-spacing:-.028em;
@@ -63,7 +67,11 @@ th{text-align:left;font:500 11.5px var(--sans);letter-spacing:.02em;text-transfo
   color:var(--ink-3);padding:0 10px 8px 0;border-bottom:1px solid var(--rule)}
 td{padding:9px 10px 9px 0;border-bottom:1px solid var(--rule);font-size:13.5px;color:var(--ink-2)}
 tr:last-child td{border-bottom:0}
-td.n,th.n{text-align:right;padding-right:0;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+td.n,th.n{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+/* Only the last column may lose its right padding. A right-aligned number in
+   the middle of a row butts straight into the next cell's text without it --
+   which is how "Demos" and "Last seen" came out as one word. */
+td.n:last-child,th.n:last-child{padding-right:0}
 .lab{position:relative;color:var(--ink);z-index:0}
 /* The magnitude bar sits behind the label rather than in its own column, so a
    long path and a short one still line up and the row stays one line. */
@@ -145,6 +153,7 @@ export function dashboard(admin) {
   <button class="range" data-days="30" aria-pressed="true">30 days</button>
   <button class="range" data-days="90">90 days</button>
   <button class="range" data-days="all">All time</button>
+  <button class="range range--sep" id="bots" aria-pressed="false">Include crawlers</button>
 </div>
 
 <dl class="tiles" id="tiles"></dl>
@@ -165,7 +174,9 @@ export function dashboard(admin) {
 <section><h2>Demos</h2><div class="card" id="demos"></div></section>
 <section><h2>Pages</h2><div class="card" id="pages"></div></section>
 <section><h2>Where from</h2><div class="card" id="places"></div></section>
+<section><h2>How they arrived</h2><div class="card" id="refs"></div></section>
 <section><h2>Networks</h2><div class="card" id="orgs"></div></section>
+<section><h2>Crawlers, excluded from the numbers above</h2><div class="card" id="crawlers"></div></section>
 <section><h2>Links out</h2><div class="card" id="outbound"></div></section>
 <section><h2>Regulars</h2><div class="card" id="loyal"></div></section>
 <section><h2>Recent sessions</h2><div class="card" id="recent"></div></section>
@@ -185,6 +196,14 @@ export function dashboard(admin) {
   It is the question a raw address is usually wanted for, answered without keeping
   anything that points at a person.
   <br><br>
+  Everything above excludes crawlers unless you ask for them: something that
+  named itself a bot in its user-agent, that Cloudflare verified as one, or that
+  arrived over a hosting network. The last of those cannot tell a link scanner
+  from somebody reading this at work, so nothing is deleted on the strength of it
+  and the excluded rows stay listed with their reason. Times are in
+  <em id="tzn"></em>; the day buckets in the chart are UTC, because that grouping
+  happens in the database.
+  <br><br>
   Nothing is ever deleted. A visit is a session; a bounce is one page with no demo and
   no outbound click. A demo is <em>opened</em> when a reader touches it and
   <em>engaged</em> once it has held a visible screen for five seconds after that, so
@@ -201,12 +220,30 @@ function esc(s) {
 }
 
 const CLIENT = String.raw`
-var RED = "#d70015", GREEN = "#007a3d", days = 30;
+var RED = "#d70015", GREEN = "#007a3d", days = 30, bots = 0;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function n(v){return (v==null?0:v).toLocaleString("en-US");}
 function pct(v){return v==null?"--":(v*100).toFixed(0)+"%";}
+/* Rendered in whatever zone this browser is in, because the only person who
+   ever loads this page is reading it from one place. It used to print UTC,
+   which made an evening of browsing look like it happened at four in the
+   morning. Day buckets in the chart are still UTC -- that grouping happens in
+   SQL -- so the axis says so. */
+var TZ=(function(){try{return Intl.DateTimeFormat().resolvedOptions().timeZone||"local";}catch(e){return "local";}})();
+function when(ts){
+  var d=new Date(ts);
+  try{
+    return d.toLocaleString(undefined,{month:"short",day:"numeric",
+      hour:"2-digit",minute:"2-digit",hour12:false});
+  }catch(e){ return d.toISOString().slice(5,16).replace("T"," "); }
+}
+function dayOf(ts){
+  var d=new Date(ts);
+  try{ return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}); }
+  catch(e){ return d.toISOString().slice(0,10); }
+}
 function dur(ms){
   if(!ms) return "--";
   var s=Math.round(ms/1000);
@@ -346,6 +383,21 @@ function render(s){
     {h:"Visits",n:1,get:function(r){return n(r.visits);}}
   ],s.places,"visits");
 
+  document.getElementById("refs").innerHTML=table([
+    {h:"From",get:function(r){return esc(r.ref);}},
+    {h:"Views",n:1,get:function(r){return n(r.views);}},
+    {h:"Visits",n:1,get:function(r){return n(r.visits);}}
+  ],s.refs||[],"views");
+
+  document.getElementById("crawlers").innerHTML=table([
+    {h:"Network",get:function(r){return esc(r.org);}},
+    {h:"Why",get:function(r){return esc({agent:"said so in its user-agent",
+      verified:"verified by Cloudflare",hosting:"came over a hosting network"}[r.why]||r.why);}},
+    {h:"Visits",n:1,get:function(r){return n(r.visits);}},
+    {h:"Demos",n:1,get:function(r){return n(r.demos);}},
+    {h:"Last seen",get:function(r){return esc(when(r.last_ts));}}
+  ],s.crawlers||[],"visits");
+
   document.getElementById("orgs").innerHTML=table([
     {h:"Network",get:function(r){return esc(r.org);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}},
@@ -365,12 +417,12 @@ function render(s){
     {h:"Days",n:1,get:function(r){return n(r.days);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}},
     {h:"Demos",n:1,get:function(r){return n(r.demos);}},
-    {h:"First",get:function(r){return esc(new Date(r.first_ts).toISOString().slice(0,10));}},
-    {h:"Last",get:function(r){return esc(new Date(r.last_ts).toISOString().slice(0,10));}}
+    {h:"First",get:function(r){return esc(dayOf(r.first_ts));}},
+    {h:"Last",get:function(r){return esc(dayOf(r.last_ts));}}
   ],s.loyal||[],"days");
 
   document.getElementById("recent").innerHTML=table([
-    {h:"When",get:function(r){return esc(new Date(r.started).toISOString().slice(5,16).replace("T"," "));}},
+    {h:"When",get:function(r){return esc(when(r.started));}},
     {h:"Where",get:function(r){
       var f=flag(r.country);return (f?f+" ":"")+esc(r.city||r.country||"unknown");}},
     {h:"Network",get:function(r){return r.org?esc(r.org):'<span class="mut">--</span>';}},
@@ -391,12 +443,12 @@ function renderComments(list){
   if(!list||!list.length){
     host.innerHTML='<p class="empty">Nobody has written anything yet.</p>';return;}
   host.innerHTML=list.map(function(c){
-    var when=new Date(c.ts).toISOString().slice(0,16).replace("T"," ");
+    var at=when(c.ts);
     var f=flag(c.country);
     var bits=[];
     bits.push('<span class="cmt__who">'+esc(c.name||"Anonymous")+"</span>");
     if(c.contact) bits.push('<a class="cmt__c" href="mailto:'+esc(c.contact)+'">'+esc(c.contact)+"</a>");
-    bits.push(esc(when));
+    bits.push(esc(at));
     bits.push((f?f+" ":"")+esc(c.city||c.country||"unknown"));
     if(c.org) bits.push(esc(c.org));
     if(c.path) bits.push(esc(c.path));
@@ -408,7 +460,7 @@ function renderComments(list){
 }
 
 function load(){
-  fetch("/api/stats?days="+days,{credentials:"same-origin",cache:"no-store"})
+  fetch("/api/stats?days="+days+"&bots="+bots,{credentials:"same-origin",cache:"no-store"})
     .then(function(r){ if(r.status===401){location.href="/";return null;}
       return r.ok?r.json():Promise.reject(r.status);})
     .then(function(s){ if(s) render(s); })
@@ -426,12 +478,18 @@ function load(){
         '<p class="empty">Could not load the comments ('+esc(e)+').</p>';});
 }
 
-document.querySelectorAll(".range").forEach(function(b){
+document.querySelectorAll(".range[data-days]").forEach(function(b){
   b.addEventListener("click",function(){
-    document.querySelectorAll(".range").forEach(function(o){o.removeAttribute("aria-pressed");});
+    document.querySelectorAll(".range[data-days]").forEach(function(o){o.removeAttribute("aria-pressed");});
     b.setAttribute("aria-pressed","true");
     days=b.dataset.days; load();
   });
 });
+document.getElementById("bots").addEventListener("click",function(){
+  bots=bots?0:1;
+  this.setAttribute("aria-pressed",bots?"true":"false");
+  load();
+});
+var tzn=document.getElementById("tzn"); if(tzn) tzn.textContent=TZ;
 load();
 `;

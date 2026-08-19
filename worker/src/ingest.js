@@ -9,6 +9,40 @@
  */
 
 const KINDS = new Set(["pageview", "demo_start", "demo_done", "outbound", "session_end"]);
+
+/* Two ways of recognising something that is not a reader.
+ *
+ * The first is what it calls itself. Most crawlers say so in the user-agent,
+ * and the headless signatures are here too because the scanners that matter
+ * now render JavaScript -- a crawler that does not execute the collector never
+ * reaches this code at all, so the ones left to catch are precisely the ones
+ * driving a real browser engine.
+ *
+ * The second is the network it came over, and it is the weaker of the two by a
+ * long way. It cannot distinguish an Azure link scanner from somebody at
+ * Microsoft reading this at work, and on a portfolio the second is the most
+ * interesting visitor there is. So it is recorded as its own reason, and the
+ * dashboard can be told to put those rows back. */
+const BOT_UA = /bot\b|bots\b|crawl|spider|slurp|scrape|headless|phantomjs|puppeteer|playwright|selenium|lighthouse|curl\/|wget|python-requests|okhttp|java\/|go-http|libwww|httpclient|axios\/|node-fetch|preview|scanner|monitor|uptime|pingdom|statuscake|ahrefs|semrush|mj12|dotbot|petalbot|bytespider|facebookexternalhit|whatsapp|telegram|slackbot|discord|embedly|proofpoint|barracuda|mimecast|safelinks/i;
+
+// Substring match against Cloudflare's asOrganization. Deliberately the big
+// hosts only: a wrong guess here hides a real person.
+const HOSTING = [
+  "amazon", "aws", "microsoft", "azure", "google cloud", "googlebot", "digitalocean",
+  "linode", "akamai", "fastly", "cloudflare", "hetzner", "ovh", "scaleway", "vultr",
+  "choopa", "contabo", "leaseweb", "m247", "datacamp", "oracle", "alibaba", "tencent",
+  "huawei cloud", "ibm cloud", "rackspace", "hostinger", "namecheap", "godaddy",
+];
+
+function botVerdict(ua, org, cf) {
+  if (BOT_UA.test(ua)) return "agent";
+  // Cloudflare's own judgement, where the plan provides it.
+  const bm = cf && cf.botManagement;
+  if (bm && bm.verifiedBot === true) return "verified";
+  const o = String(org || "").toLowerCase();
+  if (o && HOSTING.some(h => o.indexOf(h) >= 0)) return "hosting";
+  return null;
+}
 const MAX_EVENTS = 24;      // one page rarely produces more; a batch bigger than this is noise
 const MAX_BODY = 8 * 1024;
 const MAX_PER_MIN = 60;
@@ -101,8 +135,12 @@ export async function ingest(req, env) {
   if (seen > MAX_PER_MIN) return reply(429, "slow down\n");
 
   const cf = req.cf || {};
-  const device = /mobile|android|iphone|ipad/i.test(req.headers.get("user-agent") || "")
-    ? "mobile" : "desktop";
+  const ua = req.headers.get("user-agent") || "";
+  const device = /mobile|android|iphone|ipad/i.test(ua) ? "mobile" : "desktop";
+  // Decided here and stored as a verdict. The user-agent it was decided from is
+  // still not kept -- the point of reading it was to answer one question, and
+  // the answer is smaller than the evidence.
+  const why = botVerdict(ua, cf.asOrganization, cf);
 
   const rows = [];
   for (const e of batch.slice(0, MAX_EVENTS)) {
@@ -121,13 +159,17 @@ export async function ingest(req, env) {
       // The network the request arrived over. Cloudflare resolves this at the
       // edge, so it costs nothing and needs no address kept to produce it.
       str(cf.asOrganization, 64),
+      why ? 1 : 0, why,
+      // Sent by the client from document.referrer, already reduced to a host
+      // and a short path -- see analytics.js. Only meaningful on a pageview.
+      kind === "pageview" ? str(e.ref, 64) : null,
     ]);
   }
   if (!rows.length) return reply(400, "no valid events\n");
 
   const stmt = env.DB.prepare(
-    "INSERT INTO event (ts, day, visitor, session, kind, path, label, ms, country, region, city, device, org) " +
-    "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)"
+    "INSERT INTO event (ts, day, visitor, session, kind, path, label, ms, country, region, city, device, org, bot, bot_why, ref) " +
+    "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)"
   );
   await env.DB.batch(rows.map(r => stmt.bind(...r)));
 

@@ -51,10 +51,29 @@
   var path = location.pathname.replace(/index\.html$/, "") || "/";
   var queue = [];
 
+  /* Where this reader came from, reduced before it leaves the browser.
+   *
+   * The host and a short path only: a referrer is one of the likeliest places
+   * for a search term, a session token or a private URL to turn up, and none of
+   * those are worth having. An internal link counts as no referrer at all,
+   * since the interesting question is how somebody reached the site rather than
+   * how they moved around inside it. */
+  var referrer = (function () {
+    var r = document.referrer;
+    if (!r) return null;
+    var u;
+    try { u = new URL(r); } catch (e) { return null; }
+    if (u.host === location.host) return null;
+    return (u.host + (u.pathname.length > 1 ? u.pathname : "")).slice(0, 64);
+  })();
+
   var pending = 0;
   function push(kind, label, ms, urgent) {
     queue.push({ kind: kind, session: session, path: path, label: label || null,
-                 ms: typeof ms === "number" ? Math.round(ms) : null });
+                 ms: typeof ms === "number" ? Math.round(ms) : null,
+                 // Only on the pageview: it is the same value for every event
+                 // in the session, and the server ignores it elsewhere.
+                 ref: kind === "pageview" ? referrer : undefined });
     // Outbound clicks go at once because the page is usually navigating away a
     // moment later. Everything else waits a second, so a burst of events in
     // one interaction still leaves as a single request.
