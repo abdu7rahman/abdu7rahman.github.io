@@ -22,9 +22,12 @@ const srv = http.createServer((rq, rs) => {
   fs.readFile(path.join(ROOT, rel), (e, b) => {
     if (e) { rs.writeHead(404); return rs.end(); }
     let body = b;
-    // The committed pages ship with the endpoint empty so the collector is
-    // inert until it is deployed; the tests need it pointed somewhere.
-    if (rel.endsWith('.html')) body = Buffer.from(String(b).replace('data-analytics=""', 'data-analytics="'+ENDPOINT+'"'));
+    // Match whatever is in there, not the empty string it originally shipped
+    // with. Once a real worker URL was committed, an exact-match rewrite
+    // silently stopped applying and every test here ran against production
+    // instead of the stub -- which showed up as the whole suite capturing
+    // nothing, rather than as an error.
+    if (rel.endsWith('.html')) body = Buffer.from(String(b).replace(/data-analytics="[^"]*"/, 'data-analytics="' + ENDPOINT + '"'));
     rs.writeHead(200, { 'Content-Type': TYPES[path.extname(rel)] || 'application/octet-stream' });
     rs.end(body);
   });
@@ -33,6 +36,7 @@ const srv = http.createServer((rq, rs) => {
 (async () => {
   await new Promise(r => srv.listen(0, r));
   const BASE = 'http://localhost:' + srv.address().port;
+  let escaped = 0;
   const br = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args:['--no-sandbox'] });
 
   // Collects every event the page sends, in order.
@@ -40,14 +44,23 @@ const srv = http.createServer((rq, rs) => {
     const p = await ctx.newPage();
     const sent = [];
     await p.route('**/collector.test/**', route => {
-      const body = route.request().postData();
+      // sendBeacon posts a Blob, and postData() comes back null for it -- the
+      // bytes are only on postDataBuffer(). Reading the wrong one silently
+      // captures nothing, which looks exactly like the collector being broken.
+      const req = route.request();
+      const buf = req.postDataBuffer();
+      const body = buf ? buf.toString('utf8') : req.postData();
       if (body) { try { JSON.parse(body).forEach(e => sent.push(e)); } catch (e) {} }
-      route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
+      route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*',
+                                              'access-control-allow-headers': 'content-type',
+                                              'access-control-allow-methods': 'POST, OPTIONS' } });
     });
     if (!rewrite) await p.route('**/*.html', async route => {
       const r = await route.fetch();
-      route.fulfill({ response: r, body: (await r.text()).replace('data-analytics="'+ENDPOINT+'"', 'data-analytics=""') });
+      route.fulfill({ response: r, body: (await r.text()).replace(/data-analytics="[^"]*"/, 'data-analytics=""') });
     });
+    // Anything reaching the real worker means the endpoint rewrite missed.
+    await p.route('**/workers.dev/**', r => { escaped++; r.abort(); });
     await p.goto(url, { waitUntil: 'load' });
     return { p, sent };
   }
@@ -148,6 +161,52 @@ const srv = http.createServer((rq, rs) => {
     await c.close();
   }
 
+  console.log('\nG. a click that navigates the page away still reports');
+  {
+    // The bug this covers: clicking the resume link navigates the tab straight
+    // to a PDF, and a fetch issued on the way out of a page is killed
+    // mid-flight on mobile Safari whatever keepalive claims. Outbound clicks
+    // are exactly the events that happen as a page is being left, so they were
+    // the ones being lost -- silently, which is the worst way.
+    //
+    // Asserted on the outcome rather than on which API was called, then proved
+    // to be about the transport by taking sendBeacon away and watching it fail.
+    async function clickResume() {
+      const c = await br.newContext();
+      const beacons = [];
+      // Recorded on this side of the bridge, so a navigation cannot wipe the
+      // tally the way an in-page array would.
+      await c.exposeFunction('__beacon', u => { beacons.push(u); });
+      await c.addInitScript(() => {
+        const real = navigator.sendBeacon.bind(navigator);
+        navigator.sendBeacon = function (url, data) {
+          try { window.__beacon(String(url)); } catch (e) {}
+          return real(url, data);
+        };
+      });
+      const { p, sent } = await open(c, BASE + '/index.html');
+      await p.waitForTimeout(1400);
+      // Let the click and its handler run, but not the PDF load, so the page
+      // survives long enough to be asserted on.
+      await p.route('**/Resume.pdf', r => r.abort());
+      const before = sent.length;
+      await p.evaluate(() => document.querySelector('a[href$=".pdf"]').click());
+      await p.waitForTimeout(1600);
+      const out = sent.slice(before).find(e => e.kind === 'outbound');
+      await c.close();
+      return { out, beacons };
+    }
+
+    const { out, beacons } = await clickResume();
+    ok('the click survives the navigation', !!out, 'nothing arrived');
+    ok('and is labelled resume', out && out.label === 'resume', JSON.stringify(out));
+    // The transport is the fix. Desktop Chromium completes a keepalive fetch
+    // even mid-navigation, so the loss itself cannot be reproduced here --
+    // what is asserted is that the event now leaves by the API that is
+    // specified to survive unload, rather than the one that is not.
+    ok('it leaves by beacon, not fetch', beacons.length > 0, 'beacons=' + beacons.length);
+  }
+
   console.log('\nF. leaving the page reports how long it was read');
   {
     const c = await br.newContext();
@@ -164,6 +223,7 @@ const srv = http.createServer((rq, rs) => {
   }
 
   await br.close(); srv.close();
+  ok('no test traffic reached the live worker', escaped === 0, 'escaped=' + escaped);
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

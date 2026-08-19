@@ -159,7 +159,30 @@ const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
     const week = await (await fetch(BASE + "/api/stats?days=7", { headers: { cookie } })).json();
     ok("the window is honoured", week.window.days === 7, JSON.stringify(week.window));
     const silly = await (await fetch(BASE + "/api/stats?days=99999", { headers: { cookie } })).json();
-    ok("an absurd window is clamped", silly.window.days === 365, JSON.stringify(silly.window));
+    ok("an absurd window is clamped", silly.window.days === 3650, JSON.stringify(silly.window));
+  }
+
+  console.log("\nF. history is kept, and returning readers are visible");
+  {
+    const cookie = "admin_session=" + await session({ login: "abdu7rahman", id: 78921503, exp: Date.now() + 3e5 });
+
+    // The same browser twice is one visitor now. Under the old daily-rotating
+    // salt this was unanswerable by construction.
+    await send([ev("s4", "pageview", { path: "/" })], { ua: "reader-a" });
+    const s = await (await fetch(BASE + "/api/stats?days=30", { headers: { cookie } })).json();
+    ok("a repeat browser is not a new visitor", s.totals.visitors === 3, String(s.totals.visitors));
+    ok("but it is a new visit", s.totals.visits === 4, String(s.totals.visits));
+
+    const all = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
+    ok("days=all is unbounded", all.window.all === true && all.window.days === 0, JSON.stringify(all.window));
+    ok("all time sees everything", all.totals.visits === 4, String(all.totals.visits));
+    ok("the span reports the data it has", !!all.window.first && all.window.daysWithData >= 1, JSON.stringify(all.window));
+    ok("visitors ever is reported", all.window.visitorsEver === 3, String(all.window.visitorsEver));
+
+    // Nobody has been here on two different days, so nobody is returning yet.
+    ok("returning is 0 on one day of data", all.totals.returning === 0, String(all.totals.returning));
+    ok("and the regulars table is empty", Array.isArray(all.loyal) && all.loyal.length === 0, JSON.stringify(all.loyal));
+    ok("the network breakdown exists", Array.isArray(all.orgs), JSON.stringify(all.orgs));
   }
 
   console.log("\nE. a stuck loop gets throttled");

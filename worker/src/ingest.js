@@ -21,17 +21,29 @@ function num(v, max) {
   return Math.min(Math.round(x), max);
 }
 
-/* The reader's identity for the day, and no longer.
+/* The reader's identity, stable for as long as their address and browser are.
  *
- * The address and the user-agent go in, a hash comes out, and neither is ever
- * written down. The salt rotates at midnight UTC, so tomorrow the same person
- * hashes to something unrelated -- there is deliberately no key that follows
- * anyone from one day to the next, which is what keeps "unique visitors"
- * answerable without keeping a record of who they were. */
-async function visitorHash(req, env, day) {
+ * This used to fold the date into the hash, so the same person on two days
+ * came out as two unrelated values and nothing could be followed across a day
+ * boundary. That is the stricter design and it is the one that needs no
+ * consent banner -- but it cannot answer "did anyone come back", which is the
+ * question the dashboard is now expected to answer.
+ *
+ * So the date is gone and the hash is stable. Be clear about what that means:
+ * this is a persistent pseudonymous identifier. It is still one-way, the
+ * address is still never written down, and the salt is still secret -- without
+ * it nobody can test a given address against the table. But a row from March
+ * and a row from August can now be recognised as the same reader, and that is
+ * tracking in the sense the word is normally used. A site doing this owes its
+ * readers a line saying so.
+ *
+ * It changes when they change network or browser, so it drifts. It undercounts
+ * returning visitors rather than over-counting them, which is the right way
+ * round for a number that is about to be believed. */
+async function visitorHash(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "";
   const ua = req.headers.get("user-agent") || "";
-  const data = new TextEncoder().encode(`${env.VISITOR_SALT || "salt"}|${day}|${ip}|${ua}`);
+  const data = new TextEncoder().encode(`${env.VISITOR_SALT || "salt"}|${ip}|${ua}`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest).slice(0, 8)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -77,7 +89,7 @@ export async function ingest(req, env) {
 
   const now = Date.now();
   const day = new Date(now).toISOString().slice(0, 10);
-  const visitor = await visitorHash(req, env, day);
+  const visitor = await visitorHash(req, env);
 
   // Cheap and approximate on purpose: the point is to stop a loop hammering
   // the table, not to police anyone. The bucket dies with the minute.
@@ -106,27 +118,35 @@ export async function ingest(req, env) {
       // median as if someone really read for three days.
       num(e.ms, 6 * 60 * 60 * 1000),
       str(cf.country, 4), str(cf.region, 48), str(cf.city, 48), device,
+      // The network the request arrived over. Cloudflare resolves this at the
+      // edge, so it costs nothing and needs no address kept to produce it.
+      str(cf.asOrganization, 64),
     ]);
   }
   if (!rows.length) return reply(400, "no valid events\n");
 
   const stmt = env.DB.prepare(
-    "INSERT INTO event (ts, day, visitor, session, kind, path, label, ms, country, region, city, device) " +
-    "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)"
+    "INSERT INTO event (ts, day, visitor, session, kind, path, label, ms, country, region, city, device, org) " +
+    "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)"
   );
   await env.DB.batch(rows.map(r => stmt.bind(...r)));
 
   return reply(204, null);
 }
 
-/* Old rows are deleted rather than kept, because a table that keeps
- * everything forever eventually becomes a thing worth stealing. Called from
- * the scheduled handler. */
+/* Retention. RETENTION_DAYS = 0 means keep everything, which is what this is
+ * set to: the whole point of the dashboard is the long view, and a window that
+ * silently drops the far end makes year-over-year a lie.
+ *
+ * The quota table is always swept regardless -- those rows are rate-limiting
+ * scratch with an hour of usefulness in them, and nothing is learned by
+ * keeping them. */
 export async function prune(env) {
-  const keepDays = Number(env.RETENTION_DAYS || 400);
-  const cutoff = new Date(Date.now() - keepDays * 86400000).toISOString().slice(0, 10);
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM event WHERE day < ?1").bind(cutoff),
-    env.DB.prepare("DELETE FROM quota WHERE ts < ?1").bind(Date.now() - 3600000),
-  ]);
+  const keepDays = Number(env.RETENTION_DAYS || 0);
+  const work = [env.DB.prepare("DELETE FROM quota WHERE ts < ?1").bind(Date.now() - 3600000)];
+  if (keepDays > 0) {
+    const cutoff = new Date(Date.now() - keepDays * 86400000).toISOString().slice(0, 10);
+    work.push(env.DB.prepare("DELETE FROM event WHERE day < ?1").bind(cutoff));
+  }
+  await env.DB.batch(work);
 }

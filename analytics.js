@@ -58,18 +58,32 @@
     // Outbound clicks go at once because the page is usually navigating away a
     // moment later. Everything else waits a second, so a burst of events in
     // one interaction still leaves as a single request.
-    if (urgent || queue.length >= 12) { flush(false); return; }
-    if (!pending) pending = setTimeout(function () { pending = 0; flush(false); }, 1000);
+    if (urgent || queue.length >= 12) { flush(); return; }
+    if (!pending) pending = setTimeout(function () { pending = 0; flush(); }, 1000);
   }
 
-  function flush(final) {
+  function flush() {
     if (pending) { clearTimeout(pending); pending = 0; }
     if (!queue.length) return;
     var body = JSON.stringify(queue.splice(0, queue.length));
-    // sendBeacon is the only thing that reliably survives the page going away,
-    // which is exactly when the dwell number is known.
-    if (final && navigator.sendBeacon &&
-        navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }))) return;
+
+    // sendBeacon, always, not just on the way out.
+    //
+    // This used to prefer fetch and only reach for a beacon on pagehide, and
+    // it cost the most interesting event on the site: clicking the resume link
+    // navigates the tab straight to a PDF, and a fetch issued on the way out
+    // of a page is killed mid-flight on mobile Safari no matter what keepalive
+    // claims. Outbound clicks are exactly the events that happen as a page is
+    // being left, so they were the ones being dropped.
+    //
+    // A beacon is queued by the browser and survives the navigation. It gives
+    // back no response, which costs nothing here -- a failure was already
+    // swallowed rather than acted on.
+    if (navigator.sendBeacon) {
+      try {
+        if (navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }))) return;
+      } catch (e) { /* fall through to fetch */ }
+    }
     fetch(ENDPOINT, { method: "POST", body: body, keepalive: true, mode: "cors",
                       credentials: "omit", headers: { "content-type": "application/json" } })
       .catch(function () { /* a lost measurement is not worth an error in a reader's console */ });
@@ -179,11 +193,11 @@
       page.stop();
       names.forEach(function (k) { demos[k].clock.stop(); });
       settleDemos(false);
-      flush(true);
+      flush();
     }
   });
 
-  setInterval(function () { settleDemos(false); flush(false); }, FLUSH_MS);
+  setInterval(function () { settleDemos(false); flush(); }, FLUSH_MS);
   setInterval(function () { settleDemos(false); }, 2000);
 
   // pagehide rather than unload: unload is not fired at all on mobile Safari
@@ -193,6 +207,6 @@
     names.forEach(function (k) { demos[k].clock.stop(); });
     settleDemos(true);
     push("session_end", null, page.read());
-    flush(true);
+    flush();
   });
 })();
