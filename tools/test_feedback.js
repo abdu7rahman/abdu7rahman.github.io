@@ -119,11 +119,15 @@ async function session() {
     await p.evaluate(() => window.scrollTo(0, 0));
     await p.waitForTimeout(FAST + 1600);
     ok('appears once the reading time is earned', await p.evaluate(() => !!document.querySelector('.nudge')));
-    ok('it is not a modal -- the page still scrolls underneath', await p.evaluate(() => {
-      const before = window.scrollY;
-      window.scrollBy(0, 240);
-      return window.scrollY !== before;
-    }));
+    // The site sets scroll-behavior: smooth, so scrollY has not moved by the
+    // time a synchronous read happens -- ask for an instant scroll and give it
+    // a frame regardless.
+    const before = await p.evaluate(() => window.scrollY);
+    await p.evaluate(() => window.scrollBy({ top: 240, behavior: 'instant' }));
+    await p.waitForTimeout(250);
+    const after = await p.evaluate(() => window.scrollY);
+    ok('it is not a modal -- the page still scrolls underneath', after !== before,
+       'scrollY ' + before + ' -> ' + after);
     ok('and it takes no focus', await p.evaluate(() =>
       !document.querySelector('.nudge').contains(document.activeElement)));
     await c.close();
@@ -183,13 +187,17 @@ async function session() {
       await p.waitForTimeout(1400);
       // Written the same way test_worker.mjs seeds it, so the two agree.
       const payload = '<img src=x onerror="alert(1)"><' + 'script>alert(2)</' + 'script>';
-      const got = await p.evaluate(() => {
-        const el = document.querySelector('.cmt__b');
-        if (!el) return null;
+      // Not the newest comment -- the rate-limit flood in test_worker.mjs runs
+      // after this one is written, so the payload is somewhere in the middle.
+      const got = await p.evaluate(needle => {
+        const all = [...document.querySelectorAll('.cmt__b')];
+        const el = all.find(e => e.textContent.indexOf('onerror') >= 0) || null;
+        if (!el) return { missing: true, count: all.length,
+                          first: all.length ? all[0].textContent.slice(0, 40) : null };
         return { text: el.textContent, html: el.innerHTML,
                  spawned: document.querySelectorAll('.cmt img, .cmt script, .cmt__b *').length };
-      });
-      ok('the comment renders at all', !!got, 'no .cmt__b in the page');
+      }, payload);
+      ok('the comment renders at all', got && !got.missing, JSON.stringify(got));
       ok('as the literal characters that were typed', got && got.text === payload, JSON.stringify(got && got.text));
       ok('creating no element from it', got && got.spawned === 0, JSON.stringify(got && got.spawned));
       ok('with the angle brackets escaped', got && got.html.indexOf('&lt;img') === 0,

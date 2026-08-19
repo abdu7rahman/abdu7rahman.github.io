@@ -105,11 +105,15 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
   }
 
+  // Returns whether it actually appeared, so the caller knows not to stop
+  // trying when it declined for a reason that will pass.
   function showPrompt() {
-    if (bar || flag(LEFT) || flag(HID)) return;
-    // Not worth asking someone who is already looking at the form.
+    if (bar || flag(LEFT) || flag(HID)) return true;
+    // Not worth asking someone who is already looking at the form -- but this
+    // is a "not now", not a "never". Scrolling past the form once should not
+    // cost the prompt for the rest of the visit.
     var box = form.getBoundingClientRect();
-    if (box.top < window.innerHeight && box.bottom > 0) return;
+    if (box.top < window.innerHeight && box.bottom > 0) return false;
 
     bar = document.createElement("div");
     bar.className = "nudge";
@@ -122,7 +126,7 @@
         '<button class="nudge__b" type="button" data-no>Not now</button>' +
       '</div>';
     document.body.appendChild(bar);
-    requestAnimationFrame(function () { requestAnimationFrame(function () { bar.classList.add("is-up"); }); });
+    requestAnimationFrame(function () { requestAnimationFrame(function () { if (bar) bar.classList.add("is-up"); }); });
 
     bar.querySelector(".nudge__b--go").addEventListener("click", function () {
       hidePrompt();
@@ -149,6 +153,9 @@
   });
   var timer = setInterval(function () {
     var total = spent + (since ? Date.now() - since : 0);
-    if (total >= AFTER) { clearInterval(timer); showPrompt(); }
+    // Keep checking until it either appears or is refused for good. Stopping
+    // on the first attempt would mean a reader who happened to be level with
+    // the form at the thirty second mark is never asked at all.
+    if (total >= AFTER && showPrompt()) clearInterval(timer);
   }, 1000);
 })();
