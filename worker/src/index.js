@@ -68,7 +68,8 @@ export default {
 
     if (path === "/api/stats") {
       if (!admin) return json({ error: "not signed in" }, 401);
-      return json(await stats(env, url.searchParams.get("days")));
+      return json(await stats(env, url.searchParams.get("days"),
+                              url.searchParams.get("bots") === "1"));
     }
 
     if (path === "/api/comments") {

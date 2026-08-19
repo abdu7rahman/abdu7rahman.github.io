@@ -74,12 +74,74 @@ const srv = http.createServer((rq, rs) => {
     ok('one pageview is sent', kinds(sent) === 'pageview', kinds(sent));
     ok('with the path, not the full URL', sent[0] && sent[0].path === '/', JSON.stringify(sent[0]));
     ok('and a session id', sent[0] && typeof sent[0].session === 'string' && sent[0].session.length > 8);
+    // An exact key set, so a field added to the payload has to be looked at
+    // here rather than slipping in. ref is a host and a short path, never a
+    // query string -- see section A2.
     ok('and nothing that identifies anyone',
-      sent[0] && Object.keys(sent[0]).sort().join() === 'kind,label,ms,path,session', Object.keys(sent[0]||{}).join());
+      sent[0] && Object.keys(sent[0]).sort().join() === 'kind,label,ms,path,ref,session',
+      Object.keys(sent[0] || {}).sort().join());
     ok('no cookie is set', (await c.cookies()).length === 0, JSON.stringify(await c.cookies()));
     const ls = await p.evaluate(() => { try { return Object.keys(localStorage).join(); } catch (e) { return 'blocked'; } });
     ok('nothing durable is written', ls === '' || ls === 'visit-seen', ls);
     await c.close();
+  }
+
+  console.log('\nA2. where they came from');
+  {
+    // Reduced in the browser before it is sent: a referrer is one of the
+    // likeliest places for a search term or a token to appear.
+    const cases = [
+      ['https://www.linkedin.com/feed/', 'www.linkedin.com/feed/', 'a plain referrer is kept'],
+      ['https://www.google.com/search?q=secret+thing+they+searched', 'www.google.com/search',
+       'the query string is stripped'],
+      ['https://mail.example.com/u/0/#inbox/tok_abcdef', 'mail.example.com/u/0/',
+       'the fragment is stripped'],
+    ];
+    for (const [referer, want, label] of cases) {
+      const c = await br.newContext();
+      const p = await c.newPage();
+      const sent = [];
+      await p.route('**/collector.test/**', route => {
+        const buf = route.request().postDataBuffer();
+        const body = buf ? buf.toString('utf8') : route.request().postData();
+        if (body) { try { JSON.parse(body).forEach(e => sent.push(e)); } catch (e) {} }
+        route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
+      });
+      await p.goto(BASE + '/index.html', { waitUntil: 'load', referer });
+      await p.waitForTimeout(1800);
+      const pv = sent.find(e => e.kind === 'pageview');
+      ok(label, pv && pv.ref === want, JSON.stringify(pv && pv.ref) + ' want ' + JSON.stringify(want));
+      await c.close();
+    }
+
+    // Moving around inside the site is not an arrival.
+    {
+      const c = await br.newContext();
+      const p = await c.newPage();
+      const sent = [];
+      await p.route('**/collector.test/**', route => {
+        const buf = route.request().postDataBuffer();
+        const body = buf ? buf.toString('utf8') : route.request().postData();
+        if (body) { try { JSON.parse(body).forEach(e => sent.push(e)); } catch (e) {} }
+        route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
+      });
+      await p.goto(BASE + '/index.html', { waitUntil: 'load', referer: BASE + '/demo.html' });
+      await p.waitForTimeout(1800);
+      const pv = sent.find(e => e.kind === 'pageview');
+      ok('an internal referrer counts as none', pv && !pv.ref, JSON.stringify(pv && pv.ref));
+      await c.close();
+    }
+
+    // Only the pageview carries it.
+    {
+      const c = await br.newContext();
+      const { p, sent } = await open(c, BASE + '/index.html');
+      await p.waitForTimeout(1800);
+      ok('other events do not repeat it',
+        sent.filter(e => e.kind !== 'pageview').every(e => e.ref === undefined),
+        JSON.stringify(sent.map(e => [e.kind, e.ref])));
+      await c.close();
+    }
   }
 
   console.log('\nB. the collector is inert until it is configured');

@@ -16,7 +16,7 @@ const MEDIAN = (where) => `
     FROM event WHERE ${where} AND ms IS NOT NULL
   ) WHERE rn IN ((c + 1) / 2, (c + 2) / 2)`;
 
-export async function stats(env, days) {
+export async function stats(env, days, withBots) {
   // days = "all" (or 0) means no window at all. A date far enough in the past
   // is used rather than dropping the WHERE clause, so every query below stays
   // one shape and the indexes still apply.
@@ -25,13 +25,18 @@ export async function stats(env, days) {
   const since = all ? "0001-01-01" : new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
   const q = (sql, ...bind) => env.DB.prepare(sql).bind(...bind);
 
+  // Interpolated rather than bound because it is a fragment of the WHERE
+  // clause, not a value -- and it is built from a boolean here, never from
+  // anything a caller sent.
+  const HUMAN = withBots ? "" : " AND bot = 0";
+
   const [
     // This list is positional -- it must match the order of the batch below,
     // statement for statement. Adding a query in the middle and appending its
     // name here shifts every result after it onto the wrong variable, which is
     // not a crash but a dashboard quietly showing the wrong table.
     totals, series, pages, demos, outbound, places, devices, orgs, dwell, recent,
-    bounce, returning, span, loyal,
+    bounce, returning, span, loyal, refs, crawlers,
   ] = await env.DB.batch([
     // A "visit" is a session, matching what the footer counter on the site
     // means by the word, so the two numbers can be compared without a
@@ -39,17 +44,17 @@ export async function stats(env, days) {
     q(`SELECT COUNT(DISTINCT session) visits,
               COUNT(DISTINCT visitor) visitors,
               SUM(kind = 'pageview')  views
-       FROM event WHERE day >= ?1`, since),
+       FROM event WHERE day >= ?1${HUMAN}`, since),
 
     q(`SELECT day,
               COUNT(DISTINCT session) visits,
               COUNT(DISTINCT visitor) visitors
-       FROM event WHERE day >= ?1 GROUP BY day ORDER BY day`, since),
+       FROM event WHERE day >= ?1${HUMAN} GROUP BY day ORDER BY day`, since),
 
     q(`SELECT COALESCE(path, '(unknown)') path,
               COUNT(*) views,
               COUNT(DISTINCT session) visits
-       FROM event WHERE kind = 'pageview' AND day >= ?1
+       FROM event WHERE kind = 'pageview' AND day >= ?1${HUMAN}
        GROUP BY path ORDER BY views DESC LIMIT 20`, since),
 
     // The join is what makes this worth having: starts alone say a demo was
@@ -59,21 +64,21 @@ export async function stats(env, days) {
               SUM(kind = 'demo_done')  dones,
               CAST(AVG(CASE WHEN kind = 'demo_done' THEN ms END) AS INTEGER) avg_ms
        FROM event
-       WHERE kind IN ('demo_start', 'demo_done') AND day >= ?1 AND label IS NOT NULL
+       WHERE kind IN ('demo_start', 'demo_done') AND day >= ?1 AND label IS NOT NULL${HUMAN}
        GROUP BY label ORDER BY starts DESC LIMIT 30`, since),
 
     q(`SELECT label, COUNT(*) clicks, COUNT(DISTINCT session) sessions
-       FROM event WHERE kind = 'outbound' AND day >= ?1 AND label IS NOT NULL
+       FROM event WHERE kind = 'outbound' AND day >= ?1 AND label IS NOT NULL${HUMAN}
        GROUP BY label ORDER BY clicks DESC LIMIT 30`, since),
 
     q(`SELECT COALESCE(country, '??') country,
               COALESCE(city, '') city,
               COUNT(DISTINCT session) visits
-       FROM event WHERE day >= ?1
+       FROM event WHERE day >= ?1${HUMAN}
        GROUP BY country, city ORDER BY visits DESC LIMIT 40`, since),
 
     q(`SELECT COALESCE(device, 'unknown') device, COUNT(DISTINCT session) visits
-       FROM event WHERE day >= ?1 GROUP BY device`, since),
+       FROM event WHERE day >= ?1${HUMAN} GROUP BY device`, since),
 
     // Which networks the readers came over. A university or a company name
     // here is the thing an IP address is usually wanted for, arrived at
@@ -81,10 +86,10 @@ export async function stats(env, days) {
     q(`SELECT COALESCE(NULLIF(org, ''), 'unknown') org,
               COUNT(DISTINCT session) visits,
               COUNT(DISTINCT visitor) visitors
-       FROM event WHERE day >= ?1
+       FROM event WHERE day >= ?1${HUMAN}
        GROUP BY org ORDER BY visits DESC LIMIT 30`, since),
 
-    q(MEDIAN("kind = 'session_end' AND day >= ?1"), since),
+    q(MEDIAN("kind = 'session_end' AND day >= ?1" + HUMAN), since),
 
     // "Who does what from where, and how long" -- one row per session, in the
     // order it happened, which is the only view that reads like a story
@@ -99,14 +104,14 @@ export async function stats(env, days) {
               SUM(e.kind = 'demo_start') demos,
               MAX(CASE WHEN e.kind = 'session_end' THEN e.ms END) ms,
               GROUP_CONCAT(CASE WHEN e.kind = 'demo_start' THEN e.label END) ran
-       FROM event e WHERE e.day >= ?1
+       FROM event e WHERE e.day >= ?1${HUMAN}
        GROUP BY e.session ORDER BY started DESC LIMIT 30`, since),
 
     // A bounce is one page and nothing else -- no demo, no outbound click. It
     // is counted from what the session did, not from a timer, because a timer
     // cannot tell reading from a tab left open.
     q(`SELECT COUNT(*) bounced FROM (
-         SELECT session FROM event WHERE day >= ?1
+         SELECT session FROM event WHERE day >= ?1${HUMAN}
          GROUP BY session
          HAVING SUM(kind = 'pageview') <= 1
             AND SUM(kind IN ('demo_start', 'outbound')) = 0)`, since),
@@ -116,14 +121,14 @@ export async function stats(env, days) {
     // number could not exist.
     q(`SELECT COUNT(*) n FROM (
          SELECT visitor FROM event
-         WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1)
+         WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1${HUMAN})${HUMAN}
          GROUP BY visitor HAVING COUNT(DISTINCT day) > 1)`, since),
 
     // The whole span the table covers, independent of the window, so the
     // dashboard can say how far back "all time" actually reaches.
     q(`SELECT MIN(day) first, MAX(day) last,
               COUNT(DISTINCT day) days, COUNT(DISTINCT visitor) visitors
-       FROM event`),
+       FROM event WHERE 1 = 1${HUMAN}`),
 
     // Who keeps coming back. The hash is the only handle on a person here and
     // it is not shown -- what is shown is how often, from where, and when.
@@ -136,16 +141,39 @@ export async function stats(env, days) {
               COALESCE(MAX(org), '')       org,
               SUM(kind = 'demo_start')     demos
        FROM event
-       WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1)
+       WHERE visitor IN (SELECT DISTINCT visitor FROM event WHERE day >= ?1${HUMAN})${HUMAN}
        GROUP BY visitor
        HAVING days > 1
        ORDER BY days DESC, visits DESC LIMIT 25`, since),
+
+    // How readers arrived. A null referrer is a direct visit -- typed, a
+    // bookmark, or a client that strips it -- and is worth naming rather than
+    // dropping, because for a portfolio it is usually the largest single row.
+    q(`SELECT COALESCE(NULLIF(ref, ''), '(direct)') ref,
+              COUNT(*) views,
+              COUNT(DISTINCT session) visits
+       FROM event
+       WHERE kind = 'pageview' AND day >= ?1${HUMAN}
+       GROUP BY ref ORDER BY views DESC LIMIT 30`, since),
+
+    // What was filtered out, and on what grounds. Shown rather than hidden:
+    // the hosting heuristic cannot tell a link scanner from somebody reading
+    // this at work, so the evidence stays visible next to the verdict.
+    q(`SELECT COALESCE(bot_why, 'unknown') why,
+              COALESCE(NULLIF(org, ''), 'unknown') org,
+              COUNT(DISTINCT session) visits,
+              COUNT(DISTINCT visitor) sources,
+              SUM(kind = 'demo_start') demos,
+              MAX(ts) last_ts
+       FROM event WHERE bot = 1 AND day >= ?1
+       GROUP BY why, org ORDER BY visits DESC LIMIT 30`, since),
   ]);
 
   const t = totals.results[0] || { visits: 0, visitors: 0, views: 0 };
   const sp = span.results[0] || {};
   return {
-    window: { days: d, since, all, first: sp.first || null, last: sp.last || null,
+    window: { days: d, since, all, withBots: !!withBots,
+              first: sp.first || null, last: sp.last || null,
               daysWithData: sp.days || 0, visitorsEver: sp.visitors || 0 },
     totals: {
       visits: t.visits || 0,
@@ -156,6 +184,8 @@ export async function stats(env, days) {
       bounceRate: t.visits ? (bounce.results[0] || {}).bounced / t.visits : null,
     },
     loyal: loyal.results,
+    refs: refs.results,
+    crawlers: crawlers.results,
     series: series.results,
     pages: pages.results,
     demos: demos.results.map(r => ({

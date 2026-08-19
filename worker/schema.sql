@@ -22,11 +22,18 @@ CREATE TABLE IF NOT EXISTS event (
   region  TEXT,
   city    TEXT,
   device  TEXT,               -- 'mobile' | 'desktop', derived and coarse on purpose
-  org     TEXT                -- the network a request arrived over: "Comcast",
+  org     TEXT,               -- the network a request arrived over: "Comcast",
                               -- "Northeastern University", "Google LLC". This is
                               -- the answer to "who is looking at this" that an IP
                               -- address is usually wanted for, and unlike an IP it
                               -- describes an organisation rather than a person.
+  bot     INTEGER NOT NULL DEFAULT 0,
+  bot_why TEXT,               -- 'agent' | 'verified' | 'hosting'. A verdict with
+                              -- its grounds next to it, because the hosting one
+                              -- cannot tell a link scanner from a person reading
+                              -- this at work. Nothing is deleted on its strength.
+  ref     TEXT                -- where they arrived from: host and short path,
+                              -- never a query string. Null means direct.
 );
 
 -- Every dashboard query is "this kind of thing, over this window", so the
@@ -36,6 +43,9 @@ CREATE INDEX IF NOT EXISTS event_day        ON event (day);
 CREATE INDEX IF NOT EXISTS event_kind_day   ON event (kind, day);
 CREATE INDEX IF NOT EXISTS event_session    ON event (session, ts);
 CREATE INDEX IF NOT EXISTS event_visitor    ON event (visitor, day);
+-- Every headline query filters on bot, so it belongs in an index rather than
+-- being applied after the rows are read.
+CREATE INDEX IF NOT EXISTS event_bot_day    ON event (bot, day);
 
 -- Rate limiting lives in the database rather than in memory because a worker
 -- instance is not around long enough to remember anything useful.
