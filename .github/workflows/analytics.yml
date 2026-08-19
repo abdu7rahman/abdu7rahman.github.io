@@ -21,13 +21,12 @@
 
 name: analytics worker
 
+# Manual only. This ran on every push under worker/ to begin with, which meant
+# a red cross on each one for as long as the Cloudflare secrets were not set --
+# and the worker was deployed by hand instead, so they never were. A check that
+# is always failing is a check nobody reads.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'worker/**'
-      - '.github/workflows/analytics.yml'
 
 permissions:
   contents: write
