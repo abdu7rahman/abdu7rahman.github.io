@@ -85,6 +85,16 @@ td.n,th.n{text-align:right;padding-right:0;font-family:var(--mono);font-size:12.
 }
 .empty{padding:16px 0;color:var(--ink-3);font-size:13.5px}
 
+/* Comments. Everything here was typed by a stranger, so it is rendered as
+   text and never as markup -- see esc() in the client below. */
+.cmt{padding:16px 0;border-bottom:1px solid var(--rule)}
+.cmt:first-child{padding-top:0}
+.cmt:last-child{border-bottom:0;padding-bottom:0}
+.cmt__m{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;color:var(--ink-3);margin-bottom:7px}
+.cmt__who{color:var(--ink);font-weight:500}
+.cmt__b{font-size:14.5px;line-height:1.55;color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.cmt__c{font-family:var(--mono);font-size:12px}
+
 svg{display:block;width:100%;height:auto;overflow:visible;touch-action:none}
 .grid line{stroke:var(--rule);stroke-width:1}
 /* Note: a fill="" presentation attribute loses to this rule, so the
@@ -138,6 +148,8 @@ export function dashboard(admin) {
 </div>
 
 <dl class="tiles" id="tiles"></dl>
+
+<section><h2>Comments</h2><div class="card" id="cmts"></div></section>
 
 <section>
   <h2>Visits over time</h2>
@@ -369,6 +381,32 @@ function render(s){
   ],s.recent,null);
 }
 
+/* Comments are rendered as text, never as markup. esc() runs over every field
+   including the body, and the body keeps its line breaks through CSS rather
+   than through <br>, so there is no path from what someone typed into this
+   page's DOM. This is the one place on the dashboard where getting that wrong
+   would matter: it is the privileged session. */
+function renderComments(list){
+  var host=document.getElementById("cmts");
+  if(!list||!list.length){
+    host.innerHTML='<p class="empty">Nobody has written anything yet.</p>';return;}
+  host.innerHTML=list.map(function(c){
+    var when=new Date(c.ts).toISOString().slice(0,16).replace("T"," ");
+    var f=flag(c.country);
+    var bits=[];
+    bits.push('<span class="cmt__who">'+esc(c.name||"Anonymous")+"</span>");
+    if(c.contact) bits.push('<a class="cmt__c" href="mailto:'+esc(c.contact)+'">'+esc(c.contact)+"</a>");
+    bits.push(esc(when));
+    bits.push((f?f+" ":"")+esc(c.city||c.country||"unknown"));
+    if(c.org) bits.push(esc(c.org));
+    if(c.path) bits.push(esc(c.path));
+    if(c.visitor_days>1) bits.push(esc(c.visitor_days+" days here"));
+    if(c.visitor_demos>0) bits.push(esc(c.visitor_demos+" demos run"));
+    return '<div class="cmt"><div class="cmt__m">'+bits.join("<span>&middot;</span>")+"</div>"+
+           '<div class="cmt__b">'+esc(c.body)+"</div></div>";
+  }).join("");
+}
+
 function load(){
   fetch("/api/stats?days="+days,{credentials:"same-origin",cache:"no-store"})
     .then(function(r){ if(r.status===401){location.href="/";return null;}
@@ -377,6 +415,15 @@ function load(){
     .catch(function(e){
       document.getElementById("tiles").innerHTML=
         '<p class="empty">Could not load the numbers ('+esc(e)+').</p>';});
+
+  // Its own request, and its own failure: comments are the thing most worth
+  // seeing, and a broken chart query should not take them down with it.
+  fetch("/api/comments?limit=200",{credentials:"same-origin",cache:"no-store"})
+    .then(function(r){ return r.ok?r.json():Promise.reject(r.status);})
+    .then(renderComments)
+    .catch(function(e){
+      document.getElementById("cmts").innerHTML=
+        '<p class="empty">Could not load the comments ('+esc(e)+').</p>';});
 }
 
 document.querySelectorAll(".range").forEach(function(b){

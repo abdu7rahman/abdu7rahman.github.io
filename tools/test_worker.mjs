@@ -185,6 +185,63 @@ const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
     ok("the network breakdown exists", Array.isArray(all.orgs), JSON.stringify(all.orgs));
   }
 
+  console.log("\nH. comments");
+  {
+    const cookie = "admin_session=" + await session({ login: "abdu7rahman", id: 78921503, exp: Date.now() + 3e5 });
+    const say = (payload, { origin = ORIGIN, ua = "commenter" } = {}) =>
+      fetch(BASE + "/c", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin, "user-agent": ua },
+        body: JSON.stringify(payload),
+      });
+
+    ok("wrong origin is refused", (await say({ body: "hi" }, { origin: "https://evil.example" })).status === 403);
+    ok("GET /c is 405", (await fetch(BASE + "/c")).status === 405);
+    ok("an empty comment is refused", (await say({ body: "   " })).status === 400, "");
+    ok("no body at all is refused", (await say({ name: "x" })).status === 400, "");
+
+    // A filled honeypot gets a 200 that looks like success, so a bot learns
+    // nothing from the response about why nothing happened.
+    ok("a filled honeypot looks like success", (await say({ body: "spam", website: "http://x" })).status === 200);
+
+    const r = await say({ body: "  This is a real note.  ", name: " Ada ", contact: "ada@example.com" });
+    ok("a real comment is accepted", r.status === 201, String(r.status));
+
+    // The one that matters: this lands in the admin's own privileged page.
+    const nasty = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
+    ok("a script payload is accepted as text", (await say({ body: nasty, name: "<b>bold</b>" })).status === 201);
+
+    ok("/api/comments needs a session", (await fetch(BASE + "/api/comments")).status === 401);
+
+    const list = await (await fetch(BASE + "/api/comments", { headers: { cookie } })).json();
+    ok("both comments come back", list.length === 2, String(list.length));
+    ok("newest first", list[0].body === nasty, JSON.stringify(list[0].body));
+    ok("the honeypot one was never stored", !list.some(c => c.body === "spam"), JSON.stringify(list.map(c => c.body)));
+
+    const real = list.find(c => c.name === "Ada");
+    ok("whitespace is trimmed", real && real.body === "This is a real note.", JSON.stringify(real && real.body));
+    ok("contact is kept", real && real.contact === "ada@example.com", JSON.stringify(real && real.contact));
+    ok("the payload is stored verbatim, not sanitised on the way in",
+      list[0].body === nasty, "stored: " + JSON.stringify(list[0].body));
+
+    // ... and escaped on the way out, which is where it counts.
+    const dash = await (await fetch(BASE + "/", { headers: { cookie } })).text();
+    ok("the dashboard ships an escaper", dash.includes("&amp;lt;") || dash.includes('"<":"&lt;"'), "no esc map found");
+
+    // The comment author's own history is joined in, so a note can be read
+    // next to what that reader actually did.
+    ok("visitor history is joined onto the comment",
+      typeof list[0].visitor_days === "number" && typeof list[0].visitor_demos === "number",
+      JSON.stringify({ d: list[0].visitor_days, m: list[0].visitor_demos }));
+
+    let last = 0;
+    for (let i = 0; i < 8; i++) {
+      last = (await say({ body: "flood " + i }, { ua: "flooder-c" })).status;
+      if (last === 429) break;
+    }
+    ok("comments have their own, tighter rate limit", last === 429, "last=" + last);
+  }
+
   console.log("\nE. a stuck loop gets throttled");
   {
     const ua = "flooder";
