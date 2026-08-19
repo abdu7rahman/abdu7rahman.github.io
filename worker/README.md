@@ -35,6 +35,23 @@ You need a Cloudflare account (the free tier is enough) and about ten minutes.
 cd worker && ./setup.sh
 ```
 
+No machine to hand? There is a second route that needs nothing but a phone
+browser: `.github/workflows/analytics.yml` runs all of this on a GitHub runner
+instead. Add three repository secrets under **Settings -> Secrets and variables
+-> Actions**, then run **analytics worker** from the Actions tab.
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com -> My Profile -> API Tokens -> Create Token, "Edit Cloudflare Workers" template, plus the **D1:Edit** permission |
+| `CLOUDFLARE_ACCOUNT_ID` | the hex string in the dashboard URL, after `dash.cloudflare.com/` |
+| `GH_OAUTH_CLIENT_SECRET` | the client secret from the GitHub OAuth app |
+
+The credential goes into GitHub's own settings UI, so it is never pasted
+anywhere it can be read back. The workflow creates the database only if it is
+missing, generates the two random secrets only if they are absent, commits the
+worker URL into the site, and prints the callback URL to finish the OAuth app
+with. Running it twice is harmless.
+
 That does everything below: creates the database, applies the schema, deploys,
 generates and stores the two random secrets, and rewrites `index.html`,
 `demo.html` and `admin.html` to point at the result. It stops twice, for the

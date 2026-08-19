@@ -1,0 +1,210 @@
+# Deploys the traffic dashboard from CI, so it can be set up without a machine.
+#
+# Everything setup.sh does locally happens here instead, with one difference
+# that matters: the Cloudflare credential is a GitHub Actions secret, typed
+# into GitHub's own settings UI and never pasted anywhere it can be read back.
+#
+# Three secrets to add, at
+# Settings -> Secrets and variables -> Actions -> New repository secret:
+#
+#   CLOUDFLARE_API_TOKEN     dash.cloudflare.com -> My Profile -> API Tokens
+#                            Create Token, "Edit Cloudflare Workers" template,
+#                            then add the D1:Edit permission to it
+#   CLOUDFLARE_ACCOUNT_ID    the hex string in the dashboard URL after
+#                            dash.cloudflare.com/
+#   GH_OAUTH_CLIENT_SECRET   the client secret from the GitHub OAuth app
+#
+# Then run this workflow from the Actions tab. It is safe to run repeatedly:
+# the database is created only if missing, the two generated secrets are set
+# only if absent (regenerating them would sign you out and split a day of
+# visitor hashes), and the site is committed only if the URL actually changed.
+
+name: analytics worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/analytics.yml'
+
+permissions:
+  contents: write
+
+# Two of these racing would fight over wrangler.toml and the commit.
+concurrency:
+  group: analytics-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check the credential is present
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set. See the comment at the top of this workflow."
+            exit 1
+          fi
+
+      - name: Install wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Find or create the database
+        run: |
+          set -euo pipefail
+          find_id() {
+            npx wrangler d1 list --json 2>/dev/null | node -e '
+              let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+                let list = []; try { list = JSON.parse(s) } catch (e) {}
+                const m = (Array.isArray(list) ? list : []).find(d => d.name === "portfolio-analytics");
+                process.stdout.write(m ? (m.uuid || m.database_id || "") : "");
+              });'
+          }
+          ID="$(find_id || true)"
+          if [ -z "$ID" ]; then
+            echo "creating it"
+            npx wrangler d1 create portfolio-analytics || true
+            ID="$(find_id || true)"
+          else
+            echo "already exists"
+          fi
+          if [ -z "$ID" ]; then
+            echo "::error::could not create or find the D1 database. Does the API token carry D1:Edit?"
+            exit 1
+          fi
+          # Written at deploy time rather than committed: the id is account
+          # specific and there is no reason for the repository to carry it.
+          node -e '
+            const fs = require("fs"), f = "wrangler.toml";
+            fs.writeFileSync(f, fs.readFileSync(f, "utf8")
+              .replace(/database_id\s*=\s*"[^"]*"[^\n]*/, `database_id   = "'"$ID"'"`));'
+          echo "database_id = $ID"
+
+      - name: Apply the schema
+        run: npx wrangler d1 execute portfolio-analytics --remote --file=schema.sql
+
+      - name: Deploy
+        id: deploy
+        run: |
+          set -euo pipefail
+          npx wrangler deploy 2>&1 | tee deploy.log
+          URL="$(grep -oE 'https://[a-zA-Z0-9._-]+\.workers\.dev' deploy.log | head -1 || true)"
+          if [ -z "$URL" ]; then
+            echo "::error::deployed, but no workers.dev URL in the output"
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "$URL"
+
+      - name: Store the secrets
+        env:
+          CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          have() {
+            npx wrangler secret list --format json 2>/dev/null | node -e '
+              let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+                let l = []; try { l = JSON.parse(s) } catch (e) {}
+                process.stdout.write((Array.isArray(l) ? l : []).some(x => x.name === process.argv[1]) ? "y" : "");
+              });' "$1"
+          }
+
+          if [ -n "${CLIENT_SECRET:-}" ]; then
+            printf '%s' "$CLIENT_SECRET" | npx wrangler secret put GITHUB_CLIENT_SECRET
+            echo "GITHUB_CLIENT_SECRET set"
+          elif [ -z "$(have GITHUB_CLIENT_SECRET || true)" ]; then
+            echo "::warning::GH_OAUTH_CLIENT_SECRET is not set, so sign-in will fail until it is."
+          fi
+
+          # Generated once and left alone. Rotating SESSION_SECRET signs you
+          # out; rotating VISITOR_SALT splits a day of visitor hashes in two.
+          for NAME in SESSION_SECRET VISITOR_SALT; do
+            if [ -n "$(have "$NAME" || true)" ]; then
+              echo "$NAME already set, leaving it"
+            else
+              node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64"))' \
+                | npx wrangler secret put "$NAME"
+              echo "$NAME generated"
+            fi
+          done
+
+      - name: Point the site at it
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          node -e '
+            const fs = require("fs"), url = process.argv[1];
+            // Anchored to line starts: admin.html carries a commented-out
+            // example of the very line being rewritten, and an unanchored
+            // replace patches the comment and leaves the real one empty.
+            const edits = [
+              ["index.html", /data-analytics="[^"]*"/g,       `data-analytics="${url}/e"`],
+              ["demo.html",  /data-analytics="[^"]*"/g,       `data-analytics="${url}/e"`],
+              ["admin.html", /^(\s*)var WORKER = "[^"]*";/gm, `$1var WORKER = "${url}";`],
+            ];
+            let failed = 0;
+            for (const [f, re, to] of edits) {
+              const before = fs.readFileSync(f, "utf8");
+              if (!re.test(before)) { console.log(`!! ${f}: nothing to replace`); failed++; continue; }
+              re.lastIndex = 0;
+              const after = before.replace(re, to);
+              if (after !== before) fs.writeFileSync(f, after);
+              if (fs.readFileSync(f, "utf8").indexOf(url) < 0) { console.log(`!! ${f}: rewrite did not take`); failed++; }
+              else console.log(`${after !== before ? "ok" : "--"} ${f}`);
+            }
+            process.exit(failed ? 1 : 0);
+          ' "${{ steps.deploy.outputs.url }}"
+          python3 tools/stamp.py || true
+
+      - name: Commit, if that changed anything
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          # wrangler.toml carries the account-specific database id at this
+          # point, which is exactly what should not be committed.
+          git checkout -- worker/wrangler.toml || true
+          if git diff --quiet; then
+            echo "site already pointed at the worker"
+            exit 0
+          fi
+          git config user.name  "abdul rahman"
+          git config user.email "78921503+abdu7rahman@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(analytics): point the site at the deployed worker"
+          git push origin HEAD:main
+
+      - name: What to do next
+        run: |
+          {
+            echo "### Dashboard deployed"
+            echo
+            echo '```'
+            echo "${{ steps.deploy.outputs.url }}"
+            echo '```'
+            echo
+            echo "**One thing left, and it has to be done by hand.** On the GitHub OAuth app"
+            echo "(Settings -> Developer settings -> OAuth Apps), the Authorization callback URL"
+            echo "-- newer GitHub labels it Redirect URI -- must be exactly:"
+            echo
+            echo '```'
+            echo "${{ steps.deploy.outputs.url }}/callback"
+            echo '```'
+            echo
+            echo "Anything else fails at sign-in with \`redirect_uri_mismatch\`, which reads like a"
+            echo "fault in the worker and is not one."
+          } >> "$GITHUB_STEP_SUMMARY"
