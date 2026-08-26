@@ -21,7 +21,7 @@ const SHELL = `
   --paper:#fbfbfd; --paper-2:#f5f5f7; --paper-3:#fff;
   --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73;
   --rule:#e8e8ed; --rule-2:#d2d2d7;
-  --signal:#d70015; --accent:#007a3d;
+  --signal:#d70015; --signal-w:#f9ecef; --accent:#007a3d;
   --r-pill:980px; --r-lg:12px; --r-sm:8px;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
@@ -42,6 +42,10 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.022em}
   border-radius:var(--r-pill);background:var(--paper-3);color:var(--ink-2);cursor:pointer}
 .range[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
 .range--sep{margin-left:auto}
+/* When crawlers are being counted, the tiles are not measuring an audience.
+   Worth more than a pressed button somewhere else on the page. */
+body.with-bots .tile{background:var(--signal-w);border-color:#f0c9cf}
+body.with-bots .tile .sub{color:var(--signal)}
 
 /* 148px rather than 160px so all six headline figures sit on one row at the
    page's full width. At 160 the sixth wrapped onto a line of its own, which
@@ -182,7 +186,10 @@ export function dashboard(admin) {
 <section><h2>Recent sessions</h2><div class="card" id="recent"></div></section>
 
 <p class="foot">
-  No IP addresses, user-agent strings, referrers or cookies are stored. A visitor is
+  No IP addresses, user-agent strings or cookies are stored. Referrers are, since
+  <em>How they arrived</em> is built from them &mdash; reduced in the browser to a host
+  and a short path before they are sent, never a query string and never a fragment,
+  because those are where a search term or a token would be. A visitor is
   a one-way hash of an address and a browser against a secret salt &mdash; the address
   itself is never written down, and without the salt nobody can test a given address
   against this table. The hash no longer rotates daily, which is what makes
@@ -348,6 +355,11 @@ function render(s){
   var span = w.all
     ? (w.first ? "everything since "+w.first : "no data yet")
     : "sessions in "+w.days+" days";
+  // Said on the figure itself, not only by the state of a button. Six of the
+  // first seven visits here were one scanner, so a dashboard that is counting
+  // them has to say so where the number is, or it reads as an audience.
+  if (w.withBots) span += ", crawlers included";
+  document.body.classList.toggle("with-bots", !!w.withBots);
   document.getElementById("tiles").innerHTML=[
     ["Visits",n(t.visits),span],
     ["Unique visitors",n(t.visitors),n(w.visitorsEver)+" ever, across "+n(w.daysWithData)+" days"],
