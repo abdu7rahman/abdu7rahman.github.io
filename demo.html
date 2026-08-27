@@ -72,6 +72,11 @@
       <li><a href="#terrain">Send a Go2 anywhere</a><span>click the course, four cost functions race</span></li>
       <li><a href="#assemble">Seat a connector</a><span>eight phases, two UR5s</span></li>
     </ol>
+    <p class="runner__tocl">Measured there, recomputed here</p>
+    <ol class="runner__toc runner__toc--2">
+      <li><a href="#agree">Make two engines agree</a><span>then take the jitter away</span></li>
+      <li><a href="#trace">Truncate a trajectory</a><span>100 // 14 = 7</span></li>
+    </ol>
   </header>
 
   <div class="runner__grid" id="plan" data-demo="plan" data-reveal>
@@ -518,6 +523,94 @@
     </div>
   </section>
 
+  <section class="ref" id="agree">
+    <div class="chase__head" data-reveal>
+      <p class="panel__label">Measured in bimanual-ur5-cell &mdash; the arithmetic runs here</p>
+      <h2 class="chase__title">Make two engines agree, then take the jitter away</h2>
+      <p class="chase__lede">
+        One workcell description emitted as MJCF, SDF and USD. Scoring <code>tools_to_toolbox</code>
+        in MuJoCo and in Gazebo produced six numbers a couple of percent apart, and they were
+        published as cross-simulator validation. The third column is the same detector run on the
+        poses <code>build/layout.json</code> <em>declares</em> &mdash; no simulator, no settling, no
+        arm, no contact at all. It reproduces Gazebo&rsquo;s whole column to within 0.1&thinsp;mm.
+        Gazebo&rsquo;s numbers are not a measurement of what its solver did to the tools; they are a
+        measurement of where the tools were put. Turn the jitter off and watch the disagreement go
+        with it.
+      </p>
+      <p class="chase__key">
+        <span class="chase__pickl">MuJoCo reset jitter</span>
+        <span class="seg" role="radiogroup" aria-label="MuJoCo reset jitter">
+          <button class="seg__btn is-on" data-agree-jitter="on" role="radio" aria-checked="true" type="button">on</button>
+          <button class="seg__btn" data-agree-jitter="off" role="radio" aria-checked="false" type="button">off</button>
+        </span>
+        <span class="panel__hint"><code>rng.uniform(-0.01, 0.01)</code> on x and y, in <code>MujocoEnvironment.reset</code></span>
+      </p>
+      <div class="lab-tablewrap"><table class="lab-table" id="agree-table"></table></div>
+      <p class="chase__read chase__read--flush" id="agree-read">&nbsp;</p>
+
+      <details class="lab-more">
+        <summary>Why neither column was about contact</summary>
+        <p class="chase__lede">
+          Instrumenting <code>data.contact</code> over all 650 steps of the scripted run, the complete
+          list of bodies each tool touches is <code>task_surface</code> &mdash; 3758 times for the
+          wrench, 2931 for the screwdriver, 3284 for the hammer. Never a fingertip, never a link. The
+          tools drop to the bench during the first leg in a pure vertical settle, and from step 140 to
+          step 650 their positions are constant to 8&thinsp;&micro;m. Both engines were scoring three
+          objects lying still on a bench. What is actually true between them is smaller and worth
+          more: on that resting pose, from the same description, the two agree to within
+          0.1&thinsp;mm &mdash; a statement about the descriptions matching and about neither solver
+          exploding, which is the claim <code>cell-verify</code>&rsquo;s 44 checks already make more
+          carefully at the zero pose.
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <section class="ref" id="trace">
+    <div class="chase__head" data-reveal>
+      <p class="panel__label">Measured in bimanual-data-collect &mdash; the arithmetic runs here</p>
+      <h2 class="chase__title">Truncate a trajectory without being told</h2>
+      <p class="chase__lede">
+        The graph planner&rsquo;s trace writer replaces JSON arrays of 100 or more elements with a
+        readable string summary; shorter arrays are inlined as lists. A command on this cell is
+        <strong>14</strong> wide &mdash; six joints and a gripper, on each of two arms. So
+        <code>100 // 14 = 7</code>: a trajectory of seven steps is inlined and one of eight is
+        replaced by a sentence. Nothing errors. The key is still present, the value is still a
+        plausible string, and a reader that coerces it builds a corpus of truncated trajectories that
+        trains without complaint and imitates nothing. Drop to one arm and the ceiling moves, which
+        is the tell &mdash; the limit is a property of how wide a command is, not of the task.
+      </p>
+      <p class="chase__key">
+        <span class="chase__pickl">Arms</span>
+        <span class="seg" role="radiogroup" aria-label="Arms">
+          <button class="seg__btn" data-trace-arms="1" role="radio" aria-checked="false" type="button">one</button>
+          <button class="seg__btn is-on" data-trace-arms="2" role="radio" aria-checked="true" type="button">two</button>
+        </span>
+      </p>
+      <div class="lab-dials">
+        <label class="lab-dial"><span>trajectory length <em>(steps)</em></span>
+          <input type="range" id="trace-steps" min="1" max="24" step="1" value="8">
+          <output id="trace-steps-v">8</output></label>
+      </div>
+      <pre class="lab-pre" id="trace-pre">&nbsp;</pre>
+      <p class="chase__read chase__read--flush" id="trace-read">&nbsp;</p>
+
+      <details class="lab-more">
+        <summary>What the pipeline does about it</summary>
+        <p class="chase__lede">
+          It never reads the trajectory back out of the summarised field. The architecture is the
+          opposite of &ldquo;parse the planner&rsquo;s output&rdquo;: commands are captured at the
+          boundary where they are issued, and the trace is used only for the one thing it alone
+          carries &mdash; the node spans that say which segments were a skill working and which were
+          the graph discovering it was not. A trial is not a demonstration. The refinement loop
+          retries and reroutes, so a run that ends satisfied still passed through nodes that failed,
+          and exporting every step teaches the retry-flail alongside the skill, weighted by how often
+          it happened.
+        </p>
+      </details>
+    </div>
+  </section>
+
   <section class="console" data-reveal>
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
@@ -552,5 +645,6 @@
 <script src="visits.js?v=e085290f" defer></script>
 <script src="demo.js?v=26a317b2" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
+<script src="cell.js?v=ec2a27e8" defer></script>
 </body>
 </html>
