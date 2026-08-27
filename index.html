@@ -359,6 +359,77 @@
               </dl>
             </li>
 
+            <li class="proj" data-reveal>
+              <span class="proj__idx">09</span>
+              <div class="proj__main">
+                <h3 class="proj__title">One bimanual cell, three simulators, and the agreement that wasn&rsquo;t</h3>
+                <p class="proj__desc">
+                  Two UR5e arms over a shared bench, a Robotiq Hand-E on each flange and four RealSense
+                  cameras, described <em>once</em> as xacro and emitted as MJCF, SDF and USD so MuJoCo,
+                  Gazebo and Isaac Sim run the same cell instead of three that quietly drifted apart.
+                  <code>cell-verify</code> is the gate &mdash; 44 checks comparing the three descriptions
+                  link by link, up from 16 because every addition caught something. The camera-pose check
+                  exists because all three formats agreed on every camera <em>intrinsic</em> while Isaac&rsquo;s
+                  cameras sat at the world origin. The README used to claim the two engines agreed on
+                  pick-and-place: six numbers, 0.56&ndash;2.80&thinsp;% apart, published as cross-simulator
+                  validation. They were nothing of the kind. Running the same detector on the
+                  <em>declared</em> spawn poses &mdash; no simulator, no contact, no arm &mdash; reproduced
+                  Gazebo&rsquo;s entire column to within 0.1&thinsp;mm, and MuJoCo&rsquo;s spread was its own
+                  reset jitter. Instrumenting every contact across the 650-step run, the only body the tools
+                  ever touch is the bench: <strong>both engines were scoring three objects lying still</strong>.
+                  What survives is smaller and true &mdash; the descriptions match to 0.1&thinsp;mm &mdash; and
+                  no tolerance in the repository has been validated against a contact model, so all of them
+                  print as provisional.
+                </p>
+                <ul class="chips">
+                  <li>MuJoCo</li><li>Gazebo</li><li>Isaac&nbsp;Sim</li><li>MoveIt&nbsp;2</li><li>USD&nbsp;/&nbsp;SDF&nbsp;/&nbsp;MJCF</li><li>UR5e&nbsp;&times;&nbsp;2</li>
+                </ul>
+                <a class="demo" href="demo.html#agree">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Take the jitter away</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Cross-simulator checks</dt><dd>44</dd></div>
+                <div><dt>Descriptions, one source</dt><dd>3</dd></div>
+                <div><dt>Arm-to-tool contacts, 650 steps</dt><dd>0</dd></div>
+              </dl>
+            </li>
+
+            <li class="proj" data-reveal>
+              <span class="proj__idx">10</span>
+              <div class="proj__main">
+                <h3 class="proj__title">Turning graph-planner trials into demonstrations you can defend</h3>
+                <p class="proj__desc">
+                  A trial is not a demonstration. A graph planner&rsquo;s refinement loop retries and reroutes,
+                  so a run that ends satisfied still passed through nodes that failed &mdash; export every step
+                  and the policy learns the retry-flail alongside the skill, weighted by how often it happened.
+                  The label separating the two exists in exactly one place, the node spans in the trace, and
+                  using it is the whole job. The architecture is forced by an arithmetic detail: the trace
+                  summarises arrays of 100+ elements into prose, and a command on this cell is
+                  <strong>14</strong> wide &mdash; six joints and a gripper, twice &mdash; so
+                  <code>100 // 14 = 7</code> and any trajectory of eight steps or more never survives the
+                  output at all. It is still there, still a plausible string, and a reader that coerces it
+                  yields a corpus of truncated trajectories that trains without error and imitates nothing.
+                  The verifier runs seven checks per episode, then re-runs each against an episode
+                  deliberately corrupted to break it; a check that still passes is reported BROKEN, because a
+                  check nobody has seen fail is not a check. Stated plainly: <strong>no graph has yet produced
+                  an episode.</strong> Everything measured so far is the workcell&rsquo;s own scripted expert,
+                  and when the cell moved 82 commits the same policy at the same seed went from 1 of 3
+                  containment conditions to 0 of 3 &mdash; the hammer acquiring the grasp-depth failure the
+                  other two tools already had, 151&thinsp;mm of approach against jaws 42&thinsp;mm deep.
+                </p>
+                <ul class="chips">
+                  <li>Physical&nbsp;AI</li><li>MuJoCo</li><li>Pydantic</li><li>Graph&nbsp;as&nbsp;Policy</li><li>UR5e&nbsp;&times;&nbsp;2</li>
+                </ul>
+                <a class="demo" href="demo.html#trace">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Truncate a trajectory</span></a>
+              </div>
+              <dl class="proj__stats">
+                <div><dt>Containment, across the bump</dt><dd>1 &rarr; 0 <span class="unit">of 3</span></dd></div>
+                <div><dt>Steps surviving the trace</dt><dd>7</dd></div>
+                <div><dt>Negative-controlled checks</dt><dd>7</dd></div>
+              </dl>
+            </li>
+
           </ol>
         </div>
       </div>
@@ -655,78 +726,6 @@
                 </p>
               </div>
             </li>
-
-            <li class="proj" data-reveal>
-              <span class="proj__idx">09</span>
-              <div class="proj__main">
-                <h3 class="proj__title">One bimanual cell, three simulators, and the agreement that wasn&rsquo;t</h3>
-                <p class="proj__desc">
-                  Two UR5e arms over a shared bench, a Robotiq Hand-E on each flange and four RealSense
-                  cameras, described <em>once</em> as xacro and emitted as MJCF, SDF and USD so MuJoCo,
-                  Gazebo and Isaac Sim run the same cell instead of three that quietly drifted apart.
-                  <code>cell-verify</code> is the gate &mdash; 44 checks comparing the three descriptions
-                  link by link, up from 16 because every addition caught something. The camera-pose check
-                  exists because all three formats agreed on every camera <em>intrinsic</em> while Isaac&rsquo;s
-                  cameras sat at the world origin. The README used to claim the two engines agreed on
-                  pick-and-place: six numbers, 0.56&ndash;2.80&thinsp;% apart, published as cross-simulator
-                  validation. They were nothing of the kind. Running the same detector on the
-                  <em>declared</em> spawn poses &mdash; no simulator, no contact, no arm &mdash; reproduced
-                  Gazebo&rsquo;s entire column to within 0.1&thinsp;mm, and MuJoCo&rsquo;s spread was its own
-                  reset jitter. Instrumenting every contact across the 650-step run, the only body the tools
-                  ever touch is the bench: <strong>both engines were scoring three objects lying still</strong>.
-                  What survives is smaller and true &mdash; the descriptions match to 0.1&thinsp;mm &mdash; and
-                  no tolerance in the repository has been validated against a contact model, so all of them
-                  print as provisional.
-                </p>
-                <ul class="chips">
-                  <li>MuJoCo</li><li>Gazebo</li><li>Isaac&nbsp;Sim</li><li>MoveIt&nbsp;2</li><li>USD&nbsp;/&nbsp;SDF&nbsp;/&nbsp;MJCF</li><li>UR5e&nbsp;&times;&nbsp;2</li>
-                </ul>
-                <a class="demo" href="demo.html#agree">
-                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Take the jitter away</span></a>
-              </div>
-              <dl class="proj__stats">
-                <div><dt>Cross-simulator checks</dt><dd>44</dd></div>
-                <div><dt>Descriptions, one source</dt><dd>3</dd></div>
-                <div><dt>Arm-to-tool contacts, 650 steps</dt><dd>0</dd></div>
-              </dl>
-            </li>
-
-            <li class="proj" data-reveal>
-              <span class="proj__idx">10</span>
-              <div class="proj__main">
-                <h3 class="proj__title">Turning graph-planner trials into demonstrations you can defend</h3>
-                <p class="proj__desc">
-                  A trial is not a demonstration. A graph planner&rsquo;s refinement loop retries and reroutes,
-                  so a run that ends satisfied still passed through nodes that failed &mdash; export every step
-                  and the policy learns the retry-flail alongside the skill, weighted by how often it happened.
-                  The label separating the two exists in exactly one place, the node spans in the trace, and
-                  using it is the whole job. The architecture is forced by an arithmetic detail: the trace
-                  summarises arrays of 100+ elements into prose, and a command on this cell is
-                  <strong>14</strong> wide &mdash; six joints and a gripper, twice &mdash; so
-                  <code>100 // 14 = 7</code> and any trajectory of eight steps or more never survives the
-                  output at all. It is still there, still a plausible string, and a reader that coerces it
-                  yields a corpus of truncated trajectories that trains without error and imitates nothing.
-                  The verifier runs seven checks per episode, then re-runs each against an episode
-                  deliberately corrupted to break it; a check that still passes is reported BROKEN, because a
-                  check nobody has seen fail is not a check. Stated plainly: <strong>no graph has yet produced
-                  an episode.</strong> Everything measured so far is the workcell&rsquo;s own scripted expert,
-                  and when the cell moved 82 commits the same policy at the same seed went from 1 of 3
-                  containment conditions to 0 of 3 &mdash; the hammer acquiring the grasp-depth failure the
-                  other two tools already had, 151&thinsp;mm of approach against jaws 42&thinsp;mm deep.
-                </p>
-                <ul class="chips">
-                  <li>Physical&nbsp;AI</li><li>MuJoCo</li><li>Pydantic</li><li>Graph&nbsp;as&nbsp;Policy</li><li>UR5e&nbsp;&times;&nbsp;2</li>
-                </ul>
-                <a class="demo" href="demo.html#trace">
-                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Truncate a trajectory</span></a>
-              </div>
-              <dl class="proj__stats">
-                <div><dt>Containment, across the bump</dt><dd>1 &rarr; 0 <span class="unit">of 3</span></dd></div>
-                <div><dt>Steps surviving the trace</dt><dd>7</dd></div>
-                <div><dt>Negative-controlled checks</dt><dd>7</dd></div>
-              </dl>
-            </li>
-
           </ol>
         </div>
       </div>
