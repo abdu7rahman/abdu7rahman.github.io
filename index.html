@@ -395,34 +395,36 @@
             <li class="proj" data-reveal>
               <span class="proj__idx">10</span>
               <div class="proj__main">
-                <h3 class="proj__title">Turning graph-planner trials into demonstrations you can defend</h3>
+                <h3 class="proj__title">Demonstrations you can defend, from two kinds of model-authored policy</h3>
                 <p class="proj__desc">
-                  A trial is not a demonstration. A graph planner&rsquo;s refinement loop retries and reroutes,
-                  so a run that ends satisfied still passed through nodes that failed &mdash; export every step
-                  and the policy learns the retry-flail alongside the skill, weighted by how often it happened.
-                  The label separating the two exists in exactly one place, the node spans in the trace, and
-                  using it is the whole job. The architecture is forced by an arithmetic detail: the trace
-                  summarises arrays of 100+ elements into prose, and a command on this cell is
-                  <strong>14</strong> wide &mdash; six joints and a gripper, twice &mdash; so
-                  <code>100 // 14 = 7</code> and any trajectory of eight steps or more never survives the
-                  output at all. It is still there, still a plausible string, and a reader that coerces it
-                  yields a corpus of truncated trajectories that trains without error and imitates nothing.
-                  The verifier runs seven checks per episode, then re-runs each against an episode
-                  deliberately corrupted to break it; a check that still passes is reported BROKEN, because a
-                  check nobody has seen fail is not a check. Stated plainly: <strong>no graph has yet produced
-                  an episode.</strong> Everything measured so far is the workcell&rsquo;s own scripted expert,
-                  and when the cell moved 82 commits the same policy at the same seed went from 1 of 3
-                  containment conditions to 0 of 3 &mdash; the hammer acquiring the grasp-depth failure the
-                  other two tools already had, 151&thinsp;mm of approach against jaws 42&thinsp;mm deep.
+                  Two ways a language model can produce a policy for this cell, and only one of them runs on
+                  a pod with no GPU. <strong>Graph-as-Policy</strong> is the target and is consumed as a
+                  separate process: it wants an RTX&nbsp;4090, an API key and 3.5&nbsp;GB of weights, so
+                  stated plainly, <strong>no graph has yet produced an episode here.</strong>
+                  <strong>Code as Policies</strong> has the same shape at the top &mdash; an instruction
+                  becoming a policy &mdash; and none of the device requirements, because what it emits is
+                  text. So that is the half that got built and measured: a generator writes Python against a
+                  small documented API, a sandbox runs it under bounded names, calls and wall clock, and the
+                  workcell&rsquo;s own primitives perform every motion. What changes between the scripted
+                  expert and the written program is <em>who chose the sequence</em> and nothing else, which
+                  is the only reason comparing them says anything. The program, not the prompt, is the
+                  artefact: a sampled model can emit different source from the same instruction, so every
+                  episode carries the exact <code>program.py</code> that drove it and a digest checked before
+                  execution &mdash; source that no longer hashes to what it claims is refused rather than
+                  run. The result is negative and was nearly mis-attributed. The cell moved 82 commits while
+                  this arrived, so it took a control run on each revision to show that the containment
+                  collapse from 1 of 3 to <strong>0 of 3</strong> was the workcell and not the policy. One
+                  condition genuinely is the policy: joint speed at rest, 0.0061&thinsp;m/s scripted against
+                  <strong>31.1242</strong> for code, on a 0.02 threshold.
                 </p>
                 <ul class="chips">
-                  <li>Physical&nbsp;AI</li><li>MuJoCo</li><li>Pydantic</li><li>Graph&nbsp;as&nbsp;Policy</li><li>UR5e&nbsp;&times;&nbsp;2</li>
+                  <li>Code&nbsp;as&nbsp;Policies</li><li>Graph&nbsp;as&nbsp;Policy</li><li>Physical&nbsp;AI</li><li>MuJoCo</li><li>Pydantic</li><li>UR5e&nbsp;&times;&nbsp;2</li>
                 </ul>
               </div>
               <dl class="proj__stats">
+                <div><dt>Episodes from a graph</dt><dd>0</dd></div>
                 <div><dt>Containment, across the bump</dt><dd>1 &rarr; 0 <span class="unit">of 3</span></dd></div>
-                <div><dt>Steps surviving the trace</dt><dd>7</dd></div>
-                <div><dt>Negative-controlled checks</dt><dd>7</dd></div>
+                <div><dt>Runs to attribute one regression</dt><dd>3</dd></div>
               </dl>
             </li>
 
