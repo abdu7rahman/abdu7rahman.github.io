@@ -112,7 +112,7 @@
   padding: 2px;
 }
 .seg__btn {
-  flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer;
+  flex: 1; appearance: none; border: 0; background: transparent; cursor: var(--cur-hand);
   padding: 9px 4px; border-radius: calc(var(--r-md) - 3px);
   font: 500 13px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-2);
   position: relative;
@@ -134,7 +134,7 @@
 
 .btnrow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .tbtn {
-  appearance: none; cursor: pointer;
+  appearance: none; cursor: var(--cur-hand);
   border: 1px solid var(--rule-2); border-radius: var(--r-pill); background: transparent;
   padding: 10px 6px;
   font: 500 12px/1 var(--sans); letter-spacing: -.005em; color: var(--ink);
@@ -142,7 +142,7 @@
 }
 
 .run {
-  width: 100%; appearance: none; cursor: pointer;
+  width: 100%; appearance: none; cursor: var(--cur-hand);
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   padding: 15px 18px; border: 1px solid var(--ink); border-radius: var(--r-pill);
   background: var(--ink); color: var(--paper);
@@ -153,7 +153,7 @@
 
 .chk {
   display: flex; align-items: center; gap: 9px; margin-top: 14px;
-  font: 400 14px/1 var(--sans); letter-spacing: -.016em; color: var(--ink-2); cursor: pointer;
+  font: 400 14px/1 var(--sans); letter-spacing: -.016em; color: var(--ink-2); cursor: var(--cur-hand);
 }
 .chk input { accent-color: var(--signal); width: 14px; height: 14px; }
 
@@ -184,7 +184,7 @@
   border: 0; border-radius: var(--r-lg);
   background: var(--paper-3);
   box-shadow: var(--lift-1);
-  cursor: crosshair;
+  cursor: var(--cur-cross);
   touch-action: none;
 }
 
@@ -501,14 +501,14 @@
    started on it was swallowed and the page stayed put. `pan-y` gives vertical
    drags back to the scroller and keeps taps, which is all this needs: the goal
    is set by a tap, never by a drag. */
-#qlc-canvas { cursor: crosshair; touch-action: pan-y; }
+#qlc-canvas { cursor: var(--cur-cross); touch-action: pan-y; }
 
 /* Detail that would otherwise sit between the reader and the plate. Closed by
    default: the demo is the argument, and the paragraphs are for whoever wants
    to check it. */
 .lab-more { margin-top: 18px; }
 .lab-more > summary {
-  cursor: pointer; list-style: none;
+  cursor: var(--cur-hand); list-style: none;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px; border: 1px solid var(--rule-2); border-radius: var(--r-pill);
   font: 500 12px/1 var(--sans); color: var(--ink-2);
