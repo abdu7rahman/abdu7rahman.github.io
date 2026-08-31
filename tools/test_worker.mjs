@@ -262,17 +262,13 @@ const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
     const after = await (await fetch(BASE + "/api/stats?days=all", { headers: { cookie } })).json();
     ok("but neither is counted as a visit", after.totals.visits === before,
        before + " -> " + after.totals.visits);
-    ok("and the crawler table names them", after.crawlers.length >= 1, JSON.stringify(after.crawlers));
-    ok("with a reason attached", after.crawlers.every(c => !!c.why), JSON.stringify(after.crawlers.map(c => c.why)));
 
-    // Nothing is deleted -- asking for them puts them back, because the
-    // hosting heuristic can be wrong about a person.
-    const withBots = await (await fetch(BASE + "/api/stats?days=all&bots=1", { headers: { cookie } })).json();
-    ok("bots=1 counts them again", withBots.totals.visits === before + 2,
-       before + " + 2 -> " + withBots.totals.visits);
-    ok("and the window says which mode it is in",
-       withBots.window.withBots === true && after.window.withBots === false,
-       JSON.stringify([after.window.withBots, withBots.window.withBots]));
+    // Nothing is deleted: the rows are still in the tables, greyed and tagged,
+    // because the hosting reason is a guess that can be wrong about a person.
+    ok("but they are still listed, with a reason",
+       after.orgs.some(o => o.bot === 1 && !!o.why), JSON.stringify(after.orgs));
+    ok("and marked in the session feed",
+       after.recent.some(r => r.bot === 1), JSON.stringify(after.recent.map(r => r.bot)));
 
     ok("a plain browser is not flagged", (await send([
       ev("real-1", "pageview", { path: "/", ref: "linkedin.com/feed" }),

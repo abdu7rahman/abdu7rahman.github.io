@@ -41,11 +41,16 @@ h1{font-size:26px;font-weight:600;letter-spacing:-.022em}
 .range{font:500 13px var(--sans);padding:6px 14px;border:1px solid var(--rule-2);
   border-radius:var(--r-pill);background:var(--paper-3);color:var(--ink-2);cursor:pointer}
 .range[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
-.range--sep{margin-left:auto}
-/* When crawlers are being counted, the tiles are not measuring an audience.
-   Worth more than a pressed button somewhere else on the page. */
-body.with-bots .tile{background:var(--signal-w);border-color:#f0c9cf}
-body.with-bots .tile .sub{color:var(--signal)}
+/* A crawler row sits in the same table as everything else, recessive and
+   tagged, rather than in a section of its own behind a button. There is no mode
+   to be in: the headline figures count readers, the tables show everything, and
+   which is which is visible without clicking. */
+tr.bot td{color:var(--ink-3)}
+tr.bot .lab{color:var(--ink-3)}
+tr.bot .lab .bar{background:rgba(0,0,0,.05)}
+.tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:var(--r-pill);
+  border:1px solid var(--rule-2);font:500 10.5px/1.5 var(--sans);letter-spacing:.01em;
+  color:var(--ink-3);text-transform:none;vertical-align:1px;white-space:nowrap}
 
 /* 148px rather than 160px so all six headline figures sit on one row at the
    page's full width. At 160 the sixth wrapped onto a line of its own, which
@@ -155,7 +160,6 @@ export function dashboard(admin) {
   <button class="range" data-days="30" aria-pressed="true">30 days</button>
   <button class="range" data-days="90">90 days</button>
   <button class="range" data-days="all">All time</button>
-  <button class="range range--sep" id="bots" aria-pressed="false">Include crawlers</button>
 </div>
 
 <dl class="tiles" id="tiles"></dl>
@@ -178,7 +182,6 @@ export function dashboard(admin) {
 <section><h2>Where from</h2><div class="card" id="places"></div></section>
 <section><h2>How they arrived</h2><div class="card" id="refs"></div></section>
 <section><h2>Networks</h2><div class="card" id="orgs"></div></section>
-<section><h2>Crawlers, excluded from the numbers above</h2><div class="card" id="crawlers"></div></section>
 <section><h2>Links out</h2><div class="card" id="outbound"></div></section>
 <section><h2>Regulars</h2><div class="card" id="loyal"></div></section>
 <section><h2>Recent sessions</h2><div class="card" id="recent"></div></section>
@@ -201,13 +204,17 @@ export function dashboard(admin) {
   It is the question a raw address is usually wanted for, answered without keeping
   anything that points at a person.
   <br><br>
-  Everything above excludes crawlers unless you ask for them: something that
-  named itself a bot in its user-agent, that Cloudflare verified as one, or that
-  arrived over a hosting network. The last of those cannot tell a link scanner
-  from somebody reading this at work, so nothing is deleted on the strength of it
-  and the excluded rows stay listed with their reason. Times are in
-  <em id="tzn"></em>; the day buckets in the chart are UTC, because that grouping
-  happens in the database.
+  The six figures at the top and the chart count readers only. Every table below
+  them shows everything, with anything set aside as a crawler greyed and tagged
+  in place &mdash; so there is no mode to be in and nothing is hidden behind a
+  button. Something is set aside if it named itself a bot in its user-agent, if
+  Cloudflare verified it as one, if it arrived over a hosting network, or if it
+  held two sessions open at once and never interacted with anything. The hosting
+  one is a guess about a network and cannot tell a link scanner from somebody
+  reading this at work, so it is withdrawn automatically the moment that visitor
+  runs a demo, clicks a link out, or writes a comment. Nothing is ever deleted on
+  the strength of any of it. Times are in <em id="tzn"></em>; the day buckets in
+  the chart are UTC, because that grouping happens in the database.
   <br><br>
   Nothing is ever deleted. A visit is a session; a bounce is one page with no demo and
   no outbound click. A demo is <em>opened</em> when a reader touches it and
@@ -225,7 +232,7 @@ function esc(s) {
 }
 
 const CLIENT = String.raw`
-var RED = "#d70015", GREEN = "#007a3d", days = 30, bots = 0;
+var RED = "#d70015", GREEN = "#007a3d", days = 30;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -255,6 +262,15 @@ function dur(ms){
   if(s<60) return s+"s";
   var m=Math.floor(s/60); return m+"m "+String(s%60).padStart(2,"0")+"s";
 }
+/* The reason a row was set aside, in words, appended to whatever the first
+   column already says. Spelled out rather than abbreviated: "hosting" alone
+   invites more confidence than a guess about a network deserves. */
+var WHY={agent:"crawler",verified:"verified crawler",hosting:"hosting network",
+         parallel:"parallel sessions"};
+function tag(r){
+  if(!r.bot) return "";
+  return '<span class="tag">'+esc(WHY[r.why]||"crawler")+"</span>";
+}
 function flag(cc){
   // Regional-indicator maths: two ASCII letters map to the flag codepoints.
   if(!cc||cc.length!==2||!/^[A-Z]{2}$/.test(cc)) return "";
@@ -270,7 +286,7 @@ function table(cols, rows, barKey){
   var head = cols.map(function(c){
     return '<th class="'+(c.n?"n":"")+'">'+esc(c.h)+"</th>";}).join("");
   var body = rows.map(function(r){
-    return "<tr>"+cols.map(function(c,i){
+    return "<tr"+(r.bot?' class="bot"':"")+">"+cols.map(function(c,i){
       var v = c.get(r);
       if(i===0 && barKey && max>0){
         var w = Math.max(1.5,(r[barKey]||0)/max*100);
@@ -353,11 +369,6 @@ function render(s){
   var span = w.all
     ? (w.first ? "everything since "+w.first : "no data yet")
     : "sessions in "+w.days+" days";
-  // Said on the figure itself, not only by the state of a button. Six of the
-  // first seven visits here were one scanner, so a dashboard that is counting
-  // them has to say so where the number is, or it reads as an audience.
-  if (w.withBots) span += ", crawlers included";
-  document.body.classList.toggle("with-bots", !!w.withBots);
   document.getElementById("tiles").innerHTML=[
     ["Visits",n(t.visits),span],
     ["Unique visitors",n(t.visitors),n(w.visitorsEver)+" ever, across "+n(w.daysWithData)+" days"],
@@ -372,7 +383,7 @@ function render(s){
   chart(s.series);
 
   document.getElementById("demos").innerHTML=table([
-    {h:"Demo",get:function(r){return esc(r.label);}},
+    {h:"Demo",get:function(r){return esc(r.label)+tag(r);}},
     {h:"Opened",n:1,get:function(r){return n(r.starts);}},
     {h:"Engaged",n:1,get:function(r){return n(r.dones);}},
     {h:"Rate",n:1,get:function(r){return pct(r.completion);}},
@@ -380,7 +391,7 @@ function render(s){
   ],s.demos,"starts");
 
   document.getElementById("pages").innerHTML=table([
-    {h:"Path",get:function(r){return esc(r.path);}},
+    {h:"Path",get:function(r){return esc(r.path)+tag(r);}},
     {h:"Views",n:1,get:function(r){return n(r.views);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}}
   ],s.pages,"views");
@@ -389,34 +400,24 @@ function render(s){
     {h:"Place",get:function(r){
       var f=flag(r.country);
       return (f?f+" ":"")+esc(r.city||r.country||"unknown")+
-        (r.city&&r.country?' <span class="mut">'+esc(r.country)+"</span>":"");}},
+        (r.city&&r.country?' <span class="mut">'+esc(r.country)+"</span>":"")+tag(r);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}}
   ],s.places,"visits");
 
   document.getElementById("refs").innerHTML=table([
-    {h:"From",get:function(r){return esc(r.ref);}},
+    {h:"From",get:function(r){return esc(r.ref)+tag(r);}},
     {h:"Views",n:1,get:function(r){return n(r.views);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}}
   ],s.refs||[],"views");
 
-  document.getElementById("crawlers").innerHTML=table([
-    {h:"Network",get:function(r){return esc(r.org);}},
-    {h:"Why",get:function(r){return esc({agent:"said so in its user-agent",
-      verified:"verified by Cloudflare",hosting:"came over a hosting network",
-      parallel:"two sessions at once, never interacted"}[r.why]||r.why);}},
-    {h:"Visits",n:1,get:function(r){return n(r.visits);}},
-    {h:"Demos",n:1,get:function(r){return n(r.demos);}},
-    {h:"Last seen",get:function(r){return esc(when(r.last_ts));}}
-  ],s.crawlers||[],"visits");
-
   document.getElementById("orgs").innerHTML=table([
-    {h:"Network",get:function(r){return esc(r.org);}},
+    {h:"Network",get:function(r){return esc(r.org)+tag(r);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}},
     {h:"People",n:1,get:function(r){return n(r.visitors);}}
   ],s.orgs||[],"visits");
 
   document.getElementById("outbound").innerHTML=table([
-    {h:"Destination",get:function(r){return esc(r.label);}},
+    {h:"Destination",get:function(r){return esc(r.label)+tag(r);}},
     {h:"Clicks",n:1,get:function(r){return n(r.clicks);}},
     {h:"Visits",n:1,get:function(r){return n(r.sessions);}}
   ],s.outbound,"clicks");
@@ -433,7 +434,7 @@ function render(s){
   ],s.loyal||[],"days");
 
   document.getElementById("recent").innerHTML=table([
-    {h:"When",get:function(r){return esc(when(r.started));}},
+    {h:"When",get:function(r){return esc(when(r.started))+tag(r);}},
     {h:"Where",get:function(r){
       var f=flag(r.country);return (f?f+" ":"")+esc(r.city||r.country||"unknown");}},
     {h:"Network",get:function(r){return r.org?esc(r.org):'<span class="mut">--</span>';}},
@@ -471,7 +472,7 @@ function renderComments(list){
 }
 
 function load(){
-  fetch("/api/stats?days="+days+"&bots="+bots,{credentials:"same-origin",cache:"no-store"})
+  fetch("/api/stats?days="+days,{credentials:"same-origin",cache:"no-store"})
     .then(function(r){ if(r.status===401){location.href="/";return null;}
       return r.ok?r.json():Promise.reject(r.status);})
     .then(function(s){ if(s) render(s); })
@@ -495,11 +496,6 @@ document.querySelectorAll(".range[data-days]").forEach(function(b){
     b.setAttribute("aria-pressed","true");
     days=b.dataset.days; load();
   });
-});
-document.getElementById("bots").addEventListener("click",function(){
-  bots=bots?0:1;
-  this.setAttribute("aria-pressed",bots?"true":"false");
-  load();
 });
 var tzn=document.getElementById("tzn"); if(tzn) tzn.textContent=TZ;
 load();
