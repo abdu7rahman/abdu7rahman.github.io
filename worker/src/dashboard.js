@@ -84,8 +84,6 @@ td.n:last-child,th.n:last-child{padding-right:0}
 .mut{color:var(--ink-3)}
 #recent td:first-child{white-space:nowrap}
 @media (max-width:720px){
-  /* Six columns do not fit a phone. Device and page count are the two that
-     answer the least, so they are the two that go. */
   /* Seven columns do not fit a phone. Network, device and page count are the
      three that answer the least in a feed whose point is who / what / how long. */
   #recent th:nth-child(3),#recent td:nth-child(3),
@@ -404,7 +402,8 @@ function render(s){
   document.getElementById("crawlers").innerHTML=table([
     {h:"Network",get:function(r){return esc(r.org);}},
     {h:"Why",get:function(r){return esc({agent:"said so in its user-agent",
-      verified:"verified by Cloudflare",hosting:"came over a hosting network"}[r.why]||r.why);}},
+      verified:"verified by Cloudflare",hosting:"came over a hosting network",
+      parallel:"two sessions at once, never interacted"}[r.why]||r.why);}},
     {h:"Visits",n:1,get:function(r){return n(r.visits);}},
     {h:"Demos",n:1,get:function(r){return n(r.demos);}},
     {h:"Last seen",get:function(r){return esc(when(r.last_ts));}}

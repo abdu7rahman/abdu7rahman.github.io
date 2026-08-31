@@ -25,13 +25,26 @@ const KINDS = new Set(["pageview", "demo_start", "demo_done", "outbound", "sessi
  * dashboard can be told to put those rows back. */
 const BOT_UA = /bot\b|bots\b|crawl|spider|slurp|scrape|headless|phantomjs|puppeteer|playwright|selenium|lighthouse|curl\/|wget|python-requests|okhttp|java\/|go-http|libwww|httpclient|axios\/|node-fetch|preview|scanner|monitor|uptime|pingdom|statuscake|ahrefs|semrush|mj12|dotbot|petalbot|bytespider|facebookexternalhit|whatsapp|telegram|slackbot|discord|embedly|proofpoint|barracuda|mimecast|safelinks/i;
 
-// Substring match against Cloudflare's asOrganization. Deliberately the big
-// hosts only: a wrong guess here hides a real person.
+/* Substring match against Cloudflare's asOrganization, for compute clouds only.
+ *
+ * Cloudflare, Akamai and Fastly are deliberately NOT here, and that is the
+ * whole point of this comment. They are the three egress providers for iCloud
+ * Private Relay, and Cloudflare is also WARP. Private Relay is on by default
+ * for every iCloud+ subscriber, so listing them means every recruiter opening
+ * this in Safari on an iPhone is quietly filed as a crawler and dropped from
+ * the numbers. They were on this list once. That is a far worse error than
+ * counting a scanner, because it is invisible and it removes exactly the
+ * readers this site exists for.
+ *
+ * The rule that remains is still only a guess about a network, which is why
+ * it labels rather than deletes and why the dashboard can put these rows back.
+ */
 const HOSTING = [
-  "amazon", "aws", "microsoft", "azure", "google cloud", "googlebot", "digitalocean",
-  "linode", "akamai", "fastly", "cloudflare", "hetzner", "ovh", "scaleway", "vultr",
-  "choopa", "contabo", "leaseweb", "m247", "datacamp", "oracle", "alibaba", "tencent",
-  "huawei cloud", "ibm cloud", "rackspace", "hostinger", "namecheap", "godaddy",
+  "amazon", "aws", "microsoft", "azure", "google cloud", "googlebot",
+  "digitalocean", "linode", "hetzner", "ovh", "scaleway", "vultr",
+  "choopa", "contabo", "leaseweb", "m247", "datacamp", "oracle", "alibaba",
+  "tencent", "huawei cloud", "ibm cloud", "rackspace", "hostinger",
+  "namecheap", "godaddy",
 ];
 
 function botVerdict(ua, org, cf) {
@@ -183,6 +196,52 @@ export async function ingest(req, env) {
  * The quota table is always swept regardless -- those rows are rate-limiting
  * scratch with an hour of usefulness in them, and nothing is learned by
  * keeping them. */
+/* Nightly reconsideration of the bot flag, from behaviour rather than network.
+ *
+ * The network guess is only ever a prior, and it is made at the moment of a
+ * pageview -- before there is any evidence about who this is. Once there is
+ * evidence, it should win. Two corrections, in this order:
+ *
+ * 1. Anyone who ran a demo, clicked a link out, or wrote a comment is a person.
+ *    A hosting-network guess against them was wrong, and it is withdrawn. Only
+ *    the hosting reason is reversible this way: a client that called itself a
+ *    crawler is taken at its word.
+ *
+ * 2. A visitor holding two sessions open in the same second, who has never once
+ *    interacted with anything, is a machine. This is what actually identifies
+ *    the scanner that prompted all of this -- it visits, it opens a second
+ *    session a breath later, it never touches a demo -- and unlike the network
+ *    guess it does not depend on where the request came from, so it catches the
+ *    same behaviour from a residential address too.
+ *
+ * Both are run over the whole table each night rather than only recent rows,
+ * because interaction can arrive days after the pageview that was misjudged.
+ */
+export async function sweep(env) {
+  const HUMAN_KINDS = "('demo_start', 'demo_done', 'outbound')";
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE event SET bot = 0, bot_why = NULL
+       WHERE bot = 1 AND bot_why = 'hosting'
+         AND visitor IN (
+           SELECT DISTINCT visitor FROM event WHERE kind IN ${HUMAN_KINDS}
+           UNION SELECT DISTINCT visitor FROM comment)`
+    ),
+    env.DB.prepare(
+      `UPDATE event SET bot = 1, bot_why = 'parallel'
+       WHERE bot = 0
+         AND visitor IN (
+           SELECT a.visitor FROM event a JOIN event b
+             ON a.visitor = b.visitor
+            AND a.session <> b.session
+            AND b.ts BETWEEN a.ts - 2000 AND a.ts + 2000)
+         AND visitor NOT IN (
+           SELECT DISTINCT visitor FROM event WHERE kind IN ${HUMAN_KINDS}
+           UNION SELECT DISTINCT visitor FROM comment)`
+    ),
+  ]);
+}
+
 export async function prune(env) {
   const keepDays = Number(env.RETENTION_DAYS || 0);
   const work = [env.DB.prepare("DELETE FROM quota WHERE ts < ?1").bind(Date.now() - 3600000)];

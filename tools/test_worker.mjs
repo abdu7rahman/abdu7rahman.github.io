@@ -302,6 +302,26 @@ const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
        !ign.refs.some(r => r.ref === "should-be-ignored"), JSON.stringify(ign.refs.map(r => r.ref)));
   }
 
+  console.log("\nK. a privacy relay is not a datacenter");
+  {
+    // iCloud Private Relay egresses through Cloudflare, Akamai and Fastly, and
+    // Cloudflare is also WARP. All three were on the hosting list once, which
+    // meant every iPhone reader with Private Relay on -- the default for iCloud+
+    // -- was quietly filed as a crawler. Hiding a real reader is a far worse
+    // error than counting a scanner, so these must never be flagged on network
+    // alone. There is no cf.asOrganization to set from a test client, so this
+    // asserts the list itself.
+    const src = await import("node:fs").then(fs =>
+      fs.readFileSync(new URL("../worker/src/ingest.js", import.meta.url), "utf8"));
+    const list = src.slice(src.indexOf("const HOSTING = ["), src.indexOf("];", src.indexOf("const HOSTING = [")));
+    for (const relay of ["cloudflare", "akamai", "fastly"]) {
+      ok(`${relay} is not treated as hosting`, !list.includes(`"${relay}"`), list.replace(/\s+/g, " "));
+    }
+    for (const cloud of ["amazon", "azure", "digitalocean"]) {
+      ok(`${cloud} still is`, list.includes(`"${cloud}"`));
+    }
+  }
+
   console.log("\nE. a stuck loop gets throttled");
   {
     const ua = "flooder";
