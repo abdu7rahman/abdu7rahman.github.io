@@ -16,7 +16,7 @@ const MEDIAN = (where) => `
     FROM event WHERE ${where} AND ms IS NOT NULL
   ) WHERE rn IN ((c + 1) / 2, (c + 2) / 2)`;
 
-export async function stats(env, days, withBots) {
+export async function stats(env, days) {
   // days = "all" (or 0) means no window at all. A date far enough in the past
   // is used rather than dropping the WHERE clause, so every query below stays
   // one shape and the indexes still apply.
@@ -25,10 +25,15 @@ export async function stats(env, days, withBots) {
   const since = all ? "0001-01-01" : new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
   const q = (sql, ...bind) => env.DB.prepare(sql).bind(...bind);
 
-  // Interpolated rather than bound because it is a fragment of the WHERE
-  // clause, not a value -- and it is built from a boolean here, never from
-  // anything a caller sent.
-  const HUMAN = withBots ? "" : " AND bot = 0";
+  /* The headline figures and the chart count readers only. The tables below
+     them do not filter at all -- they carry the crawler rows too, split out by
+     the flag and marked in the dashboard.
+
+     That is the whole shape of this page now: one view, nothing hidden behind
+     a mode. There used to be a separate crawler section and a button to fold
+     them back into the numbers, and the two states looked identical, which is
+     a bad property for a page whose only job is to be believed. */
+  const HUMAN = " AND bot = 0";
 
   const [
     // This list is positional -- it must match the order of the batch below,
@@ -36,7 +41,7 @@ export async function stats(env, days, withBots) {
     // name here shifts every result after it onto the wrong variable, which is
     // not a crash but a dashboard quietly showing the wrong table.
     totals, series, pages, demos, outbound, places, devices, orgs, dwell, recent,
-    bounce, returning, span, loyal, refs, crawlers,
+    bounce, returning, span, loyal, refs,
   ] = await env.DB.batch([
     // A "visit" is a session, matching what the footer counter on the site
     // means by the word, so the two numbers can be compared without a
@@ -51,31 +56,31 @@ export async function stats(env, days, withBots) {
               COUNT(DISTINCT visitor) visitors
        FROM event WHERE day >= ?1${HUMAN} GROUP BY day ORDER BY day`, since),
 
-    q(`SELECT COALESCE(path, '(unknown)') path,
+    q(`SELECT COALESCE(path, '(unknown)') path, bot,
               COUNT(*) views,
               COUNT(DISTINCT session) visits
-       FROM event WHERE kind = 'pageview' AND day >= ?1${HUMAN}
-       GROUP BY path ORDER BY views DESC LIMIT 20`, since),
+       FROM event WHERE kind = 'pageview' AND day >= ?1
+       GROUP BY path, bot ORDER BY views DESC LIMIT 30`, since),
 
     // The join is what makes this worth having: starts alone say a demo was
     // clicked, and the ratio says whether it was worth clicking.
-    q(`SELECT label,
+    q(`SELECT label, bot,
               SUM(kind = 'demo_start') starts,
               SUM(kind = 'demo_done')  dones,
               CAST(AVG(CASE WHEN kind = 'demo_done' THEN ms END) AS INTEGER) avg_ms
        FROM event
-       WHERE kind IN ('demo_start', 'demo_done') AND day >= ?1 AND label IS NOT NULL${HUMAN}
-       GROUP BY label ORDER BY starts DESC LIMIT 30`, since),
+       WHERE kind IN ('demo_start', 'demo_done') AND day >= ?1 AND label IS NOT NULL
+       GROUP BY label, bot ORDER BY starts DESC LIMIT 30`, since),
 
-    q(`SELECT label, COUNT(*) clicks, COUNT(DISTINCT session) sessions
-       FROM event WHERE kind = 'outbound' AND day >= ?1 AND label IS NOT NULL${HUMAN}
-       GROUP BY label ORDER BY clicks DESC LIMIT 30`, since),
+    q(`SELECT label, bot, COUNT(*) clicks, COUNT(DISTINCT session) sessions
+       FROM event WHERE kind = 'outbound' AND day >= ?1 AND label IS NOT NULL
+       GROUP BY label, bot ORDER BY clicks DESC LIMIT 30`, since),
 
     q(`SELECT COALESCE(country, '??') country,
-              COALESCE(city, '') city,
+              COALESCE(city, '') city, bot,
               COUNT(DISTINCT session) visits
-       FROM event WHERE day >= ?1${HUMAN}
-       GROUP BY country, city ORDER BY visits DESC LIMIT 40`, since),
+       FROM event WHERE day >= ?1
+       GROUP BY country, city, bot ORDER BY visits DESC LIMIT 40`, since),
 
     q(`SELECT COALESCE(device, 'unknown') device, COUNT(DISTINCT session) visits
        FROM event WHERE day >= ?1${HUMAN} GROUP BY device`, since),
@@ -84,10 +89,11 @@ export async function stats(env, days, withBots) {
     // here is the thing an IP address is usually wanted for, arrived at
     // without keeping anything that points at a person.
     q(`SELECT COALESCE(NULLIF(org, ''), 'unknown') org,
+              bot, COALESCE(bot_why, '') why,
               COUNT(DISTINCT session) visits,
               COUNT(DISTINCT visitor) visitors
-       FROM event WHERE day >= ?1${HUMAN}
-       GROUP BY org ORDER BY visits DESC LIMIT 30`, since),
+       FROM event WHERE day >= ?1
+       GROUP BY org, bot, why ORDER BY visits DESC LIMIT 40`, since),
 
     q(MEDIAN("kind = 'session_end' AND day >= ?1" + HUMAN), since),
 
@@ -103,9 +109,10 @@ export async function stats(env, days, withBots) {
               SUM(e.kind = 'pageview')   views,
               SUM(e.kind = 'demo_start') demos,
               MAX(CASE WHEN e.kind = 'session_end' THEN e.ms END) ms,
-              GROUP_CONCAT(CASE WHEN e.kind = 'demo_start' THEN e.label END) ran
-       FROM event e WHERE e.day >= ?1${HUMAN}
-       GROUP BY e.session ORDER BY started DESC LIMIT 30`, since),
+              GROUP_CONCAT(CASE WHEN e.kind = 'demo_start' THEN e.label END) ran,
+              MAX(e.bot) bot, COALESCE(MAX(e.bot_why), '') why
+       FROM event e WHERE e.day >= ?1
+       GROUP BY e.session ORDER BY started DESC LIMIT 40`, since),
 
     // A bounce is one page and nothing else -- no demo, no outbound click. It
     // is counted from what the session did, not from a timer, because a timer
@@ -149,30 +156,19 @@ export async function stats(env, days, withBots) {
     // How readers arrived. A null referrer is a direct visit -- typed, a
     // bookmark, or a client that strips it -- and is worth naming rather than
     // dropping, because for a portfolio it is usually the largest single row.
-    q(`SELECT COALESCE(NULLIF(ref, ''), '(direct)') ref,
+    q(`SELECT COALESCE(NULLIF(ref, ''), '(direct)') ref, bot,
               COUNT(*) views,
               COUNT(DISTINCT session) visits
        FROM event
-       WHERE kind = 'pageview' AND day >= ?1${HUMAN}
-       GROUP BY ref ORDER BY views DESC LIMIT 30`, since),
+       WHERE kind = 'pageview' AND day >= ?1
+       GROUP BY ref, bot ORDER BY views DESC LIMIT 30`, since),
 
-    // What was filtered out, and on what grounds. Shown rather than hidden:
-    // the hosting heuristic cannot tell a link scanner from somebody reading
-    // this at work, so the evidence stays visible next to the verdict.
-    q(`SELECT COALESCE(bot_why, 'unknown') why,
-              COALESCE(NULLIF(org, ''), 'unknown') org,
-              COUNT(DISTINCT session) visits,
-              COUNT(DISTINCT visitor) sources,
-              SUM(kind = 'demo_start') demos,
-              MAX(ts) last_ts
-       FROM event WHERE bot = 1 AND day >= ?1
-       GROUP BY why, org ORDER BY visits DESC LIMIT 30`, since),
   ]);
 
   const t = totals.results[0] || { visits: 0, visitors: 0, views: 0 };
   const sp = span.results[0] || {};
   return {
-    window: { days: d, since, all, withBots: !!withBots,
+    window: { days: d, since, all,
               first: sp.first || null, last: sp.last || null,
               daysWithData: sp.days || 0, visitorsEver: sp.visitors || 0 },
     totals: {
@@ -185,7 +181,6 @@ export async function stats(env, days, withBots) {
     },
     loyal: loyal.results,
     refs: refs.results,
-    crawlers: crawlers.results,
     series: series.results,
     pages: pages.results,
     demos: demos.results.map(r => ({
