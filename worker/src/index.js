@@ -11,7 +11,7 @@
  * who knows a URL.
  */
 import { currentAdmin, login, callback, logout } from "./auth.js";
-import { ingest, preflight, prune } from "./ingest.js";
+import { ingest, preflight, prune, sweep } from "./ingest.js";
 import { stats } from "./stats.js";
 import { comment, comments } from "./comments.js";
 import { dashboard, signedOut } from "./dashboard.js";
@@ -87,6 +87,8 @@ export default {
   // Retention is a cron rather than a check on the write path, so a slow
   // delete can never sit in front of a reader's page load.
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(prune(env));
+    // sweep before prune: it reconsiders the bot flag from behaviour, and
+    // there is no point deciding what to delete before deciding what is what.
+    ctx.waitUntil(sweep(env).then(() => prune(env)));
   },
 };
