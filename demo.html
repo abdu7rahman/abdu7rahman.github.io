@@ -45,7 +45,7 @@
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
-      <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>
+      <a class="inline" href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">motion-replanning-ur12e</a>
       and execute it here, unmodified &mdash; ROS is stubbed at the import boundary and nothing below
       it is touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in
       its way; race all five of the package's local controllers over one plan; then reach into a
@@ -220,10 +220,20 @@
         wall and then the other that separates a controller which cuts the corner from one that
         holds the line.
       </p>
+      <p class="chase__lede">
+        The order changed last week, which is the argument for downloading the code instead of
+        drawing a picture of it. TEB used to come last on both maps; it now comes first, at
+        <strong>319</strong> and <strong>534</strong> steps against Pure Pursuit&rsquo;s 353 and 601.
+        Its band had been carrying no time intervals at all &mdash; the published method optimises
+        poses <em>and</em> the durations between them, and without the second half the speed had to
+        come from a pure-pursuit gain on the distance to a fixed band index, which made it a function
+        of how finely the plan happened to be sampled rather than of any limit the robot has. Timing
+        the band took 39&nbsp;percent off <code>rooms-200</code>. This page pulls from
+        <code>main</code>, so it raced the old one until the day it did not.
+      </p>
       <p class="chase__lede chase__lede--note">
-        MPPI is off by default, and not because it loses &mdash; it lands third of four on both maps
-        of the package&rsquo;s own controller suite, ahead of TEB and behind Pure Pursuit and Stanley.
-        It draws 1000
+        MPPI is off by default. It is now the slowest of the four on that same suite &mdash; 423 and
+        655 steps &mdash; but that is not the reason. It draws 1000
         samples a tick and spends real time doing it: about <strong>470&nbsp;ms a tick in this
         tab</strong> against roughly 2&nbsp;ms for DWA, which is 18&nbsp;seconds of driving that
         takes three minutes to watch. The profile puts that cost in
@@ -248,7 +258,7 @@
       <h2 class="chase__title">Reach in</h2>
       <p class="chase__lede">
         This is the UR12e cell from
-        <a class="inline" href="https://github.com/abdu7rahman/reactive-replanning-ur12e" target="_blank" rel="noopener">reactive-replanning-ur12e</a>,
+        <a class="inline" href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">motion-replanning-ur12e</a>,
         seen down the RealSense. The arm runs the node's own cycle &mdash; open, <em>PICK</em>,
         close, <em>PLACE</em>, open, then park while the baseline rebuilds &mdash; and its joints are
         solved each frame rather than played back. The pick and place are not coordinates I picked:
@@ -550,7 +560,7 @@
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
 <script src="feedback.js?v=f83ef280" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=26a317b2" defer></script>
+<script src="demo.js?v=fe48bd35" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
 </body>
 </html>

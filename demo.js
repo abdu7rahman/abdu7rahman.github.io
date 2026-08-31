@@ -67,7 +67,7 @@
   // scene.py builds synthetic RealSense frames. Both are laid into the Pyodide
   // filesystem at their repo paths so they import unmodified.
   var ARM = {
-    repo: "abdu7rahman/reactive-replanning-ur12e",
+    repo: "abdu7rahman/motion-replanning-ur12e",
     branch: "main",
     files: ["tests/harness.py", "tests/scene.py",
             "reactive_replanning_ur12e/reactive_replanning.py"]
