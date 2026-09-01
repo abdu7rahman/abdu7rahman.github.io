@@ -2334,11 +2334,24 @@
       }
 
       paint();
-      var d = Math.hypot(goal.x - bot.x, goal.y - bot.y);
+      /* Distance to the goal the controller was actually given, which is not
+         always the cursor: a cursor inside the inflation band is snapped to the
+         nearest cell at or below FREE_COST before A* sees it. Against nav2's
+         exponential falloff that is five cells from a wall, so a cursor in a
+         corner of the plate moves the goal up to 0.35 m. Reporting the cursor
+         distance against the node's own 0.15 m tolerance is what made a
+         controller that had arrived read as one that had stopped short. */
+      var pgx = plan.length >= 2 ? plan[plan.length - 2] : goal.x;
+      var pgy = plan.length >= 2 ? plan[plan.length - 1] : goal.y;
+      var d = Math.hypot(pgx - bot.x, pgy - bot.y);
+      var snap = Math.hypot(goal.x - pgx, goal.y - pgy);
       readEl.textContent = !have
         ? "move the cursor over the field  ·  click to drop an obstacle"
         : state === 1
-          ? "reached  ·  inside the 0.15 m goal tolerance  ·  " + drops +
+          ? (snap > 0.15
+              ? "reached  ·  the plan ends " + snap.toFixed(2) +
+                " m from the cursor, at the nearest cell clear of the inflation band"
+              : "reached  ·  inside the 0.15 m goal tolerance") + "  ·  " + drops +
             (drops === 1 ? " obstacle" : " obstacles") + " dropped"
           : state === 2
             ? "boxed in  ·  running the escape branch"
