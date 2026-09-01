@@ -574,18 +574,31 @@ function note(msg, cls) { say("log", { msg: msg, cls: cls || "" }); }
 
 async function boot() {
   note("loading pyodide runtime for the vendored demos…");
+  /* Forty-one same-origin files, and none of them needs an interpreter to
+     arrive. Fetched one at a time after the runtime had finished loading, this
+     loop paid a round trip per file with the connection otherwise idle; started
+     together with the runtime it costs the slowest of them.
+     no-cache rather than no-store so a repeat visit revalidates and takes 304s
+     instead of pulling every byte again -- these are pinned copies that only
+     move when the PROVENANCE.md beside them moves. */
+  var pending = FILES.map(function (path) {
+    return fetch(VENDOR_BASE + path, { cache: "no-cache" }).then(function (res) {
+      if (!res.ok) throw new Error("vendor/" + path + " -> HTTP " + res.status);
+      return res.text();
+    });
+  });
+  pending.forEach(function (q) { q.catch(function () {}); });
+
   py = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" });
   note("pyodide " + py.version, "ok");
   note("loading numpy and pydantic…");
   await py.loadPackage(["numpy", "pydantic"]);
   note("numpy and pydantic ready", "ok");
 
+  var texts = await Promise.all(pending);
   var bytes = 0;
   for (var i = 0; i < FILES.length; i++) {
-    var path = FILES[i];
-    var res = await fetch(VENDOR_BASE + path, { cache: "no-store" });
-    if (!res.ok) throw new Error("vendor/" + path + " -> HTTP " + res.status);
-    var text = await res.text();
+    var path = FILES[i], text = texts[i];
     bytes += text.length;
     var dir = "/vendor/" + path.slice(0, path.lastIndexOf("/"));
     py.FS.mkdirTree(dir);

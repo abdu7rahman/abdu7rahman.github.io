@@ -1225,21 +1225,55 @@
       var url = "https://raw.githubusercontent.com/" + REPO + "/" + BRANCHES[i] +
                 "/reactive_autonomous_nav/" + file;
       try {
-        var r = await fetch(url, { cache: "no-store" });
+        // no-cache, not no-store: still revalidated on every load, so the page
+        // never shows stale code, but a repeat visit can be answered with a 304
+        // and no body instead of re-downloading every file.
+        var r = await fetch(url, { cache: "no-cache" });
         if (r.ok) { var t = await r.text(); return { text: t, branch: BRANCHES[i], url: url }; }
       } catch (e) { /* try next */ }
     }
     throw new Error("could not fetch " + file);
   }
 
+  async function fetchArmFile(rel) {
+    var url = "https://raw.githubusercontent.com/" + ARM.repo + "/" + ARM.branch + "/" + rel;
+    var r = await fetch(url, { cache: "no-cache" });
+    if (!r.ok) throw new Error(rel + ": HTTP " + r.status);
+    return r.text();
+  }
+
   async function boot() {
     try {
+      /* Everything that can be in flight at once, is.
+         The Python is plain text on a CDN and the runtime is a wasm bundle on
+         another; neither download knows the other exists, and no source needs
+         an interpreter to arrive. Awaited in sequence -- runtime, then numpy,
+         then thirteen files one at a time -- the page paid for every round trip
+         end to end. Started together it pays for the slowest one.
+         The awaits below are then all on promises that are already resolving,
+         so the order they are read in is still the order they are logged in.
+         That is deliberate: the log is the load-bearing part of this page and a
+         race-ordered one would be unreadable. */
       log("loading pyodide runtime…");
-      // exposed so the page can be inspected from a test harness
-      window.__pyodide = pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" });
+      var srcP = {};
+      for (var mk in MODULES) srcP[MODULES[mk].file] = fetchSource(MODULES[mk].file);
+      if (!srcP[DWA.file]) srcP[DWA.file] = fetchSource(DWA.file);
+      for (var ri = 0; ri < RACERS.length; ri++) {
+        if (!srcP[RACERS[ri].file]) srcP[RACERS[ri].file] = fetchSource(RACERS[ri].file);
+      }
+      var armP = ARM.files.map(function (rel) { return fetchArmFile(rel); });
+      // A rejected promise nobody has awaited yet is an unhandled rejection.
+      // These are all awaited below, but not before the browser notices.
+      Object.keys(srcP).forEach(function (k) { srcP[k].catch(function () {}); });
+      armP.forEach(function (q) { q.catch(function () {}); });
+
+      // After the fetches, not before: if the runtime script failed to arrive
+      // this call throws synchronously, and there is no reason to lose the
+      // downloads to that.
+      var pyReady = loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" })
+        .then(function (p) { return p.loadPackage("numpy").then(function () { return p; }); });
+      window.__pyodide = pyodide = await pyReady;
       log("pyodide " + pyodide.version, "ok");
-      log("loading numpy…");
-      await pyodide.loadPackage("numpy");
       log("numpy ready", "ok");
       pyodide.runPython(BOOTSTRAP);
       log("ros stubbed at the import boundary", "ok");
@@ -1247,7 +1281,7 @@
       var fetched = {};                 // kept so the race worker can reuse them
       for (var key in MODULES) {
         var m = MODULES[key];
-        var src = await fetchSource(m.file);
+        var src = await srcP[m.file];
         fetched[m.file.replace(".py", "")] = src.text;
         pyodide.globals.set("__src", src.text);
         pyodide.globals.set("__name_", m.file.replace(".py", ""));
@@ -1255,7 +1289,7 @@
         log(m.file + "  " + src.text.length.toLocaleString() + " bytes from " +
             src.branch + "  ->  " + found.join(", "), "ok");
       }
-      var dsrc = await fetchSource(DWA.file);
+      var dsrc = await srcP[DWA.file];
       pyodide.globals.set("__src", dsrc.text);
       pyodide.globals.set("__name_", DWA.file.replace(".py", ""));
       pyodide.runPython("load_module(__name_, __src)");
@@ -1269,7 +1303,7 @@
       var raceSrc = { astar_planner: fetched.astar_planner, dwa_controller: dsrc.text };
       for (var i = 0; i < RACERS.length; i++) {
         if (RACERS[i].file === DWA.file) continue;
-        var rs = await fetchSource(RACERS[i].file);
+        var rs = await srcP[RACERS[i].file];
         raceSrc[RACERS[i].file.replace(".py", "")] = rs.text;
         // Also loaded here, not just handed to the worker: the chase lets you
         // drive with any of these on the main thread.
@@ -1291,7 +1325,7 @@
 
       // The arm goes last on purpose: its harness stubs ROS for itself, and
       // the nav modules have already bound their own names by now.
-      await bootArm();
+      await bootArm(armP);
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";
@@ -2570,18 +2604,16 @@
     };
   })();
 
-  async function bootArm() {
+  async function bootArm(pending) {
     var el = document.getElementById("arm");
     if (!el) return;
     try {
       log("loading the arm detector from " + ARM.repo + "…");
+      // Started with everything else in boot(); by here they have landed.
+      var texts = pending ? await Promise.all(pending)
+                          : await Promise.all(ARM.files.map(fetchArmFile));
       for (var i = 0; i < ARM.files.length; i++) {
-        var rel = ARM.files[i];
-        var url = "https://raw.githubusercontent.com/" + ARM.repo + "/" +
-                  ARM.branch + "/" + rel;
-        var r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) throw new Error(rel + ": HTTP " + r.status);
-        var txt = await r.text();
+        var rel = ARM.files[i], txt = texts[i];
         pyodide.globals.set("__src", txt);
         pyodide.globals.set("__path", "/rr/" + rel);
         pyodide.runPython("arm_write(__path, __src)");
