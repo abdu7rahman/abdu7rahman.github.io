@@ -260,7 +260,9 @@
       <p class="chase__lede">
         This is the UR12e cell from
         <a class="inline" href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">motion-replanning-ur12e</a>,
-        seen down the RealSense. The arm runs the node's own cycle &mdash; open, <em>PICK</em>,
+        seen down the RealSense &mdash; Universal Robots&rsquo; own UR12e geometry, at joint frames
+        solved against the description package&rsquo;s kinematics rather than a two-link stand-in.
+        The arm runs the node&rsquo;s own cycle &mdash; open, <em>PICK</em>,
         close, <em>PLACE</em>, open, then park while the baseline rebuilds &mdash; and its joints are
         solved each frame rather than played back. The pick and place are not coordinates I picked:
         <code>_build_poses()</code> offsets the home pose by <code>pick_z_offset</code> and
@@ -334,8 +336,14 @@
         replanned and how far off the plan the tool has been pushed. Park the cursor on the dashed
         line and it fires a second or two ahead.
       </p>
+      <p class="chase__lede chase__lede--note">
+        The arm never stops. When a leg ends the next one is planned from where it actually
+        finished and sent back the other way, so nothing is reset and the replan count keeps
+        climbing &mdash; leave the cursor in the path and watch it repair the same cycle over and
+        over rather than replaying a fixed six seconds.
+      </p>
       <p class="chase__key" id="foresee-key">
-        <button class="tbtn tbtn--sm" id="foresee-run" type="button">Replay the reach</button>
+        <button class="tbtn tbtn--sm" id="foresee-run" type="button">Restart the cycle</button>
       </p>
     </div>
     <div class="chase__stage" data-reveal>
@@ -611,7 +619,7 @@
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
 <script src="feedback.js?v=f83ef280" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=00c63680" defer></script>
+<script src="demo.js?v=241000ad" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
 </body>
 </html>

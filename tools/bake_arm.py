@@ -279,24 +279,31 @@ def main():
             tris += len(f) // 3
         links.append({"name": frame, "parts": baked})
 
-    # ── the gripper, one rigid piece in tool0 ─────────────────────────
-    # Coupler, body and both fingers stack along tool0's z by the Hand-E's own
-    # heights. The fingers are drawn closed: the demo is a free-space
-    # replanning study with nothing in the jaws, and a slide joint the page
-    # cannot command is a moving part that never moves.
+    # ── the gripper ───────────────────────────────────────────────────
+    # Coupler and body are rigid in tool0. The two fingers are their own links,
+    # baked in the tool0 frame at the closed position with the Hand-E's own
+    # coupler and body heights and the right one's half turn already applied,
+    # so a page that wants to open them slides each by the joint value along
+    # tool0's x -- one number, and no gripper geometry on the page's side.
     tool = []
-    for name, T in (
-            ("io_coupler", np.eye(4)),
-            ("hande", _xform(0, 0, HANDE["coupler_height"], 0, 0, 0)),
-            ("finger", _xform(0, 0, HANDE["coupler_height"] + HANDE["hande_height"], 0, 0, 0)),
-            ("finger", _xform(0, 0, HANDE["coupler_height"] + HANDE["hande_height"], 0, 0, np.pi)),
-    ):
+    for name, T in (("io_coupler", np.eye(4)),
+                    ("hande", _xform(0, 0, HANDE["coupler_height"], 0, 0, 0))):
         for colour, m in _group(_parts(("hande_description", hd), f"meshes/{name}.dae"),
-                                args.budget * SHARE[name] / (2 if name == "finger" else 1)):
+                                args.budget * SHARE[name]):
             v, f = _bake(m, T)
             tool.append({"c": colour, "v": v, "f": f})
             tris += len(f) // 3
     links.append({"name": "tool0", "parts": tool})
+
+    jaw = HANDE["coupler_height"] + HANDE["hande_height"]
+    for side, yaw in (("finger_l", 0.0), ("finger_r", np.pi)):
+        parts = []
+        for colour, m in _group(_parts(("hande_description", hd), "meshes/finger.dae"),
+                                args.budget * SHARE["finger"] / 2):
+            v, f = _bake(m, _xform(0, 0, jaw, 0, 0, yaw))
+            parts.append({"c": colour, "v": v, "f": f})
+            tris += len(f) // 3
+        links.append({"name": side, "parts": parts})
 
     def head(repo):
         return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
@@ -305,6 +312,9 @@ def main():
     doc = {
         "unit": UNIT,
         "triangles": tris,
+        #: How far each finger slides along tool0's x to open, in metres. The
+        #: baked pose is the closed one, so this is the whole range.
+        "grip_max": HANDE["grip_max"],
         "note": ("UR12e and Hand-E visual meshes, decimated. Vertices are int16 "
                  "multiples of `unit` metres in the named link frame, already "
                  "carrying the URDF mesh_offset; `f` indexes them in threes. "

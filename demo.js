@@ -365,16 +365,11 @@
     "# The second link carries a marker at the forearm and continues to wrist_1,",
     "# so the solve stays a two-link problem while every published link length",
     "# is exactly what the repo's own pose has.",
-    "L_BASE_Z = 0.180                # base -> shoulder",
-    "L1 = 0.271                      # shoulder -> upper_arm",
-    "L2_MID = 0.337                  # upper_arm -> forearm, along the second link",
-    "L2 = 0.588                      # upper_arm -> wrist_1",
-    "WRIST = (0.098, 0.063, 0.054)   # wrist_1 -> wrist_2 -> wrist_3 -> tool0",
-    "L_WRIST = 0.215",
     "# The browser has no MoveIt, so the pose FK would return at HOME_JOINTS is",
     "# stood in for. Chosen to sit inside the node's own workspace box with both",
     "# derived poses reachable; everything downstream comes from the repo.",
     "HOME_EEF = (-0.48, -0.28, 0.48)",
+    "GRIP_MAX = 0.025                # m, the Hand-E's stroke per finger",
     "PICK_DZ, PLACE_DY = -0.25, 0.75          # overwritten from the fetched source",
     "def arm_offsets_from_source(src):",
     "    # declare_parameter('pick_z_offset', -0.25) -- read them rather than",
@@ -415,32 +410,55 @@
     "def arm_pose(u):",
     "    tool, leg = eef_target(u)",
     "    return arm_ik(tool), np.array(tool), leg",
+    "_UR_NAMES = ('shoulder_link', 'upper_arm_link', 'forearm_link',",
+    "             'wrist_1_link', 'wrist_2_link', 'wrist_3_link')",
+    "def ur_poses(q, grip=0.0):",
+    "    # The ten transforms assets/ur12e.json is baked against: base, the six",
+    "    # joint frames, tool0, and a finger each. Orientation as well as",
+    "    # position -- returning only the origins is what had the page drawing a",
+    "    # stick figure, and a position is half a pose.",
+    "    #",
+    "    # tool0 is wrist_3 through the flange, backed off the TCP's own offset,",
+    "    # which is where the coupler and the Hand-E hang. The fingers are baked",
+    "    # closed in that frame, so opening them is a slide along tool0's x, one",
+    "    # each way because the right one carries a half turn already.",
+    "    import numpy as np",
+    "    from predictive_replanning import ur12e",
+    "    back = np.eye(4)",
+    "    back[2, 3] = -ur12e.TCP_OFFSET_Z",
+    "    tool = ur12e.fk_tcp(q) @ back",
+    "    jaws = []",
+    "    for sgn in (1.0, -1.0):",
+    "        slide = np.eye(4)",
+    "        slide[0, 3] = sgn * float(grip)",
+    "        jaws.append(tool @ slide)",
+    "    frames = [np.eye(4)] + list(ur12e.link_frames(q)) + [tool] + jaws",
+    "    return [[float(v) for v in T[:3, :4].ravel()] for T in frames]",
     "def arm_ik(tool):",
-    "    # Two-link solve in the vertical plane through the base and the target.",
-    "    # Every position below is placed from the solved angles, so the links",
-    "    # cannot stretch to cover an unreachable target.",
-    "    import math, numpy as np",
-    "    S = np.array([0.0, 0.0, L_BASE_Z])",
-    "    Wt = np.array([tool[0], tool[1], tool[2] + L_WRIST])       # wrist_1 target",
-    "    d = Wt - S",
-    "    r = math.hypot(d[0], d[1]); dz = d[2]",
-    "    yaw = math.atan2(d[1], d[0])",
-    "    reach = math.hypot(r, dz)",
-    "    span = min(max(reach, abs(L1 - L2) + 1e-4), L1 + L2 - 1e-4)",
-    "    ca = (span * span + L1 * L1 - L2 * L2) / (2.0 * L1 * span)",
-    "    a1 = math.atan2(dz, r) + math.acos(min(1.0, max(-1.0, ca)))",
-    "    cb = (L1 * L1 + L2 * L2 - span * span) / (2.0 * L1 * L2)",
-    "    a2 = a1 + math.acos(min(1.0, max(-1.0, cb))) - math.pi",
-    "    u1 = np.array([math.cos(a1) * math.cos(yaw), math.cos(a1) * math.sin(yaw), math.sin(a1)])",
-    "    u2 = np.array([math.cos(a2) * math.cos(yaw), math.cos(a2) * math.sin(yaw), math.sin(a2)])",
-    "    A = S + L1 * u1                       # upper_arm",
-    "    Fm = A + L2_MID * u2                  # forearm, a marker along the second link",
-    "    W = A + L2 * u2                       # wrist_1, where the solve actually puts it",
-    "    links = {'base_link': np.zeros(3), 'shoulder_link': S, 'upper_arm_link': A,",
-    "             'forearm_link': Fm, 'wrist_1_link': W}",
-    "    p = W",
-    "    for name, off in zip(('wrist_2_link', 'wrist_3_link', 'tool0'), WRIST):",
-    "        p = p + np.array([0.0, 0.0, -off]); links[name] = p",
+    "    # The real UR12e. This was a two-link solve in the vertical plane with",
+    "    # invented link lengths -- 0.271 and 0.588 against the robot's own",
+    "    # 0.6127 and 0.57155 -- which put every joint somewhere the hardware",
+    "    # never goes, and then the point cloud, the self-filter and the drawing",
+    "    # all agreed with each other about a robot that does not exist.",
+    "    #",
+    "    # `predictive_replanning.ur12e` is the same module the section below",
+    "    # runs, built from the description package's own kinematics file. The",
+    "    # solve is full-pose rather than position-only: a position-only step is",
+    "    # minimum-norm, so the shoulder does nearly all the work, wrist_3 never",
+    "    # moves at all, and the tool arrives tens of degrees off vertical. That",
+    "    # repo records it as a modelling error rather than a simplification.",
+    "    import numpy as np",
+    "    from predictive_replanning import ur12e",
+    "    seed = _ARM.get('q')",
+    "    if seed is None:",
+    "        seed = np.array([0.0, -1.2, 1.4, -1.6, -1.57, 0.0])",
+    "    q, _ok, _pe, _re = ur12e.ik_pose(np.asarray(tool, float), ur12e.TOP_DOWN, seed)",
+    "    _ARM['q'] = q                         # seeds the next solve, so it articulates",
+    "    frames = ur12e.link_frames(q)",
+    "    links = {'base_link': np.zeros(3)}",
+    "    for name, T in zip(_UR_NAMES, frames):",
+    "        links[name] = T[:3, 3].copy()",
+    "    links['tool0'] = ur12e.fk_tcp_pos(q)",
     "    return links",
     "_ARM = {}",
     "def arm_write(path, src):",
@@ -497,7 +515,11 @@
     "            int(n._baseline_count or 0), float(n.PREEMPT_DIST),",
     "            int(len(n._arm_pos_history.maxlen and [0] * n._arm_pos_history.maxlen)),",
     "            [[list(scene.LINKS).index(a), list(scene.LINKS).index(b)]",
-    "             for a, b in scene.CHAIN], PICK_DZ, PLACE_DY]",
+    "             for a, b in scene.CHAIN], PICK_DZ, PLACE_DY,",
+    "            # The camera, from scene.py rather than copied: rows are the",
+    "            # optical axes (x right, y down, z forward) in base_link.",
+    "            [[float(v) for v in row] for row in scene.R_BASE_FROM_CAM.T],",
+    "            [float(v) for v in scene.CAM_POS], [F, CX, CY]]",
     "def _set_pose(tool):",
     "    # One pose, handed to both the renderer and the node's TF, so the point",
     "    # cloud and the self-filter cannot disagree about where the arm is.",
@@ -508,7 +530,15 @@
     "    a['rig'].node.tf_buffer.links = links",
     "    a['tool'] = np.array(tool)",
     "    return links, np.array(tool)",
-    "F, CX, CY = 565.0, 533.0, 295.0     # fitted to the arm over a whole cycle",
+    "# Re-fitted after the kinematics were corrected. The real UR12e's elbow",
+    "# rises to z = 0.79 where the two-link stand-in reached 0.55, so at the",
+    "# old 565 the scene projected 609x629 into a 604x620 plate and clipped.",
+    "# Measured over the cycle *and* every detour it can take -- the lift is",
+    "# DETOUR_HEIGHT above the higher end and the side step is SIDE_OFFSET",
+    "# either way, which is another 200 px of the arm and is the difference",
+    "# between a fit that holds and one that only holds while nothing happens.",
+    "# 432x598 in 604x620, centred.",
+    "F, CX, CY = 380.0, 422.0, 393.0",
     "PLANE_Y = 0.08",
     "WS = ((-1.10, -0.30), (-0.45, 0.55), (0.10, 1.10))",
     "def _project(p):",
@@ -750,6 +780,9 @@
     "    # the payload, the gripper, and how far each joint is from the camera --",
     "    # the renderer needs depth to make a near link thicker than a far one",
     "    pay, grip, held = _payload(links['tool0'])",
+    "    # The meshes go where the joints are, with the jaws at the opening the",
+    "    # leg is actually commanding. GRIP_MAX is the Hand-E's own stroke.",
+    "    a['poses'] = ur_poses(a['q'], grip * GRIP_MAX)",
     "    pcam = s.to_camera(np.array([pay]))",
     "    ppu, ppv = _project(pcam)",
     "    pay_uv = [float(ppu[0]), float(ppv[0]), float(max(1e-3, pcam[0][2]))]",
@@ -767,7 +800,7 @@
     "            bool(c is not None and hit and eef < n.PREEMPT_DIST), leg,",
     "            state, note, int(a['replans']), _proj_path(_planned_path()),",
     "            (_proj_one(sphere) if sphere is not None else []),",
-    "            float(n.SPHERE_RADIUS), pay_uv, grip, held, depth]",
+    "            float(n.SPHERE_RADIUS), pay_uv, grip, held, depth, a['poses']]",
     "_RACE = {}",
     "RACE_CTRL = [('pure_pursuit_controller', 'PurePursuitControllerNode'),",
     "             ('stanley_controller', 'StanleyControllerNode'),",
@@ -1256,44 +1289,58 @@
   var FORESEE_PY = [
     "_PR = {}",
     "def _poses(q):",
-    "    # Every link frame, orientation included. Returning only the origins is",
-    "    # what made the page draw a stick figure: it has the vendor's meshes and",
-    "    # needs somewhere to put them, and a position is half a pose. tool0 is",
-    "    # wrist_3 through the flange, backed off the TCP's own offset, which is",
-    "    # where the coupler and the Hand-E hang.",
+    "    # ur_poses from the bootstrap: one place builds a pose row. Jaws shut,",
+    "    # because this section carries nothing.",
+    "    return ur_poses(q, 0.0)",
+    "Q_A = (0.0, -1.2, 1.4, -1.6, -1.57, 0.0)",
+    "Q_B = (1.1, -1.0, 1.2, -1.5, -1.57, 0.0)",
+    "def _leg(q_from, q_to):",
+    "    # One leg of the cycle, and everything the page needs to draw it.",
     "    import numpy as np",
     "    from predictive_replanning import ur12e",
-    "    back = np.eye(4)",
-    "    back[2, 3] = -ur12e.TCP_OFFSET_Z",
-    "    frames = [np.eye(4)] + list(ur12e.link_frames(q)) + [ur12e.fk_tcp(q) @ back]",
-    "    return [[float(v) for v in T[:3, :4].ravel()] for T in frames]",
+    "    from predictive_replanning.replan import nominal_trajectory",
+    "    traj, times = nominal_trajectory(np.asarray(q_from, float),",
+    "                                     np.asarray(q_to, float), 60, 6.0)",
+    "    _PR.update(traj=traj, times=times, active=traj, engaged=False,",
+    "               last_depth=0.0, last_replan=-9.0)",
+    "    return [[[float(v) for v in ur12e.fk_tcp_pos(q)] for q in traj],",
+    "            float(times[-1]), [_poses(q) for q in traj]]",
     "def foresee_init():",
     "    import sys",
     "    import numpy as np",
     "    if '/pr' not in sys.path: sys.path.insert(0, '/pr')",
-    "    from predictive_replanning import ur12e",
     "    from predictive_replanning.predict import arm_points, arm_radii",
     "    from predictive_replanning.replan import nominal_trajectory",
-    "    q0 = np.array([0.0, -1.2, 1.4, -1.6, -1.57, 0.0])",
-    "    qg = np.array([1.1, -1.0, 1.2, -1.5, -1.57, 0.0])",
-    "    traj, times = nominal_trajectory(q0, qg, 60, 6.0)",
     "    _PR.clear()",
-    "    _PR.update(traj=traj, times=times, active=traj, trk=None, base_radius=0.09,",
-    "               n_sigma=1.0, clearance=0.02, horizon=2.5, sigma_cap=0.20,",
-    "               engaged=False, last_depth=0.0, last_replan=-9.0,",
-    "               worse_by=0.03, min_gap=0.35, replans=0, deviation=0.0)",
-    "    # What the arm sweeps over the whole plan, padded by the fattest link,",
-    "    # so the camera frames the run rather than a box someone typed in.",
-    "    swept = np.vstack([arm_points(q)[0] for q in traj])",
+    "    _PR.update(trk=None, base_radius=0.09, n_sigma=1.0, clearance=0.02,",
+    "               horizon=2.5, sigma_cap=0.20, worse_by=0.03, min_gap=0.35,",
+    "               replans=0, deviation=0.0, leg=0)",
+    "    leg = _leg(Q_A, Q_B)",
+    "    # What the arm sweeps, over both legs rather than one, padded by the",
+    "    # fattest link. The camera is framed from this once and then left alone:",
+    "    # the cycle repeats between the same two poses, so there is nothing for",
+    "    # a re-fit to find, and a camera that re-fits every six seconds lurches.",
+    "    swept = np.vstack([arm_points(q)[0]",
+    "                       for a, b in ((Q_A, Q_B), (Q_B, Q_A))",
+    "                       for q in nominal_trajectory(np.array(a), np.array(b), 20, 6.0)[0]])",
     "    pad = float(arm_radii().max())",
-    "    return [[[float(v) for v in ur12e.fk_tcp_pos(q)] for q in traj],",
-    "            [float(v) for v in arm_radii()], float(times[-1]),",
+    "    return [leg[0], [float(v) for v in arm_radii()], leg[1],",
     "            [[float(v) - pad for v in swept.min(0)],",
-    "             [float(v) + pad for v in swept.max(0)]],",
-    "            [_poses(q) for q in traj]]",
+    "             [float(v) + pad for v in swept.max(0)]], leg[2]]",
+    "def foresee_advance():",
+    "    # The leg is over, so plan the next one from where the arm actually",
+    "    # ended up and send it back the other way. Nothing is reset: the replan",
+    "    # count and the accumulated deviation carry across, because the point of",
+    "    # the section is a plan being repaired while it runs rather than a demo",
+    "    # that starts again every six seconds. deform_minimal pins its",
+    "    # endpoints, so the arm really is where the last leg said it would be.",
+    "    s = _PR",
+    "    s['leg'] += 1",
+    "    return _leg(s['active'][-1], Q_A if s['leg'] % 2 else Q_B)",
     "def foresee_reset():",
-    "    _PR.update(active=_PR['traj'], trk=None, engaged=False, last_depth=0.0,",
-    "               last_replan=-9.0, replans=0, deviation=0.0)",
+    "    # The button: back to the first leg with the counters cleared.",
+    "    _PR.update(trk=None, replans=0, deviation=0.0, leg=0)",
+    "    return _leg(Q_A, Q_B)",
     "def foresee_step(ox, oy, oz, dt, t_now):",
     "    import numpy as np",
     "    from predictive_replanning import ur12e",
@@ -1694,6 +1741,14 @@
     var readEl = document.getElementById("foresee-read");
     var runEl = document.getElementById("foresee-run");
     var nominal = [], radii = [], poseTrack = [], duration = 6.0, planeZ = 0.32;
+    var legs = 0;                    // how many legs of the cycle have run
+
+    /* A leg is [tcp path, seconds, pose per waypoint]. The camera is not
+       re-framed: the cycle runs between the same two poses forever. */
+    function leg(next) {
+      nominal = next[0]; duration = next[1]; poseTrack = next[2];
+      legs++;
+    }
     var live = false, t = 0, raf = 0, last = 0, busy = false;
     var state = null, cursor = null;
     var sink = makeSink(24000), marks = makeMarks(sink), arm = null, cam = null;
@@ -1814,7 +1869,14 @@
       var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.02;
       last = now;
       t += dt;
-      if (t > duration) { t = 0; pyodide.runPython("foresee_reset()"); }
+      if (t > duration) {
+        // The motion does not stop and does not start again: the next leg is
+        // planned from where this one ended and sent back the other way, so
+        // the replanning is continuous and its count keeps climbing.
+        t = 0;
+        try { leg(pyodide.runPython("foresee_advance()").toJs()); }
+        catch (e) { /* keep driving the leg we have rather than freezing */ }
+      }
       if (busy || !cursor) { draw(); return; }
       busy = true;
       try {
@@ -1842,6 +1904,7 @@
          has nothing to draw the robot with, so it is not allowed to throw. */
       start: function (meta, mesh) {
         nominal = meta[0]; radii = meta[1]; duration = meta[2]; poseTrack = meta[4];
+        legs = 0;
         planeZ = nominal.reduce(function (a, p) { return a + p[2]; }, 0) / nominal.length;
         place(meta[3]);
         if (mesh) arm = makeArm(mesh, sink);
@@ -1855,7 +1918,9 @@
         cvf.addEventListener("touchmove", function (e) { cursor = at(e); e.preventDefault(); },
                              { passive: false });
         if (runEl) runEl.addEventListener("click", function () {
-          t = 0; pyodide.runPython("foresee_reset()"); state = null; draw();
+          t = 0; state = null;
+          try { leg(pyodide.runPython("foresee_reset()").toJs()); } catch (e) { /* ignore */ }
+          draw();
         });
         if (!raf) raf = requestAnimationFrame(tick);
         draw();
@@ -1863,7 +1928,7 @@
     };
   })();
 
-  async function bootForesee(pending, meshPending) {
+  async function bootForesee(pending, mesh) {
     if (!document.getElementById("foresee-canvas")) return;
     try {
       log("loading the predictive replanner from " + FORESEE.repo + "…");
@@ -1879,12 +1944,6 @@
       pyodide.runPython("arm_write(__path, __src)");
       pyodide.runPython(FORESEE_PY);
       var meta = pyodide.runPython("foresee_init()").toJs();
-      // The meshes are a nicety; the replanner is the demo. If they failed to
-      // arrive the section still runs, without a robot to look at.
-      var mesh = null;
-      try { mesh = await meshPending; } catch (e) {
-        log("  " + FORESEE.mesh + " unavailable: " + String(e && e.message || e), "err");
-      }
       foresee.start(meta, mesh);
       live("foresee-canvas");
       log("predictive replanner online: " + meta[0].length + "-waypoint plan over " +
@@ -2007,9 +2066,18 @@
       log("ready. draw a map and hit run.", "ok");
 
       // The arm goes last on purpose: its harness stubs ROS for itself, and
-      // the nav modules have already bound their own names by now.
-      await bootArm(armP);
-      await bootForesee(seeP, meshP);
+      // the nav modules have already bound their own names by now. The
+      // replanning package comes first because the arm's own kinematics are
+      // its: `arm_ik` imports `predictive_replanning.ur12e`, so those files
+      // have to be on disk before `arm_init` places a single joint.
+      // The meshes are a nicety; the replanners are the demos. If they failed
+      // to arrive both sections still run, without a robot to look at.
+      var mesh = null;
+      try { mesh = await meshP; } catch (e) {
+        log(FORESEE.mesh + " unavailable: " + String(e && e.message || e), "err");
+      }
+      await bootForesee(seeP, mesh);
+      await bootArm(armP, mesh);
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";
@@ -2931,6 +2999,21 @@
     var links = [], chain = [], meta = null, f = null, radius = 0.07;
     var hist = [];                                    // recent decisions, for the strip
     var t0 = 0, PERIOD = 14000;                       // one pick-and-place loop
+    /* The robot, from the same asset the section below draws. `cam3` is this
+       scene's pinhole wrapped so the mesh renderer can use it: scene.py's
+       optical frame is x right, y down, z forward, and the renderer wants an
+       up axis, so `u` is the negated down row. */
+    var sink = makeSink(20000), armMesh = null, cam3 = null;
+    /* Half a cube the jaws can close on, four fifths of the Hand-E's 0.025 m
+       stroke. Drawn in metres because the arm around it now is. */
+    var PAYLOAD_HALF = 0.8 * 0.025;
+
+    function pinhole(rows, eye, k) {
+      var down = rows[1];
+      return { eye: eye, r: rows[0], d: rows[2],
+               u: [-down[0], -down[1], -down[2]],
+               fl: k[0], cx: k[1], cy: k[2] };
+    }
 
     function bar(x, y, w, h, frac, colour, alpha) {
       g.fillStyle = C.rule; g.globalAlpha = 0.55;
@@ -2973,87 +3056,41 @@
         }
       }
 
-      // The arm, drawn as an arm rather than as a wireframe: each link is a
-      // tapered shell between two joint housings, and the housings get a
-      // highlight so the chain reads as solid. Widths come from the joint
-      // depths the frame returns, so a link nearer the camera is thicker --
-      // without that a projected chain looks flat and toy-like.
-      if (links.length) {
-        // 28 payload uv+z, 29 gripper opening, 30 held, 31 per-joint depth --
-        // the frame array is positional and these live past SPHERE_RADIUS.
-        var dep = f && f[31] ? f[31] : null;
-        var SHELL = "#3f5f66", EDGE = "#7fc3cd", HI = "#a9dbe2";
-        // A real arm tapers from a fat shoulder to a slim wrist, so the width
-        // comes mostly from position in the chain. Depth only nudges it, and
-        // is clamped: straight 1/z made a near joint thirty pixels across and
-        // a far one two, which draws a funnel rather than an arm.
-        var TAPER = [13, 12.5, 11, 9, 7, 6, 5.2, 4.4];
-        var NOMINAL = 1.9;                       // m, roughly plate centre
-        var rAt = function (i) {
-          var base = TAPER[Math.min(i, TAPER.length - 1)];
-          if (!dep) return base;
-          var k = NOMINAL / Math.max(0.35, dep[i]);
-          return base * Math.max(0.72, Math.min(1.35, k));
-        };
-        // payload first when it is behind the gripper, so the hand covers it
-        var pay = f && f[28] ? f[28] : null, held = !!(f && f[30]);
-
+      /* The robot: Universal Robots' and Robotiq's own meshes, at the joint
+         frames the IK returns, through this scene's own pinhole. It used to be
+         tapered shells between projected joint origins -- a drawing of an arm,
+         with the joints themselves coming from a two-link solve that had the
+         elbow half a metre from where a UR12e puts it. `armMesh` is the same
+         asset the section below uses; if it did not arrive, the chain still
+         draws as capsules so the detector still has something to filter. */
+      if (links.length && armMesh && cam3 && f && f[32]) {
+        sink.reset();
+        armMesh.draw(cam3, f[32]);
+        sink.flush(g);
+      } else if (links.length) {
+        g.strokeStyle = "#3f5f66"; g.lineCap = "round"; g.lineJoin = "round";
         chain.forEach(function (sg) {
           var a = links[sg[0]], b = links[sg[1]];
-          var ra = rAt(sg[0]) * 0.9, rb = rAt(sg[1]) * 0.9;
-          var dx = b[0] - a[0], dy = b[1] - a[1];
-          var L = Math.hypot(dx, dy) || 1;
-          var nx = -dy / L, ny = dx / L;
-          g.beginPath();
-          g.moveTo(a[0] + nx * ra, a[1] + ny * ra);
-          g.lineTo(b[0] + nx * rb, b[1] + ny * rb);
-          g.lineTo(b[0] - nx * rb, b[1] - ny * rb);
-          g.lineTo(a[0] - nx * ra, a[1] - ny * ra);
-          g.closePath();
-          g.fillStyle = SHELL; g.globalAlpha = 0.92; g.fill();
-          g.globalAlpha = 1; g.strokeStyle = EDGE; g.lineWidth = 1.1; g.stroke();
-          // a highlight down one side, which is what stops it reading as a bar
-          g.beginPath();
-          g.moveTo(a[0] + nx * ra * 0.45, a[1] + ny * ra * 0.45);
-          g.lineTo(b[0] + nx * rb * 0.45, b[1] + ny * rb * 0.45);
-          g.strokeStyle = HI; g.globalAlpha = 0.30; g.lineWidth = 1.4; g.stroke();
-          g.globalAlpha = 1;
-        });
-        links.forEach(function (p, i) {
-          var r = rAt(i);
-          g.beginPath(); g.arc(p[0], p[1], r, 0, 6.284);
-          g.fillStyle = SHELL; g.fill();
-          g.strokeStyle = EDGE; g.lineWidth = 1.2; g.stroke();
-          g.beginPath(); g.arc(p[0] - r * 0.25, p[1] - r * 0.25, r * 0.34, 0, 6.284);
-          g.fillStyle = HI; g.globalAlpha = 0.4; g.fill(); g.globalAlpha = 1;
-        });
-
-        // The gripper: two fingers on the wrist axis, opening with f[26].
-        var tp0 = links[links.length - 1], wp = links[links.length - 2] || tp0;
-        var gdx = tp0[0] - wp[0], gdy = tp0[1] - wp[1];
-        var gl = Math.hypot(gdx, gdy) || 1;
-        var ux = gdx / gl, uy = gdy / gl, px = -uy, py = ux;
-        var open = f && typeof f[29] === "number" ? f[29] : 1;
-        var rT = rAt(links.length - 1);
-        var span = rT * (0.55 + 1.15 * open), fl = rT * 1.9;
-        g.strokeStyle = EDGE; g.lineWidth = Math.max(2, rT * 0.42); g.lineCap = "round";
-        [1, -1].forEach(function (sgn) {
-          var bx = tp0[0] + px * span * sgn, by = tp0[1] + py * span * sgn;
-          g.beginPath();
-          g.moveTo(tp0[0] + px * span * sgn * 0.35, tp0[1] + py * span * sgn * 0.35);
-          g.lineTo(bx, by);
-          g.lineTo(bx + ux * fl, by + uy * fl);
-          g.stroke();
+          g.lineWidth = 18; g.beginPath();
+          g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
         });
         g.lineCap = "butt";
+      }
+      if (links.length) {
+        // 28 payload uv+z, 29 gripper opening, 30 held, 31 per-joint depth,
+        // 32 the ten link poses -- the frame array is positional and these
+        // live past SPHERE_RADIUS.
+        var pay = f && f[28] ? f[28] : null, held = !!(f && f[30]);
 
         // the thing it is moving, drawn last so the gripper does not bury it
         var drawPayload = function () {
         if (pay && pay.length) {
-          // Sized against the drawn gripper rather than off its true metres:
-          // the links are drawn to a taper, so a physically-scaled box comes
-          // out four times the wrist and reads as a crate on a toy arm.
-          var pr = Math.max(3.5, rAt(links.length - 1) * 1.45);
+          // Sized in metres now that the arm around it is: a cube the jaws can
+          // close on, taken as four fifths of the Hand-E's stroke rather than
+          // as a number typed here, projected through the same pinhole. It
+          // used to be scaled off the drawn taper, because a physical size
+          // against a two-link stand-in came out four times the wrist.
+          var pr = Math.max(2.5, cam3 ? cam3.fl * PAYLOAD_HALF / Math.max(0.05, pay[2]) : 8);
           g.beginPath();
           g.rect(pay[0] - pr, pay[1] - pr, pr * 2, pr * 2);
           g.fillStyle = held ? "#e0a03a" : "#c98a2e";
@@ -3292,16 +3329,20 @@
     }, { passive: false });
 
     return {
-      start: function (m) {
+      start: function (m, mesh) {
         meta = m;
         chain = m[8];
+        if (mesh && m[11] && m[12] && m[13]) {
+          armMesh = makeArm(mesh, sink);
+          cam3 = pinhole(m[11], m[12], m[13]);
+        }
         t0 = performance.now();
         live = true; paint(); requestAnimationFrame(step);
       }
     };
   })();
 
-  async function bootArm(pending) {
+  async function bootArm(pending, mesh) {
     var el = document.getElementById("arm");
     if (!el) return;
     try {
@@ -3320,7 +3361,7 @@
       pyodide.globals.set("__src", "");
       pyodide.runPython("arm_write(__path, __src)");
       var m = pyodide.runPython("arm_init(20260808)").toJs();
-      arm.start(m);
+      arm.start(m, mesh);
       live("arm");
       log("detector online: threshold " + m[2] + " foreign points, " + m[3] +
           "-frame debounce, " + Math.round(1 / m[4]) + " Hz, preempt inside " +
