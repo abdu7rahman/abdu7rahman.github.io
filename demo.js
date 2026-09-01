@@ -72,6 +72,17 @@
     files: ["tests/harness.py", "tests/scene.py",
             "reactive_replanning_ur12e/reactive_replanning.py"]
   };
+  /* The predictive replanner from the same repo. Pure numpy -- predict.py and
+     replan.py reach only into ur12e.py -- so unlike the cell simulation beside
+     it there is no MuJoCo to stand up, and the three modules run here as they
+     run on the robot. */
+  var FORESEE = {
+    repo: "abdu7rahman/motion-replanning-ur12e",
+    branch: "main",
+    files: ["predictive_replanning/ur12e.py",
+            "predictive_replanning/predict.py",
+            "predictive_replanning/replan.py"]
+  };
   var HINTS = {
     astar: "8-connected grid search, octile heuristic. Expands in cost order.",
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
@@ -1235,6 +1246,289 @@
     throw new Error("could not fetch " + file);
   }
 
+  /* The predictive replanner's glue. Everything of substance is the repo's:
+     ObstacleTracker, time_to_collision and deform_minimal are imported, not
+     reimplemented, and the constants below are the ones its own tests use. */
+  var FORESEE_PY = [
+    "_PR = {}",
+    "def foresee_init():",
+    "    import sys",
+    "    import numpy as np",
+    "    if '/pr' not in sys.path: sys.path.insert(0, '/pr')",
+    "    from predictive_replanning import ur12e",
+    "    from predictive_replanning.predict import arm_radii",
+    "    from predictive_replanning.replan import nominal_trajectory",
+    "    q0 = np.array([0.0, -1.2, 1.4, -1.6, -1.57, 0.0])",
+    "    qg = np.array([1.1, -1.0, 1.2, -1.5, -1.57, 0.0])",
+    "    traj, times = nominal_trajectory(q0, qg, 60, 6.0)",
+    "    _PR.clear()",
+    "    _PR.update(traj=traj, times=times, active=traj, trk=None, base_radius=0.09,",
+    "               n_sigma=1.0, clearance=0.02, horizon=2.5, sigma_cap=0.20,",
+    "               engaged=False, last_depth=0.0, last_replan=-9.0,",
+    "               worse_by=0.03, min_gap=0.35, replans=0, deviation=0.0)",
+    "    return [[[float(v) for v in ur12e.fk_tcp_pos(q)] for q in traj],",
+    "            [float(v) for v in arm_radii()], float(times[-1])]",
+    "def foresee_reset():",
+    "    _PR.update(active=_PR['traj'], trk=None, engaged=False, last_depth=0.0,",
+    "               last_replan=-9.0, replans=0, deviation=0.0)",
+    "def foresee_step(ox, oy, oz, dt, t_now):",
+    "    import numpy as np",
+    "    from predictive_replanning import ur12e",
+    "    from predictive_replanning.predict import (ObstacleTracker, arm_points,",
+    "                                               time_to_collision)",
+    "    from predictive_replanning.replan import deform_minimal",
+    "    s = _PR",
+    "    obs = np.array([ox, oy, oz], float)",
+    "    s['trk'] = ObstacleTracker(obs) if s['trk'] is None else (s['trk'].update(obs, dt) or s['trk'])",
+    "    trk = s['trk']",
+    "    hs = np.linspace(0.15, s['horizon'], 8)",
+    "    centres, _sg = trk.forecast(hs)",
+    "    reff = trk.effective_radius(hs, s['base_radius'], s['n_sigma'], sigma_cap=s['sigma_cap'])",
+    "    tube = [[float(c[0]), float(c[1]), float(c[2]), float(r)] for c, r in zip(centres, reff)]",
+    "    # Everything the arm has already driven is frozen: a plan cannot edit the past.",
+    "    lock = int(np.searchsorted(s['times'], t_now))",
+    "    ttc, idx, depth = time_to_collision(s['active'], s['times'], t_now, trk,",
+    "                                        base_radius=s['base_radius'], n_sigma=s['n_sigma'],",
+    "                                        clearance=s['clearance'], horizon=s['horizon'],",
+    "                                        sigma_cap=s['sigma_cap'])",
+    "    # Hysteresis on the threat, not on the clock -- run.py's own rule, and its",
+    "    # own two constants. Re-deforming the running trajectory on every frame",
+    "    # compounds: the repo measured that as replans going 2.5 -> 18.8 a run.",
+    "    # Here it showed up as 21 rad of accumulated deviation and a path tied in",
+    "    # knots. A threat that is new fires at once; one merely getting worse has",
+    "    # to clear a floor as well; a clear path stands the whole thing down.",
+    "    iters, dev, cleared = 0, 0.0, 0",
+    "    if ttc is None:",
+    "        s['engaged'], s['last_depth'] = False, 0.0",
+    "    else:",
+    "        gap = t_now - s['last_replan']",
+    "        worse = depth > s['last_depth'] + s['worse_by'] and gap >= s['min_gap']",
+    "        if (not s['engaged'] and gap >= s['min_gap']) or worse:",
+    "            # Deform the *nominal* future, not the last deformation, keeping",
+    "            # whatever has already been driven. run.py deforms its running",
+    "            # trajectory and gets away with it because its obstacle passes",
+    "            # through and the threat stands down; a cursor can be parked in",
+    "            # the path forever, and each replan then pushes off the last one",
+    "            # -- measured at 86 cm of tool displacement on an arm with about",
+    "            # a metre of reach. From the nominal, the deviation is always",
+    "            # just what clears the tube in front of it now.",
+    "            base = np.vstack([s['active'][:lock], s['traj'][lock:]]) if lock else s['traj']",
+    "            new, dv, it, ok = deform_minimal(base, s['times'], t_now, trk,",
+    "                                            base_radius=s['base_radius'], n_sigma=s['n_sigma'],",
+    "                                            clearance=s['clearance'], horizon=s['horizon'],",
+    "                                            sigma_cap=s['sigma_cap'], lock_before=lock)",
+    "            if ok: s['active'] = new",
+    "            iters, dev, cleared = int(it), float(dv), int(bool(ok))",
+    "            s['last_replan'], s['replans'] = t_now, s['replans'] + 1",
+    "            s['deviation'] += float(dv)",
+    "            s['engaged'], s['last_depth'] = (not ok), depth",
+    "    # How far the tool has been pushed off the plan, in metres. The",
+    "    # deformation's own figure is a sum of joint angles over every waypoint,",
+    "    # which grows without bound across replans and means nothing to look at.",
+    "    shift = max(float(np.linalg.norm(ur12e.fk_tcp_pos(a) - ur12e.fk_tcp_pos(b)))",
+    "                for a, b in zip(s['active'], s['traj']))",
+    "    q = s['active'][min(lock, len(s['active']) - 1)]",
+    "    pts = arm_points(q)[0]",
+    "    return [tube, -1.0 if ttc is None else float(ttc), -1 if idx is None else int(idx),",
+    "            float(depth), int(s['replans']), float(shift), cleared,",
+    "            [[float(a) for a in p] for p in pts],",
+    "            [float(v) for v in trk.x[:3]],",
+    "            [[float(v) for v in ur12e.fk_tcp_pos(a)] for a in s['active']],",
+    "            [[float(T[0, 3]), float(T[1, 3]), float(T[2, 3])] for T in ur12e.link_frames(q)]]"
+  ].join("\n");
+
+  /* ---------- see it coming: track, forecast, deform ------------------
+     Top view of the cell. The cone is the whole point -- it is drawn from the
+     tracker's own forecast covariance, not from a shape chosen to look like
+     one -- so the reader can watch it open with the horizon and then saturate
+     where sigma_cap puts it.
+     ------------------------------------------------------------------- */
+  var foresee = (function () {
+    var cvf = fitCanvas(document.getElementById("foresee-canvas"), 640 / 1204, 1.05);
+    if (!cvf) return { start: function () {} };
+    var g = cvf.getContext("2d");
+    var readEl = document.getElementById("foresee-read");
+    var runEl = document.getElementById("foresee-run");
+    var nominal = [], radii = [], duration = 6.0;
+    var live = false, t = 0, raf = 0, last = 0, busy = false;
+    var state = null, cursor = null, VIEW = null;
+
+    /* World is metres in base_link; the cell sits in x,y around the origin.
+       Bounds come from the nominal path rather than being typed in, so a
+       different pick and place still frames itself. */
+    function frame() {
+      var xs = nominal.map(function (p) { return p[0]; });
+      var ys = nominal.map(function (p) { return p[1]; });
+      var pad = 0.42;
+      var x0 = Math.min.apply(null, xs) - pad, x1 = Math.max.apply(null, xs) + pad;
+      var y0 = Math.min.apply(null, ys) - pad, y1 = Math.max.apply(null, ys) + pad;
+      x0 = Math.min(x0, -0.15); x1 = Math.max(x1, 0.15);
+      y0 = Math.min(y0, -0.15); y1 = Math.max(y1, 0.15);
+      var sc = Math.min(cvf._w / (x1 - x0), cvf._h / (y1 - y0)) * 0.94;
+      return { x0: x0, y0: y0, sc: sc,
+               ox: (cvf._w - (x1 - x0) * sc) / 2, oy: (cvf._h - (y1 - y0) * sc) / 2,
+               x1: x1, y1: y1 };
+    }
+    function X(wx) { return VIEW.ox + (wx - VIEW.x0) * VIEW.sc; }
+    function Y(wy) { return cvf._h - VIEW.oy - (wy - VIEW.y0) * VIEW.sc; }
+    function R(m) { return m * VIEW.sc; }
+
+    function poly(pts, col, w, dash) {
+      if (!pts || pts.length < 2) return;
+      g.save(); g.strokeStyle = col; g.lineWidth = w; g.lineJoin = "round";
+      if (dash) g.setLineDash(dash);
+      g.beginPath(); g.moveTo(X(pts[0][0]), Y(pts[0][1]));
+      for (var i = 1; i < pts.length; i++) g.lineTo(X(pts[i][0]), Y(pts[i][1]));
+      g.stroke(); g.restore();
+    }
+    function disc(wx, wy, r, fill, stroke, w) {
+      g.beginPath(); g.arc(X(wx), Y(wy), Math.max(1, R(r)), 0, 6.2832);
+      if (fill) { g.fillStyle = fill; g.fill(); }
+      if (stroke) { g.strokeStyle = stroke; g.lineWidth = w || 1; g.stroke(); }
+    }
+
+    function draw() {
+      if (!VIEW) VIEW = frame();
+      g.clearRect(0, 0, cvf._w, cvf._h);
+      g.fillStyle = "#fbfbfd"; g.fillRect(0, 0, cvf._w, cvf._h);
+
+      // metre grid, so the cone's width is readable as a distance
+      g.save(); g.strokeStyle = "#e8e8ee"; g.lineWidth = 1;
+      for (var gx = Math.ceil(VIEW.x0 * 4) / 4; gx < VIEW.x1; gx += 0.25) {
+        g.beginPath(); g.moveTo(X(gx), 0); g.lineTo(X(gx), cvf._h); g.stroke();
+      }
+      for (var gy = Math.ceil(VIEW.y0 * 4) / 4; gy < VIEW.y1; gy += 0.25) {
+        g.beginPath(); g.moveTo(0, Y(gy)); g.lineTo(cvf._w, Y(gy)); g.stroke();
+      }
+      g.restore();
+      disc(0, 0, 0.09, "#dcdce4", "#b9b9c4", 1.5);          // the base
+
+      poly(nominal, "#b9b9c4", 1.5, [5, 5]);                 // plan as planned
+
+      if (state) {
+        var tube = state[0], ttc = state[1], iters = state[4], dev = state[5];
+        var arm = state[7], est = state[8], active = state[9], frames = state[10];
+
+        // the cone, far end first so the near, tighter discs sit on top
+        for (var i = tube.length - 1; i >= 0; i--) {
+          var a = 0.05 + 0.16 * (1 - i / tube.length);
+          disc(tube[i][0], tube[i][1], tube[i][3], "rgba(154,74,38," + a.toFixed(3) + ")", null);
+        }
+        for (var j = tube.length - 1; j >= 0; j--) {
+          disc(tube[j][0], tube[j][1], tube[j][3], null, "rgba(154,74,38,0.30)", 1);
+        }
+
+        poly(active, ttc > 0 ? "#9a4a26" : "#3f6b57", 2.4);   // what it will actually drive
+
+        // the arm as the planner sees it: a chain, and the spheres it checks
+        poly([[0, 0]].concat(frames), "#41414c", 3.2);
+        for (var k = 0; k < arm.length; k++) {
+          disc(arm[k][0], arm[k][1], radii[k] || 0.05, "rgba(65,65,76,0.10)", null);
+        }
+        for (var m = 0; m < frames.length; m++) {
+          disc(frames[m][0], frames[m][1], 0.022, "#41414c", null);
+        }
+
+        if (cursor) disc(cursor[0], cursor[1], 0.05, "rgba(154,74,38,0.85)", "#7a3a1e", 1.5);
+        disc(est[0], est[1], 0.028, null, "#9a4a26", 2);      // where the filter thinks it is
+
+        var tubeTxt = "tube " + tube[0][3].toFixed(2) + " m \u2192 " +
+                      tube[tube.length - 1][3].toFixed(2) + " m";
+        readEl.textContent = ttc > 0
+          ? "collision in " + ttc.toFixed(2) + " s  \u00b7  " + iters + " replan" +
+            (iters === 1 ? "" : "s") + ", tool " + (dev * 100).toFixed(0) +
+            " cm off the plan  \u00b7  " + tubeTxt
+          : "clear over the 2.5 s horizon  \u00b7  " + iters + " replan" +
+            (iters === 1 ? "" : "s") + " so far  \u00b7  " + tubeTxt;
+      }
+    }
+
+    function tick(now) {
+      raf = requestAnimationFrame(tick);
+      if (!live) return;
+      var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.02;
+      last = now;
+      t += dt;
+      if (t > duration) { t = 0; pyodide.runPython("foresee_reset()"); }
+      if (busy || !cursor) { draw(); return; }
+      busy = true;
+      try {
+        pyodide.globals.set("__ox", cursor[0]);
+        pyodide.globals.set("__oy", cursor[1]);
+        pyodide.globals.set("__oz", cursor[2]);
+        pyodide.globals.set("__dt", dt);
+        pyodide.globals.set("__t", t);
+        state = pyodide.runPython("foresee_step(__ox, __oy, __oz, __dt, __t)").toJs();
+      } catch (e) { /* one bad frame must not kill the loop */ }
+      busy = false;
+      draw();
+    }
+
+    function at(ev) {
+      var b = cvf.getBoundingClientRect();
+      var pt = ev.touches ? ev.touches[0] : ev;
+      if (!VIEW) VIEW = frame();
+      var wx = VIEW.x0 + ((pt.clientX - b.left) / b.width * cvf._w - VIEW.ox) / VIEW.sc;
+      var wy = VIEW.y0 + ((cvf._h - (pt.clientY - b.top) / b.height * cvf._h) - VIEW.oy) / VIEW.sc;
+      return [wx, wy, 0.35];        // the cell plane the arm works in
+    }
+
+    return {
+      start: function (meta) {
+        nominal = meta[0]; radii = meta[1]; duration = meta[2];
+        VIEW = frame();
+        cursor = null; live = true; t = 0; last = 0;
+        // Loaded, but nothing to report until there is an obstacle to track --
+        // leaving the loading line up reads as a demo that never finished.
+        readEl.textContent = "move the cursor into the cell \u00b7 " +
+          nominal.length + " waypoints over " + duration.toFixed(1) + " s";
+        cvf.addEventListener("pointermove", function (e) { cursor = at(e); });
+        cvf.addEventListener("pointerleave", function () { cursor = null; });
+        cvf.addEventListener("touchmove", function (e) { cursor = at(e); e.preventDefault(); },
+                             { passive: false });
+        if (runEl) runEl.addEventListener("click", function () {
+          t = 0; pyodide.runPython("foresee_reset()"); state = null; draw();
+        });
+        if (!raf) raf = requestAnimationFrame(tick);
+        draw();
+      }
+    };
+  })();
+
+  async function bootForesee(pending) {
+    if (!document.getElementById("foresee-canvas")) return;
+    try {
+      log("loading the predictive replanner from " + FORESEE.repo + "…");
+      var texts = await Promise.all(pending || FORESEE.files.map(fetchForeseeFile));
+      for (var i = 0; i < FORESEE.files.length; i++) {
+        pyodide.globals.set("__src", texts[i]);
+        pyodide.globals.set("__path", "/pr/" + FORESEE.files[i]);
+        pyodide.runPython("arm_write(__path, __src)");
+        log("  " + FORESEE.files[i] + "  " + texts[i].length.toLocaleString() + " bytes");
+      }
+      pyodide.globals.set("__path", "/pr/predictive_replanning/__init__.py");
+      pyodide.globals.set("__src", "");
+      pyodide.runPython("arm_write(__path, __src)");
+      pyodide.runPython(FORESEE_PY);
+      var meta = pyodide.runPython("foresee_init()").toJs();
+      foresee.start(meta);
+      live("foresee-canvas");
+      log("predictive replanner online: " + meta[0].length + "-waypoint plan over " +
+          meta[2].toFixed(1) + " s, " + meta[1].length + " collision spheres on the arm", "ok");
+    } catch (e) {
+      log("predictive replanner unavailable: " + String(e && e.message || e)
+          .split("\n").slice(-3).join(" | "), "err");
+    }
+  }
+
+  async function fetchForeseeFile(rel) {
+    var url = "https://raw.githubusercontent.com/" + FORESEE.repo + "/" +
+              FORESEE.branch + "/" + rel;
+    var r = await fetch(url, { cache: "no-cache" });
+    if (!r.ok) throw new Error(rel + ": HTTP " + r.status);
+    return r.text();
+  }
+
   async function fetchArmFile(rel) {
     var url = "https://raw.githubusercontent.com/" + ARM.repo + "/" + ARM.branch + "/" + rel;
     var r = await fetch(url, { cache: "no-cache" });
@@ -1262,10 +1556,12 @@
         if (!srcP[RACERS[ri].file]) srcP[RACERS[ri].file] = fetchSource(RACERS[ri].file);
       }
       var armP = ARM.files.map(function (rel) { return fetchArmFile(rel); });
+      var seeP = FORESEE.files.map(function (rel) { return fetchForeseeFile(rel); });
       // A rejected promise nobody has awaited yet is an unhandled rejection.
       // These are all awaited below, but not before the browser notices.
       Object.keys(srcP).forEach(function (k) { srcP[k].catch(function () {}); });
       armP.forEach(function (q) { q.catch(function () {}); });
+      seeP.forEach(function (q) { q.catch(function () {}); });
 
       // After the fetches, not before: if the runtime script failed to arrive
       // this call throws synchronously, and there is no reason to lose the
@@ -1326,6 +1622,7 @@
       // The arm goes last on purpose: its harness stubs ROS for itself, and
       // the nav modules have already bound their own names by now.
       await bootArm(armP);
+      await bootForesee(seeP);
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";

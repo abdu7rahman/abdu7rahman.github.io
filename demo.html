@@ -41,7 +41,7 @@
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
-      Six things on this page, and none of them are a recording. Four of them download the Python
+      Seven things on this page, and none of them are a recording. Five of them download the Python
       straight from
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
@@ -66,6 +66,7 @@
       <li><a href="#drive">Chase your cursor</a><span>A* + DWA, 10 Hz</span></li>
       <li><a href="#race">Race five controllers</a><span>Pure Pursuit, Stanley, DWA, TEB, MPPI</span></li>
       <li><a href="#reach">Reach into the cell</a><span>detect, preempt, replan</span></li>
+      <li><a href="#foresee">See it coming</a><span>track, forecast, deform</span></li>
     </ol>
     <p class="runner__tocl">Copied in, because the repository is private</p>
     <ol class="runner__toc runner__toc--2">
@@ -290,6 +291,54 @@
     <div class="chase__stage" data-reveal>
       <canvas id="arm" width="1204" height="620" aria-label="A simulated RealSense view of a UR12e workspace. Move the cursor to place an obstacle and watch the real detection pipeline decide."></canvas>
       <p class="chase__read" id="arm-read">move the cursor over the camera plate</p>
+    </div>
+  </section>
+
+  <section class="chase" id="foresee" data-demo="foresee">
+    <div class="chase__head" data-reveal>
+      <p class="panel__label">Same repo, one step earlier</p>
+      <h2 class="chase__title">See it coming</h2>
+      <p class="chase__lede">
+        The demo above reacts: something enters the path, the motion is cancelled, a new one is
+        planned. This one runs the <code>predictive_replanning</code> package from the same
+        repository, which asks a different question &mdash; not <em>is anything in the way</em> but
+        <em>where will it be when I get there</em>. Top view of the cell, base at the origin, the
+        arm&rsquo;s own collision spheres drawn as the planner sees them.
+      </p>
+      <p class="chase__lede">
+        <strong>Move your cursor into the arm&rsquo;s path.</strong> A constant-velocity Kalman
+        filter tracks it from noisy positions &mdash; it is never told the velocity, it has to
+        estimate one &mdash; and then forecasts forward. What it draws is not a predicted point but a
+        <em>cone</em>: at horizon <em>h</em> the obstacle is a sphere of
+        <code>r_obstacle + n&sigma;&nbsp;&middot;&nbsp;&sigma;(h)</code>, and &sigma; grows with
+        <em>h</em> because the filter&rsquo;s own uncertainty grows. Avoiding the mean would make it
+        exactly as brittle as reacting, just earlier. Avoiding the cone is the point.
+      </p>
+      <p class="chase__lede">
+        The cone stops widening because it is capped. A constant-velocity filter extrapolates without
+        bound &mdash; its two-second covariance implies a sphere <strong>2.40&nbsp;m</strong> across
+        against a true mean error of 0.98&nbsp;m &mdash; and inflating by that marks the whole
+        workspace blocked and stops the robot dead. <code>sigma_cap</code> saturates it at the volume
+        the cell actually confines an obstacle to, which is why the tube here opens from
+        0.11&nbsp;m to 0.29&nbsp;m and then holds.
+      </p>
+      <p class="chase__lede chase__lede--note">
+        When a waypoint inside the horizon enters the tube, <code>deform_minimal</code> pushes the
+        trajectory out of it &mdash; endpoints pinned, and every waypoint the arm has already
+        executed frozen, because a plan cannot edit the past. It does not re-fire every frame:
+        a threat that is new replans at once, one merely getting worse has to clear a floor first,
+        and a path that comes clear stands the whole thing down &mdash; the repo&rsquo;s own rule,
+        with its own two constants. The readout gives the time to collision, how many times it has
+        replanned and how far off the plan the tool has been pushed. Park the cursor on the dashed
+        line and it fires a second or two ahead.
+      </p>
+      <p class="chase__key" id="foresee-key">
+        <button class="tbtn tbtn--sm" id="foresee-run" type="button">Replay the reach</button>
+      </p>
+    </div>
+    <div class="chase__stage" data-reveal>
+      <canvas id="foresee-canvas" width="1204" height="640" aria-label="Top view of a UR12e cell. Move the cursor to place an obstacle; a Kalman filter forecasts where it will be and the arm's trajectory is deformed out of the widening uncertainty cone."></canvas>
+      <p class="chase__read" id="foresee-read">loading the predictive replanner&hellip;</p>
     </div>
   </section>
 
@@ -532,7 +581,7 @@
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      All six run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      All seven run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
       and send nothing anywhere. For the first four the source is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page. The last
       three run in a second runtime that does not start until you press something in one of their
@@ -560,7 +609,7 @@
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
 <script src="feedback.js?v=f83ef280" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=ffddded8" defer></script>
+<script src="demo.js?v=2507f9db" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
 </body>
 </html>
