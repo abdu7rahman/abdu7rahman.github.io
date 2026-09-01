@@ -265,7 +265,7 @@
    wider than a phone. Scaling to the column keeps the backing store at full
    resolution and costs nothing: every pointer handler already converts through
    getBoundingClientRect().width, so a scaled canvas still maps clicks correctly. */
-#chase, #race-canvas, #arm {
+#chase, #race-canvas, #arm, #foresee-canvas {
   display: block; width: 100%; height: auto;
   border: 0; border-radius: var(--r-lg);
   background: var(--paper-3);
@@ -275,7 +275,7 @@
    also read the drag as a scroll. This replaces a preventDefault inside a
    touchmove handler -- same behaviour, declared where it belongs, and it is
    what lets the pointermove path be the only one. */
-#chase { touch-action: none; }
+#chase, #foresee-canvas { touch-action: none; }
 .chase__lede--note { font-size: .94rem; color: var(--ink-3); }
 
 
@@ -305,17 +305,19 @@
 }
 /* The canvases fade in when their runtime is ready rather than popping
    from an empty plate. Opacity only -- a moving canvas is a repaint. */
-#map, #chase, #arm, #race-canvas {
+#map, #chase, #arm, #race-canvas, #foresee-canvas {
   opacity: 0;
   transition: opacity 320ms var(--ease);
 }
 /* Never leave a plate blank because a script did not run. */
-.no-js #map, .no-js #chase, .no-js #arm, .no-js #race-canvas { opacity: 1; }
-#map.is-live, #chase.is-live, #arm.is-live, #race-canvas.is-live { opacity: 1; }
+.no-js #map, .no-js #chase, .no-js #arm, .no-js #race-canvas,
+.no-js #foresee-canvas { opacity: 1; }
+#map.is-live, #chase.is-live, #arm.is-live, #race-canvas.is-live,
+#foresee-canvas.is-live { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .tbtn:active, .seg__btn:active, .run:active:not(:disabled) { transform: none; }
-  #map, #chase, #arm, #race-canvas { transition: opacity 150ms var(--ease); }
+  #map, #chase, #arm, #race-canvas, #foresee-canvas { transition: opacity 150ms var(--ease); }
 }
 
 

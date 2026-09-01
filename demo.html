@@ -18,7 +18,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=9513f5e8">
-<link rel="stylesheet" href="demo.css?v=8d7960d2">
+<link rel="stylesheet" href="demo.css?v=e0fcce38">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="runner-page no-js">
@@ -302,8 +302,10 @@
         The demo above reacts: something enters the path, the motion is cancelled, a new one is
         planned. This one runs the <code>predictive_replanning</code> package from the same
         repository, which asks a different question &mdash; not <em>is anything in the way</em> but
-        <em>where will it be when I get there</em>. Top view of the cell, base at the origin, the
-        arm&rsquo;s own collision spheres drawn as the planner sees them.
+        <em>where will it be when I get there</em>. The cell in three dimensions, base at the
+        origin. The arm is Universal Robots&rsquo; own UR12e geometry, drawn at the joint frames
+        the package&rsquo;s forward kinematics returns; the faint spheres around it are the
+        collision model those same frames feed.
       </p>
       <p class="chase__lede">
         <strong>Move your cursor into the arm&rsquo;s path.</strong> A constant-velocity Kalman
@@ -337,7 +339,7 @@
       </p>
     </div>
     <div class="chase__stage" data-reveal>
-      <canvas id="foresee-canvas" width="1204" height="640" aria-label="Top view of a UR12e cell. Move the cursor to place an obstacle; a Kalman filter forecasts where it will be and the arm's trajectory is deformed out of the widening uncertainty cone."></canvas>
+      <canvas id="foresee-canvas" width="1204" height="640" aria-label="A UR12e arm in its cell, drawn in perspective. Move the cursor to place an obstacle; a Kalman filter forecasts where it will be and the arm's trajectory is deformed out of the widening uncertainty cone."></canvas>
       <p class="chase__read" id="foresee-read">loading the predictive replanner&hellip;</p>
     </div>
   </section>
@@ -609,7 +611,7 @@
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
 <script src="feedback.js?v=f83ef280" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=2507f9db" defer></script>
+<script src="demo.js?v=af3afc49" defer></script>
 <script src="lab.js?v=9512003d" defer></script>
 </body>
 </html>

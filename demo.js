@@ -81,7 +81,11 @@
     branch: "main",
     files: ["predictive_replanning/ur12e.py",
             "predictive_replanning/predict.py",
-            "predictive_replanning/replan.py"]
+            "predictive_replanning/replan.py"],
+    // The robot's geometry, which is not this repository's to fetch from
+    // GitHub: it is Universal Robots' and Robotiq's, baked out of the pinned
+    // descriptions by tools/bake_arm.py and served from here.
+    mesh: "assets/ur12e.json"
   };
   var HINTS = {
     astar: "8-connected grid search, octile heuristic. Expands in cost order.",
@@ -1251,12 +1255,24 @@
      reimplemented, and the constants below are the ones its own tests use. */
   var FORESEE_PY = [
     "_PR = {}",
+    "def _poses(q):",
+    "    # Every link frame, orientation included. Returning only the origins is",
+    "    # what made the page draw a stick figure: it has the vendor's meshes and",
+    "    # needs somewhere to put them, and a position is half a pose. tool0 is",
+    "    # wrist_3 through the flange, backed off the TCP's own offset, which is",
+    "    # where the coupler and the Hand-E hang.",
+    "    import numpy as np",
+    "    from predictive_replanning import ur12e",
+    "    back = np.eye(4)",
+    "    back[2, 3] = -ur12e.TCP_OFFSET_Z",
+    "    frames = [np.eye(4)] + list(ur12e.link_frames(q)) + [ur12e.fk_tcp(q) @ back]",
+    "    return [[float(v) for v in T[:3, :4].ravel()] for T in frames]",
     "def foresee_init():",
     "    import sys",
     "    import numpy as np",
     "    if '/pr' not in sys.path: sys.path.insert(0, '/pr')",
     "    from predictive_replanning import ur12e",
-    "    from predictive_replanning.predict import arm_radii",
+    "    from predictive_replanning.predict import arm_points, arm_radii",
     "    from predictive_replanning.replan import nominal_trajectory",
     "    q0 = np.array([0.0, -1.2, 1.4, -1.6, -1.57, 0.0])",
     "    qg = np.array([1.1, -1.0, 1.2, -1.5, -1.57, 0.0])",
@@ -1266,8 +1282,15 @@
     "               n_sigma=1.0, clearance=0.02, horizon=2.5, sigma_cap=0.20,",
     "               engaged=False, last_depth=0.0, last_replan=-9.0,",
     "               worse_by=0.03, min_gap=0.35, replans=0, deviation=0.0)",
+    "    # What the arm sweeps over the whole plan, padded by the fattest link,",
+    "    # so the camera frames the run rather than a box someone typed in.",
+    "    swept = np.vstack([arm_points(q)[0] for q in traj])",
+    "    pad = float(arm_radii().max())",
     "    return [[[float(v) for v in ur12e.fk_tcp_pos(q)] for q in traj],",
-    "            [float(v) for v in arm_radii()], float(times[-1])]",
+    "            [float(v) for v in arm_radii()], float(times[-1]),",
+    "            [[float(v) - pad for v in swept.min(0)],",
+    "             [float(v) + pad for v in swept.max(0)]],",
+    "            [_poses(q) for q in traj]]",
     "def foresee_reset():",
     "    _PR.update(active=_PR['traj'], trk=None, engaged=False, last_depth=0.0,",
     "               last_replan=-9.0, replans=0, deviation=0.0)",
@@ -1334,113 +1357,455 @@
     "            [[float(a) for a in p] for p in pts],",
     "            [float(v) for v in trk.x[:3]],",
     "            [[float(v) for v in ur12e.fk_tcp_pos(a)] for a in s['active']],",
-    "            [[float(T[0, 3]), float(T[1, 3]), float(T[2, 3])] for T in ur12e.link_frames(q)]]"
+    "            _poses(q)]"
   ].join("\n");
 
+  /* ---------- a painter's-algorithm renderer, in the 2D canvas ---------
+     Enough of one to draw a robot: transform, project, cull, sort by depth,
+     fill. There is no depth buffer, so triangles go down far-to-near, which is
+     also what makes the translucent ones composite correctly on the way past.
+     Everything in the scene -- the arm, the forecast cone, the trajectory --
+     goes through the same sink, so the cone can pass in front of the forearm
+     and behind the upper arm in the same frame without any special case.
+
+     Measured in headless Chromium, which rasterises canvas in software and is
+     the pessimistic case: 4000 filled triangles cost 1.7 ms, 8000 cost 3.6 ms.
+     This scene draws about 6000. Pyodide is the expensive part of the frame.
+     ------------------------------------------------------------------- */
+  var BUCKETS = 512;
+
+  function makeSink(cap) {
+    var n = 0;
+    var xs = new Float32Array(cap * 3), ys = new Float32Array(cap * 3);
+    var dz = new Float32Array(cap), ci = new Int32Array(cap);
+    var cnt = new Int32Array(BUCKETS), head = new Int32Array(BUCKETS);
+    var order = new Int32Array(cap);
+    var pal = [], seen = {};
+    return {
+      /* Colours are interned once and referred to by index. Building an
+         "rgb(...)" string per triangle per frame is most of a millisecond. */
+      colour: function (css) {
+        var k = seen[css];
+        if (k === undefined) { k = pal.length; pal.push(css); seen[css] = k; }
+        return k;
+      },
+      count: function () { return n; },
+      push: function (ax, ay, bx, by, cx, cy, depth, col) {
+        if (n >= cap) return;
+        var o = n * 3;
+        // One winding for everything. Filling a batch as a single path is what
+        // removes the hairline seams between neighbouring triangles, and the
+        // nonzero rule only merges them if they turn the same way.
+        if ((bx - ax) * (cy - ay) - (by - ay) * (cx - ax) < 0) {
+          var tx = bx, ty = by; bx = cx; by = cy; cx = tx; cy = ty;
+        }
+        xs[o] = ax; ys[o] = ay; xs[o + 1] = bx; ys[o + 1] = by;
+        xs[o + 2] = cx; ys[o + 2] = cy;
+        dz[n] = depth; ci[n] = col; n++;
+      },
+      /* Counting sort into depth buckets. A comparator sort of six thousand
+         triangles costs more than all the fills together; a bucket here is a
+         five-hundredth of the scene's depth, far finer than the projection can
+         show. Runs of one colour are then filled as a single path. */
+      flush: function (g) {
+        if (!n) return;
+        var i, b, mn = Infinity, mx = -Infinity;
+        for (i = 0; i < n; i++) { if (dz[i] < mn) mn = dz[i]; if (dz[i] > mx) mx = dz[i]; }
+        var sc = mx > mn ? (BUCKETS - 1) / (mx - mn) : 0;
+        cnt.fill(0);
+        for (i = 0; i < n; i++) cnt[(dz[i] - mn) * sc | 0]++;
+        var acc = 0;
+        for (b = BUCKETS - 1; b >= 0; b--) { head[b] = acc; acc += cnt[b]; }
+        for (i = 0; i < n; i++) order[head[(dz[i] - mn) * sc | 0]++] = i;
+        var cur = -1;
+        for (i = 0; i < n; i++) {
+          var t = order[i], o = t * 3;
+          if (ci[t] !== cur) {
+            if (cur >= 0) { g.fillStyle = pal[cur]; g.fill(); }
+            g.beginPath(); cur = ci[t];
+          }
+          g.moveTo(xs[o], ys[o]); g.lineTo(xs[o + 1], ys[o + 1]);
+          g.lineTo(xs[o + 2], ys[o + 2]); g.closePath();
+        }
+        if (cur >= 0) { g.fillStyle = pal[cur]; g.fill(); }
+        n = 0;
+      },
+      reset: function () { n = 0; }
+    };
+  }
+
+  /* Perspective camera on a turntable: azimuth, elevation, distance. `fit`
+     picks the distance by projecting the corners of a world box and closing in
+     until they just fit, so the framing follows the scene rather than a
+     hard-coded number. */
+  function makeCam(w, h, az, el, target, fl) {
+    var cam = { w: w, h: h, fl: fl, cx: w / 2, cy: h / 2 };
+    cam.aim = function (az, el, target, dist) {
+      var ce = Math.cos(el), f = [ce * Math.cos(az), ce * Math.sin(az), Math.sin(el)];
+      cam.eye = [target[0] + f[0] * dist, target[1] + f[1] * dist, target[2] + f[2] * dist];
+      var d = [-f[0], -f[1], -f[2]];
+      var r = [-d[1], d[0], 0];                        // up x d, with up = +z
+      var rl = Math.hypot(r[0], r[1]) || 1;
+      r = [r[0] / rl, r[1] / rl, 0];
+      cam.d = d;
+      cam.r = r;
+      cam.u = [d[1] * r[2] - d[2] * r[1], d[2] * r[0] - d[0] * r[2], d[0] * r[1] - d[1] * r[0]];
+      return cam;
+    };
+    /* Closes in until the box just fits, then shifts the principal point so
+       the box sits in the middle of the canvas, then does it again: an oblique
+       view of a box is not centred on the projection of its centre, and
+       fitting without the shift leaves a third of the frame empty floor. */
+    cam.fit = function (pts, margin) {
+      for (var round = 0; round < 3; round++) {
+        var lo = 0.5, hi = 14.0;
+        for (var it = 0; it < 30; it++) {
+          var mid = (lo + hi) / 2;
+          cam.aim(az, el, target, mid);
+          if (ok(pts, margin)) hi = mid; else lo = mid;
+        }
+        cam.aim(az, el, target, hi);
+        cam.dist0 = hi;
+        var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (var i = 0; i < pts.length; i++) {
+          var q = cam.project(pts[i]);
+          if (!q) continue;
+          if (q[0] < x0) x0 = q[0];
+          if (q[0] > x1) x1 = q[0];
+          if (q[1] < y0) y0 = q[1];
+          if (q[1] > y1) y1 = q[1];
+        }
+        if (x0 > x1) break;
+        cam.cx += w / 2 - (x0 + x1) / 2;
+        cam.cy += h / 2 - (y0 + y1) / 2;
+      }
+      return cam;
+    };
+    function ok(pts, margin) {
+      for (var i = 0; i < pts.length; i++) {
+        var s = cam.project(pts[i]);
+        if (!s) return false;
+        if (s[0] < margin || s[0] > w - margin || s[1] < margin || s[1] > h - margin) return false;
+      }
+      return true;
+    }
+    cam.project = function (p) {
+      var ex = p[0] - cam.eye[0], ey = p[1] - cam.eye[1], ez = p[2] - cam.eye[2];
+      var z = ex * cam.d[0] + ey * cam.d[1] + ez * cam.d[2];
+      if (z < 0.05) return null;
+      var inv = cam.fl / z;
+      return [cam.cx + (ex * cam.r[0] + ey * cam.r[1] + ez * cam.r[2]) * inv,
+              cam.cy - (ex * cam.u[0] + ey * cam.u[1] + ez * cam.u[2]) * inv, z];
+    };
+    /* Screen point back onto a horizontal plane. This is how the cursor moves
+       the obstacle: a ray out of the eye, met with z = `zp`. */
+    cam.onPlane = function (sx, sy, zp) {
+      var a = (sx - cam.cx) / cam.fl, b = -(sy - cam.cy) / cam.fl;
+      var dx = cam.d[0] + a * cam.r[0] + b * cam.u[0];
+      var dy = cam.d[1] + a * cam.r[1] + b * cam.u[1];
+      var dz2 = cam.d[2] + a * cam.r[2] + b * cam.u[2];
+      if (Math.abs(dz2) < 1e-6) return null;
+      var t = (zp - cam.eye[2]) / dz2;
+      if (t <= 0) return null;
+      return [cam.eye[0] + dx * t, cam.eye[1] + dy * t, zp];
+    };
+    return cam.aim(az, el, target, 3.0);
+  }
+
+  /* The robot itself: the vendor's own meshes, positioned by the same joint
+     frames the planner computes. `assets/ur12e.json` carries one triangle soup
+     per link in that link's own frame, already through the URDF's mesh_offset,
+     so drawing a pose is a matrix per link and nothing else. tools/bake_arm.py
+     writes it, and says where every vertex came from. */
+  var SHADES = 22;                 // quantised so the colour strings are reused
+  var AMBIENT = 0.34;
+
+  /* The key light rides on the camera: over the eye, up and to the left. A
+     light fixed in the world is flattering from one side and a silhouette from
+     the other, and the view here is chosen from the data rather than set by
+     hand, so which side it lands on is not something to leave to luck. */
+  function keyLight(cam) {
+    var x = -cam.d[0] + 0.55 * cam.u[0] - 0.30 * cam.r[0];
+    var y = -cam.d[1] + 0.55 * cam.u[1] - 0.30 * cam.r[1];
+    var z = -cam.d[2] + 0.55 * cam.u[2] - 0.30 * cam.r[2];
+    var n = Math.hypot(x, y, z) || 1;
+    return [x / n, y / n, z / n];
+  }
+
+  function makeArm(doc, sink) {
+    var links = [], most = 0;
+    for (var i = 0; i < doc.links.length; i++) {
+      var parts = [];
+      for (var j = 0; j < doc.links[i].parts.length; j++) {
+        var p = doc.links[i].parts[j];
+        var v = new Float32Array(p.v.length);
+        for (var k = 0; k < p.v.length; k++) v[k] = p.v[k] * doc.unit;
+        most = Math.max(most, v.length / 3);
+        var ramp = new Int32Array(SHADES);
+        for (var s = 0; s < SHADES; s++) {
+          var t = s / (SHADES - 1);
+          // A flat multiply leaves the near-black trim shapeless, so the light
+          // adds as well as scales. Both terms are the material's, not a tint.
+          ramp[s] = sink.colour("rgb(" +
+            Math.min(255, Math.round(p.c[0] * t + 44 * t)) + "," +
+            Math.min(255, Math.round(p.c[1] * t + 44 * t)) + "," +
+            Math.min(255, Math.round(p.c[2] * t + 44 * t)) + ")");
+        }
+        parts.push({ v: v, f: new Int32Array(p.f), ramp: ramp });
+      }
+      links.push(parts);
+    }
+    var wx = new Float32Array(most), wy = new Float32Array(most), wz = new Float32Array(most);
+    var sx = new Float32Array(most), sy = new Float32Array(most), sz = new Float32Array(most);
+
+    return {
+      links: links.length,
+      /* `poses` is one row-major 3x4 per link, straight out of the FK. */
+      draw: function (cam, poses) {
+        var ex = cam.eye[0], ey = cam.eye[1], ez = cam.eye[2];
+        var d0 = cam.d[0], d1 = cam.d[1], d2 = cam.d[2];
+        var r0 = cam.r[0], r1 = cam.r[1], r2 = cam.r[2];
+        var u0 = cam.u[0], u1 = cam.u[1], u2 = cam.u[2];
+        var L = keyLight(cam), L0 = L[0], L1 = L[1], L2 = L[2];
+        for (var li = 0; li < links.length && li < poses.length; li++) {
+          var T = poses[li];
+          for (var pi = 0; pi < links[li].length; pi++) {
+            var part = links[li][pi], v = part.v, f = part.f, ramp = part.ramp;
+            var nv = v.length / 3, i, o;
+            for (i = 0; i < nv; i++) {
+              o = i * 3;
+              var a = v[o], b = v[o + 1], c = v[o + 2];
+              var X = T[0] * a + T[1] * b + T[2] * c + T[3];
+              var Y = T[4] * a + T[5] * b + T[6] * c + T[7];
+              var Z = T[8] * a + T[9] * b + T[10] * c + T[11];
+              wx[i] = X; wy[i] = Y; wz[i] = Z;
+              var qx = X - ex, qy = Y - ey, qz = Z - ez;
+              var z = qx * d0 + qy * d1 + qz * d2;
+              sz[i] = z;
+              var inv = cam.fl / (z > 0.05 ? z : 0.05);
+              sx[i] = cam.cx + (qx * r0 + qy * r1 + qz * r2) * inv;
+              sy[i] = cam.cy - (qx * u0 + qy * u1 + qz * u2) * inv;
+            }
+            for (i = 0; i < f.length; i += 3) {
+              var A = f[i], B = f[i + 1], C = f[i + 2];
+              var za = sz[A], zb = sz[B], zc = sz[C];
+              if (za < 0.05 || zb < 0.05 || zc < 0.05) continue;
+              var e1x = wx[B] - wx[A], e1y = wy[B] - wy[A], e1z = wz[B] - wz[A];
+              var e2x = wx[C] - wx[A], e2y = wy[C] - wy[A], e2z = wz[C] - wz[A];
+              var nx = e1y * e2z - e1z * e2y;
+              var ny = e1z * e2x - e1x * e2z;
+              var nz = e1x * e2y - e1y * e2x;
+              // Facing test in world space: the outward normal must lean back
+              // towards the eye. Doing it here rather than from the screen
+              // winding keeps it independent of which way y runs on a canvas.
+              if (nx * (wx[A] - ex) + ny * (wy[A] - ey) + nz * (wz[A] - ez) >= 0) continue;
+              var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+              var lam = (nx * L0 + ny * L1 + nz * L2) / nl;
+              var sh = AMBIENT + (1 - AMBIENT) * (lam > 0 ? lam : 0);
+              var lvl = (sh * (SHADES - 1) + 0.5) | 0;
+              sink.push(sx[A], sy[A], sx[B], sy[B], sx[C], sy[C],
+                        (za + zb + zc) / 3, ramp[lvl > SHADES - 1 ? SHADES - 1 : lvl]);
+            }
+          }
+        }
+      }
+    };
+  }
+
+  /* ---------- the annotations, in the same depth sort as the robot ----- */
+  function makeMarks(sink) {
+    var ring = [];                                   // unit circle, precomputed
+    for (var i = 0; i <= 24; i++) {
+      ring.push([Math.cos(i / 24 * 6.283185), Math.sin(i / 24 * 6.283185)]);
+    }
+    /* A camera-facing disc. `col` may be -1 for an outline only: two dozen
+       translucent fills piled on each other stop reading as a sphere and start
+       reading as a smudge, which is what the arm's collision model did. */
+    function disc(cam, p, radius, col, edge) {
+      var s = cam.project(p);
+      if (!s) return;
+      var rr = cam.fl * radius / s[2];
+      if (rr < 0.6) return;
+      // Segments by how big it lands. A dozen around a sphere the size of a
+      // fingernail is detail nobody sees, and there are thirty of them.
+      var st = rr > 20 ? 1 : rr > 8 ? 2 : 4;
+      var i;
+      if (col >= 0) {
+        for (i = 0; i < 24; i += st) {
+          sink.push(s[0], s[1],
+                    s[0] + rr * ring[i][0], s[1] + rr * ring[i][1],
+                    s[0] + rr * ring[i + st][0], s[1] + rr * ring[i + st][1], s[2], col);
+        }
+      }
+      if (edge === undefined) return;
+      var w = 1.1;
+      for (i = 0; i < 24; i += st) {
+        var ax = s[0] + rr * ring[i][0], ay = s[1] + rr * ring[i][1];
+        var bx = s[0] + rr * ring[i + st][0], by = s[1] + rr * ring[i + st][1];
+        var ix = s[0] + (rr - w) * ring[i][0], iy = s[1] + (rr - w) * ring[i][1];
+        var jx = s[0] + (rr - w) * ring[i + st][0], jy = s[1] + (rr - w) * ring[i + st][1];
+        sink.push(ax, ay, bx, by, ix, iy, s[2] - 1e-4, edge);
+        sink.push(bx, by, jx, jy, ix, iy, s[2] - 1e-4, edge);
+      }
+    }
+    /* A world segment as a screen-space ribbon of constant pixel width. Depth
+       is the near end, so a path crossing the arm is cut where it should be. */
+    function bar(cam, a, b, px, col) {
+      var p = cam.project(a), q = cam.project(b);
+      if (!p || !q) return;
+      var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy);
+      if (L < 0.01) return;
+      var nx = -dy / L * px, ny = dx / L * px, z = Math.min(p[2], q[2]);
+      sink.push(p[0] + nx, p[1] + ny, q[0] + nx, q[1] + ny, q[0] - nx, q[1] - ny, z, col);
+      sink.push(p[0] + nx, p[1] + ny, q[0] - nx, q[1] - ny, p[0] - nx, p[1] - ny, z, col);
+    }
+    function path(cam, pts, px, col, step) {
+      for (var i = 0; i + 1 < pts.length; i += (step || 1)) bar(cam, pts[i], pts[i + 1], px, col);
+    }
+    /* A flat disc lying in the z = 0 plane. Not a billboard: it is the shadow,
+       and it has to foreshorten with the floor or it reads as a balloon. */
+    function patch(cam, x, y, radius, col) {
+      var c = cam.project([x, y, 0.001]);
+      if (!c) return;
+      var prev = null;
+      for (var i = 0; i <= 24; i++) {
+        var s = cam.project([x + radius * ring[i][0], y + radius * ring[i][1], 0.001]);
+        if (prev && s) sink.push(c[0], c[1], prev[0], prev[1], s[0], s[1], c[2] + 0.02, col);
+        prev = s;
+      }
+    }
+    return { disc: disc, bar: bar, path: path, patch: patch };
+  }
+
   /* ---------- see it coming: track, forecast, deform ------------------
-     Top view of the cell. The cone is the whole point -- it is drawn from the
-     tracker's own forecast covariance, not from a shape chosen to look like
-     one -- so the reader can watch it open with the horizon and then saturate
-     where sigma_cap puts it.
+     The arm is the real one: `assets/ur12e.json` is Universal Robots' own
+     visual meshes for the UR12e, decimated, drawn at the joint frames the
+     planner's own FK returns. It used to be a polyline through those frames,
+     which is the skeleton the planner reasons about and not the robot.
+
+     The cone is the whole point -- it is drawn from the tracker's own forecast
+     covariance, not from a shape chosen to look like one -- so the reader can
+     watch it open with the horizon and then saturate where sigma_cap puts it.
      ------------------------------------------------------------------- */
   var foresee = (function () {
-    var cvf = fitCanvas(document.getElementById("foresee-canvas"), 640 / 1204, 1.05);
+    var cvf = fitCanvas(document.getElementById("foresee-canvas"), 0.62, 0.92);
     if (!cvf) return { start: function () {} };
     var g = cvf.getContext("2d");
     var readEl = document.getElementById("foresee-read");
     var runEl = document.getElementById("foresee-run");
-    var nominal = [], radii = [], duration = 6.0;
+    var nominal = [], radii = [], poseTrack = [], duration = 6.0, planeZ = 0.32;
     var live = false, t = 0, raf = 0, last = 0, busy = false;
-    var state = null, cursor = null, VIEW = null;
+    var state = null, cursor = null;
+    var sink = makeSink(24000), marks = makeMarks(sink), arm = null, cam = null;
+    var GRID = 0;                    // half-width of the floor, in 0.25 m cells
 
-    /* World is metres in base_link; the cell sits in x,y around the origin.
-       Bounds come from the nominal path rather than being typed in, so a
-       different pick and place still frames itself. */
-    function frame() {
-      var xs = nominal.map(function (p) { return p[0]; });
-      var ys = nominal.map(function (p) { return p[1]; });
-      var pad = 0.42;
-      var x0 = Math.min.apply(null, xs) - pad, x1 = Math.max.apply(null, xs) + pad;
-      var y0 = Math.min.apply(null, ys) - pad, y1 = Math.max.apply(null, ys) + pad;
-      x0 = Math.min(x0, -0.15); x1 = Math.max(x1, 0.15);
-      y0 = Math.min(y0, -0.15); y1 = Math.max(y1, 0.15);
-      var sc = Math.min(cvf._w / (x1 - x0), cvf._h / (y1 - y0)) * 0.94;
-      return { x0: x0, y0: y0, sc: sc,
-               ox: (cvf._w - (x1 - x0) * sc) / 2, oy: (cvf._h - (y1 - y0) * sc) / 2,
-               x1: x1, y1: y1 };
+    var INK = sink.colour("rgba(65,65,76,0.85)");
+    var PLAN = sink.colour("rgba(150,150,164,0.85)");
+    var WARN = sink.colour("rgba(154,74,38,0.90)");
+    var SAFE = sink.colour("rgba(63,107,87,0.90)");
+    var OBST = sink.colour("rgba(154,74,38,0.55)");
+    var EDGE = sink.colour("rgba(122,58,30,0.85)");
+    var SHADOW = sink.colour("rgba(65,65,76,0.10)");
+    var HULL = sink.colour("rgba(65,65,76,0.16)");
+    var CONE = [], CONE_EDGE = sink.colour("rgba(154,74,38,0.22)");
+    for (var ci = 0; ci < 12; ci++) {
+      CONE.push(sink.colour("rgba(154,74,38," + (0.030 + 0.055 * (1 - ci / 12)).toFixed(3) + ")"));
     }
-    function X(wx) { return VIEW.ox + (wx - VIEW.x0) * VIEW.sc; }
-    function Y(wy) { return cvf._h - VIEW.oy - (wy - VIEW.y0) * VIEW.sc; }
-    function R(m) { return m * VIEW.sc; }
 
-    function poly(pts, col, w, dash) {
-      if (!pts || pts.length < 2) return;
-      g.save(); g.strokeStyle = col; g.lineWidth = w; g.lineJoin = "round";
-      if (dash) g.setLineDash(dash);
-      g.beginPath(); g.moveTo(X(pts[0][0]), Y(pts[0][1]));
-      for (var i = 1; i < pts.length; i++) g.lineTo(X(pts[i][0]), Y(pts[i][1]));
-      g.stroke(); g.restore();
+    /* The camera frames the box the arm actually sweeps, which foresee_init
+       measures over the whole nominal trajectory rather than guessing. */
+    function place(bounds) {
+      // foresee_init already padded these by the fattest link radius, so the
+      // margin here is only to keep the silhouette off the canvas edge.
+      var lo = bounds[0], hi = bounds[1], pad = 0.03;
+      var box = [];
+      for (var i = 0; i < 8; i++) {
+        box.push([(i & 1 ? hi[0] + pad : lo[0] - pad),
+                  (i & 2 ? hi[1] + pad : lo[1] - pad),
+                  (i & 4 ? hi[2] + pad : Math.min(lo[2], 0.0))]);
+      }
+      var mid = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (Math.min(lo[2], 0) + hi[2]) / 2];
+      GRID = Math.ceil(Math.max(Math.abs(lo[0]), Math.abs(hi[0]),
+                                Math.abs(lo[1]), Math.abs(hi[1])) / 0.25);
+      // Looking across the reach rather than down it: at the azimuth the arm
+      // itself points, a six-jointed robot projects to a blob.
+      cam = makeCam(cvf._w, cvf._h, 1.70, 0.34, mid, cvf._h * 1.45);
+      return cam.fit(box, 6);
     }
-    function disc(wx, wy, r, fill, stroke, w) {
-      g.beginPath(); g.arc(X(wx), Y(wy), Math.max(1, R(r)), 0, 6.2832);
-      if (fill) { g.fillStyle = fill; g.fill(); }
-      if (stroke) { g.strokeStyle = stroke; g.lineWidth = w || 1; g.stroke(); }
+
+    function floor() {
+      // The mounting plane, ruled every 0.25 m. It is the only thing in the
+      // scene with a size the reader already knows, so it is what makes the
+      // cone's width readable as a distance rather than as a shape.
+      var e = GRID * 0.25;
+      g.save();
+      g.lineWidth = 1;
+      for (var k = -GRID; k <= GRID; k++) {
+        var v = k * 0.25;
+        g.strokeStyle = k === 0 ? "#dcdce4" : "#ececf2";
+        line([v, -e, 0], [v, e, 0]);
+        line([-e, v, 0], [e, v, 0]);
+      }
+      g.restore();
+    }
+    function line(a, b) {
+      var p = cam.project(a), q = cam.project(b);
+      if (!p || !q) return;
+      g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
     }
 
     function draw() {
-      if (!VIEW) VIEW = frame();
       g.clearRect(0, 0, cvf._w, cvf._h);
       g.fillStyle = "#fbfbfd"; g.fillRect(0, 0, cvf._w, cvf._h);
+      if (!cam) return;
+      floor();
+      sink.reset();
 
-      // metre grid, so the cone's width is readable as a distance
-      g.save(); g.strokeStyle = "#e8e8ee"; g.lineWidth = 1;
-      for (var gx = Math.ceil(VIEW.x0 * 4) / 4; gx < VIEW.x1; gx += 0.25) {
-        g.beginPath(); g.moveTo(X(gx), 0); g.lineTo(X(gx), cvf._h); g.stroke();
+      marks.path(cam, nominal, 1.1, PLAN, 2);
+
+      // Before the cursor arrives there is no tracker and no threat, but there
+      // is still a plan: the arm drives it, so the section is a robot rather
+      // than an empty floor while the reader is reading the paragraph above.
+      var poses = null;
+      if (poseTrack.length) {
+        var w = Math.round(t / duration * (poseTrack.length - 1));
+        poses = poseTrack[w < 0 ? 0 : w >= poseTrack.length ? poseTrack.length - 1 : w];
       }
-      for (var gy = Math.ceil(VIEW.y0 * 4) / 4; gy < VIEW.y1; gy += 0.25) {
-        g.beginPath(); g.moveTo(0, Y(gy)); g.lineTo(cvf._w, Y(gy)); g.stroke();
-      }
-      g.restore();
-      disc(0, 0, 0.09, "#dcdce4", "#b9b9c4", 1.5);          // the base
-
-      poly(nominal, "#b9b9c4", 1.5, [5, 5]);                 // plan as planned
-
       if (state) {
         var tube = state[0], ttc = state[1], iters = state[4], dev = state[5];
-        var arm = state[7], est = state[8], active = state[9], frames = state[10];
+        var pts = state[7], est = state[8], active = state[9];
+        poses = state[10];
 
-        // the cone, far end first so the near, tighter discs sit on top
-        for (var i = tube.length - 1; i >= 0; i--) {
-          var a = 0.05 + 0.16 * (1 - i / tube.length);
-          disc(tube[i][0], tube[i][1], tube[i][3], "rgba(154,74,38," + a.toFixed(3) + ")", null);
+        // the cone, from the tracker's forecast: a sphere per horizon, radius
+        // r_obstacle + n_sigma * sigma(h), saturating where sigma_cap puts it
+        for (var i = 0; i < tube.length; i++) {
+          marks.disc(cam, tube[i], tube[i][3], CONE[Math.min(CONE.length - 1, i)], CONE_EDGE);
         }
-        for (var j = tube.length - 1; j >= 0; j--) {
-          disc(tube[j][0], tube[j][1], tube[j][3], null, "rgba(154,74,38,0.30)", 1);
+        marks.path(cam, active, 2.0, ttc > 0 ? WARN : SAFE);
+      }
+      if (arm && poses) arm.draw(cam, poses);
+      if (state) {
+        // what the planner checks: a sphere per skeleton point, sized to cover
+        // the real link. An outline, because the robot underneath is the point.
+        for (var k = 0; k < pts.length; k++) marks.disc(cam, pts[k], radii[k] || 0.05, -1, HULL);
+
+        if (cursor) {
+          marks.patch(cam, cursor[0], cursor[1], 0.05, SHADOW);
+          marks.bar(cam, [cursor[0], cursor[1], 0], cursor, 0.8, SHADOW);
+          marks.disc(cam, cursor, 0.05, OBST, EDGE);
         }
+        marks.disc(cam, est, 0.028, INK);        // where the filter thinks it is
 
-        poly(active, ttc > 0 ? "#9a4a26" : "#3f6b57", 2.4);   // what it will actually drive
-
-        // the arm as the planner sees it: a chain, and the spheres it checks
-        poly([[0, 0]].concat(frames), "#41414c", 3.2);
-        for (var k = 0; k < arm.length; k++) {
-          disc(arm[k][0], arm[k][1], radii[k] || 0.05, "rgba(65,65,76,0.10)", null);
-        }
-        for (var m = 0; m < frames.length; m++) {
-          disc(frames[m][0], frames[m][1], 0.022, "#41414c", null);
-        }
-
-        if (cursor) disc(cursor[0], cursor[1], 0.05, "rgba(154,74,38,0.85)", "#7a3a1e", 1.5);
-        disc(est[0], est[1], 0.028, null, "#9a4a26", 2);      // where the filter thinks it is
-
-        var tubeTxt = "tube " + tube[0][3].toFixed(2) + " m \u2192 " +
+        var tubeTxt = "tube " + tube[0][3].toFixed(2) + " m → " +
                       tube[tube.length - 1][3].toFixed(2) + " m";
         readEl.textContent = ttc > 0
-          ? "collision in " + ttc.toFixed(2) + " s  \u00b7  " + iters + " replan" +
+          ? "collision in " + ttc.toFixed(2) + " s  ·  " + iters + " replan" +
             (iters === 1 ? "" : "s") + ", tool " + (dev * 100).toFixed(0) +
-            " cm off the plan  \u00b7  " + tubeTxt
-          : "clear over the 2.5 s horizon  \u00b7  " + iters + " replan" +
-            (iters === 1 ? "" : "s") + " so far  \u00b7  " + tubeTxt;
+            " cm off the plan  ·  " + tubeTxt
+          : "clear over the 2.5 s horizon  ·  " + iters + " replan" +
+            (iters === 1 ? "" : "s") + " so far  ·  " + tubeTxt;
       }
+      sink.flush(g);
     }
 
     function tick(now) {
@@ -1467,20 +1832,23 @@
     function at(ev) {
       var b = cvf.getBoundingClientRect();
       var pt = ev.touches ? ev.touches[0] : ev;
-      if (!VIEW) VIEW = frame();
-      var wx = VIEW.x0 + ((pt.clientX - b.left) / b.width * cvf._w - VIEW.ox) / VIEW.sc;
-      var wy = VIEW.y0 + ((cvf._h - (pt.clientY - b.top) / b.height * cvf._h) - VIEW.oy) / VIEW.sc;
-      return [wx, wy, 0.35];        // the cell plane the arm works in
+      if (!cam) return null;
+      return cam.onPlane((pt.clientX - b.left) / b.width * cvf._w,
+                         (pt.clientY - b.top) / b.height * cvf._h, planeZ);
     }
 
     return {
-      start: function (meta) {
-        nominal = meta[0]; radii = meta[1]; duration = meta[2];
-        VIEW = frame();
+      /* `mesh` is assets/ur12e.json; without it the section still runs, it just
+         has nothing to draw the robot with, so it is not allowed to throw. */
+      start: function (meta, mesh) {
+        nominal = meta[0]; radii = meta[1]; duration = meta[2]; poseTrack = meta[4];
+        planeZ = nominal.reduce(function (a, p) { return a + p[2]; }, 0) / nominal.length;
+        place(meta[3]);
+        if (mesh) arm = makeArm(mesh, sink);
         cursor = null; live = true; t = 0; last = 0;
         // Loaded, but nothing to report until there is an obstacle to track --
         // leaving the loading line up reads as a demo that never finished.
-        readEl.textContent = "move the cursor into the cell \u00b7 " +
+        readEl.textContent = "move the cursor into the cell · " +
           nominal.length + " waypoints over " + duration.toFixed(1) + " s";
         cvf.addEventListener("pointermove", function (e) { cursor = at(e); });
         cvf.addEventListener("pointerleave", function () { cursor = null; });
@@ -1495,7 +1863,7 @@
     };
   })();
 
-  async function bootForesee(pending) {
+  async function bootForesee(pending, meshPending) {
     if (!document.getElementById("foresee-canvas")) return;
     try {
       log("loading the predictive replanner from " + FORESEE.repo + "…");
@@ -1511,14 +1879,31 @@
       pyodide.runPython("arm_write(__path, __src)");
       pyodide.runPython(FORESEE_PY);
       var meta = pyodide.runPython("foresee_init()").toJs();
-      foresee.start(meta);
+      // The meshes are a nicety; the replanner is the demo. If they failed to
+      // arrive the section still runs, without a robot to look at.
+      var mesh = null;
+      try { mesh = await meshPending; } catch (e) {
+        log("  " + FORESEE.mesh + " unavailable: " + String(e && e.message || e), "err");
+      }
+      foresee.start(meta, mesh);
       live("foresee-canvas");
       log("predictive replanner online: " + meta[0].length + "-waypoint plan over " +
           meta[2].toFixed(1) + " s, " + meta[1].length + " collision spheres on the arm", "ok");
+      if (mesh) {
+        log("  UR12e and Hand-E meshes: " + mesh.triangles.toLocaleString() +
+            " triangles from " + mesh.sources.ur_description.commit.slice(0, 7) + " and " +
+            mesh.sources.hande_description.commit.slice(0, 7), "ok");
+      }
     } catch (e) {
       log("predictive replanner unavailable: " + String(e && e.message || e)
           .split("\n").slice(-3).join(" | "), "err");
     }
+  }
+
+  async function fetchForeseeMesh() {
+    var r = await fetch(FORESEE.mesh, { cache: "no-cache" });
+    if (!r.ok) throw new Error(FORESEE.mesh + ": HTTP " + r.status);
+    return r.json();
   }
 
   async function fetchForeseeFile(rel) {
@@ -1557,6 +1942,8 @@
       }
       var armP = ARM.files.map(function (rel) { return fetchArmFile(rel); });
       var seeP = FORESEE.files.map(function (rel) { return fetchForeseeFile(rel); });
+      var meshP = fetchForeseeMesh();
+      meshP.catch(function () {});
       // A rejected promise nobody has awaited yet is an unhandled rejection.
       // These are all awaited below, but not before the browser notices.
       Object.keys(srcP).forEach(function (k) { srcP[k].catch(function () {}); });
@@ -1622,7 +2009,7 @@
       // The arm goes last on purpose: its harness stubs ROS for itself, and
       // the nav modules have already bound their own names by now.
       await bootArm(armP);
-      await bootForesee(seeP);
+      await bootForesee(seeP, meshP);
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";
