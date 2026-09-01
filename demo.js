@@ -3017,6 +3017,11 @@
     var VIEW = cvn._narrow ? cvn._w : Math.round(cvn._w * 0.502),
         VIEW_H = cvn._narrow ? Math.round(cvn._h * 0.60) : cvn._h;
     var PAD = 30;
+    /* The camera plate is drawn under a scale, because the node's image
+       coordinates are a fixed 604x620 and the plate is whatever the column
+       gives it. Anything converting between a pointer and an image coordinate
+       has to go through this, in both directions. */
+    var KCAM = Math.min(VIEW / 604, VIEW_H / 620);
     var live = false, lastF = 0, cur = { u: 300, v: 300 }, have = false;
     var links = [], chain = [], meta = null, f = null, radius = 0.07;
     var hist = [];                                    // recent decisions, for the strip
@@ -3066,8 +3071,7 @@
          fitting, which on a phone meant most of the arm was outside the plate.
          Scaling the camera-space block fits the whole frame; the plate's own
          labels are drawn after the restore, so they keep their real size. */
-      var kcam = Math.min(VIEW / 604, VIEW_H / 620);
-      g.save(); g.scale(kcam, kcam);
+      g.save(); g.scale(KCAM, KCAM);
 
       if (f) {
         var pu = f[0], pv = f[1], pc = f[2];
@@ -3338,7 +3342,12 @@
       // Only the camera plate is live, and when stacked that is the top
       // band rather than the left column.
       if (u > VIEW || v > VIEW_H) { have = false; return; }
-      cur.u = u; cur.v = v; have = true;
+      // Back through the plate's scale. These go to `arm_unproject`, which
+      // works in the node's own image coordinates; handing it plate pixels
+      // put the obstacle a few per cent of the frame up and to the left of
+      // the cursor, everywhere except the top left corner where the two
+      // happen to coincide.
+      cur.u = u / KCAM; cur.v = v / KCAM; have = true;
     }
     cvn.addEventListener("mousemove", function (e) { place(e.clientX, e.clientY); });
     cvn.addEventListener("touchmove", function (e) {
