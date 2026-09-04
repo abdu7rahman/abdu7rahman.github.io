@@ -73,8 +73,18 @@ body.home::before {
 }
 
 /* ── base ──────────────────────────────────────────────────────────── */
+/* Two soft pools of warm light, so the page reads as lit rather than as flat
+   black. Painted into the background rather than over the content: a layer on
+   top would sit between the reader and text the contrast gate measured
+   against a solid colour, and this way it can only ever tint what was already
+   empty. Fixed, so scrolling moves the page through the light instead of
+   dragging the light along with it. */
 body.home {
-  background: var(--landing-bg);
+  background:
+    radial-gradient(58% 40% at 20% 6%, rgba(255, 138, 92, .085), transparent 70%),
+    radial-gradient(50% 36% at 86% 44%, rgba(255, 138, 92, .05), transparent 72%),
+    var(--landing-bg);
+  background-attachment: fixed;
   color: var(--landing-fg);
 }
 body.home h1, body.home h2 {
@@ -89,6 +99,13 @@ body.home h1, body.home h2 {
 body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
 body.home .carousel__pos {
   text-shadow: 0 0 1px rgba(255, 249, 240, .7), 0 0 28px rgba(255, 138, 92, .30);
+}
+
+/* The same phosphor on every section heading, at a radius that suits 1.75rem
+   rather than the hero's 5.5 -- h1's 28px halo around type this size reads as
+   a smudge instead of a bloom. */
+body.home .sec__label h2 {
+  text-shadow: 0 0 1px rgba(255, 249, 240, .5), 0 0 18px rgba(255, 138, 92, .22);
 }
 
 body.home .hero__eyebrow, body.home .sec__label .tag { color: var(--landing-accent); }
@@ -110,6 +127,36 @@ body.home .rail__nav a, body.home .icolink { color: var(--landing-mut); }
 body.home .rail__nav a[aria-current="true"] { color: var(--landing-fg); background: rgba(255, 255, 255, .08); }
 body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg); background: rgba(255, 255, 255, .06); }
 
+/* style.css draws the read-position bar in --signal, which is the light
+   page's red and the one piece of chrome the dark repaint missed: it only
+   ever overrode body::before (the grain), and this is body::after. Same bar,
+   this page's accent, lit like everything else here. */
+body.home::after {
+  background: var(--landing-accent);
+  box-shadow: 0 0 12px rgba(255, 138, 92, .5);
+}
+
+/* The other two the repaint missed, for the same reason: both are set on bare
+   element selectors in style.css, so nothing scoped to body.home was ever
+   going to reach them. A red selection and a red focus ring on a warm dark
+   page look like a bug in the page rather than a choice. #1a0e08 on the
+   accent is the same pairing .btn--solid and .rail__cta already use, at
+   8.1:1. */
+body.home::selection, body.home ::selection {
+  background: var(--landing-accent);
+  color: #1a0e08;
+}
+body.home :focus-visible { outline-color: var(--landing-accent); }
+
+/* --ink on --landing-bg is a near-black chip on a near-black page: legible,
+   because the text stays --paper, but with no edge to it. The card colour and
+   a hairline give the one thing a keyboard user sees first an actual shape. */
+body.home .skip {
+  background: var(--landing-card);
+  color: var(--landing-fg);
+  border: 1px solid var(--landing-rule);
+}
+
 /* The nav CTA: the hero's own "run the robots" action, surfaced a second
    time where shader.se puts "Book a call" -- this site's highest-value
    action is the live demos, so that is what gets the permanent seat. */
@@ -121,6 +168,7 @@ body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg
   background: var(--landing-accent); color: #1a0e08;
   font: 500 13px/1 var(--sans); letter-spacing: -.01em;
   text-decoration: none; white-space: nowrap;
+  box-shadow: 0 0 20px rgba(255, 138, 92, .28);
   transition: opacity var(--dur-hover) var(--ease);
 }
 .rail__cta:hover { opacity: .86; }
@@ -152,7 +200,16 @@ body.home .btn--solid:hover { background: #ff9f78; border-color: #ff9f78; }
 #about strong { color: var(--landing-fg); font-weight: 600; }
 
 /* ── sections ──────────────────────────────────────────────────────── */
-body.home .sec--band, body.home #work { background: var(--landing-bg-2); }
+/* The bands are opaque, so the body's light would stop dead at their top
+   edge. Same two pools again over the band's own colour, which stays the
+   literal token the contrast gate reads -- the gradient tints it, it does not
+   replace it. */
+body.home .sec--band, body.home #work {
+  background:
+    radial-gradient(58% 40% at 20% 6%, rgba(255, 138, 92, .06), transparent 70%),
+    radial-gradient(50% 36% at 86% 44%, rgba(255, 138, 92, .04), transparent 72%),
+    var(--landing-bg-2);
+}
 body.home .rule-row, body.home .stack > div, body.home .path > li,
 body.home .contact li, body.home .proj__stats > div, body.home .bench__table tbody tr,
 body.home .bench__meta, body.home .bench__table thead th {
@@ -213,7 +270,13 @@ body.home .proj {
   border: 1px solid var(--landing-rule);
 }
 @media (hover: hover) and (pointer: fine) {
-  body.home .proj:hover { box-shadow: 0 12px 32px rgba(0, 0, 0, .4); }
+  body.home .proj {
+    transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+  }
+  body.home .proj:hover {
+    border-color: rgba(255, 138, 92, .38);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .4), 0 0 44px rgba(255, 138, 92, .10);
+  }
 }
 body.home .proj__idx { color: var(--landing-accent); }
 body.home .proj__title, body.home .proj__title a { color: var(--landing-fg); }
@@ -238,8 +301,11 @@ body.home .bench__table tr.is-mine { background: rgba(255, 138, 92, .10); }
 body.home .bench__table tr.is-mine:hover { background: rgba(255, 138, 92, .14); }
 body.home .bench__table tr.is-mine th, body.home .bench__table tr.is-mine td { color: var(--landing-fg); }
 body.home .bench__table b { color: var(--landing-accent); }
-body.home .bar--cpp { background: var(--landing-accent); }
-body.home .bar--py { background: #5aa5af; }   /* demo.js's own "clear/safe" teal */
+/* Each bar lit in its own hue. Both, not just the accent one: glowing one of
+   two adjacent bars reads as "this is the answer", and these charts have
+   cases where the other one wins. */
+body.home .bar--cpp { background: var(--landing-accent); box-shadow: 0 0 10px rgba(255, 138, 92, .35); }
+body.home .bar--py { background: #5aa5af; box-shadow: 0 0 10px rgba(90, 165, 175, .35); }   /* demo.js's own "clear/safe" teal */
 body.home .sw--cpp { background: var(--landing-accent); }
 body.home .sw--py { background: #5aa5af; }
 body.home .legend li { color: var(--landing-mut); }
@@ -249,11 +315,18 @@ body.home .bench__meta .ico { color: var(--landing-accent); }
 /* ── stack / path ──────────────────────────────────────────────────── */
 body.home .path__when { color: var(--landing-mut); }
 body.home .path__what h3 { color: var(--landing-fg); }
+/* The same row-hover the benchmark tables already use, so a timeline entry
+   and a table row answer to the pointer the same way. */
+@media (hover: hover) and (pointer: fine) {
+  body.home .path > li { transition: background var(--dur-hover) var(--ease); }
+  body.home .path > li:hover { background: rgba(255, 138, 92, .05); }
+}
 
 /* ── contact ───────────────────────────────────────────────────────── */
 body.home .closing { color: var(--landing-fg); }
 body.home .contact a { color: var(--landing-fg); }
 body.home .contact a:hover { color: var(--landing-accent); background: var(--landing-card); }
+body.home .contact a:hover .ico { color: var(--landing-accent); }
 
 /* A row with nowhere to link to -- shader.se's own location line isn't a
    link either. Same layout as .contact a, no hover state, no trailing
@@ -295,7 +368,9 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   body.home .proj { border-color: var(--landing-rule); }
   body.home::before { display: none; }
   body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
-  body.home .carousel__pos { text-shadow: none; }
+  body.home .sec__label h2, body.home .carousel__pos { text-shadow: none; }
+  body.home .bar--cpp, body.home .bar--py, body.home .rail__cta,
+  body.home::after { box-shadow: none; }
 }
 @media print {
   body.home::before { display: none; }
