@@ -62,7 +62,10 @@
   ]).then(function (both) {
     build(both[0]);
     motion = both[1];
-    document.body.appendChild(canvas);
+    // Into the hero, not the body: the canvas is positioned against the
+    // section it belongs to.
+    var hero = document.getElementById("intro");
+    (hero || document.body).appendChild(canvas);
     resize();
     request();
   }).catch(function () { /* the hero stands without it */ });
@@ -98,22 +101,17 @@
   // Measured off the hero rather than off a guessed multiple of the viewport,
   // so the runway is whatever the hero actually is at this width and the arm
   // is always gone by the time the hero's bottom edge clears the screen.
+  // The move plays out over the hero's own height, so it is finished about
+  // when the hero has finished leaving. No fade: the canvas is bounded by the
+  // hero and scrolls off with it, which is the whole reason it can be drawn at
+  // full strength for as long as it is on screen.
   function run() {
     var hero = document.getElementById("intro");
-    if (!hero) return window.innerHeight;
-    var bottom = hero.offsetTop + hero.offsetHeight;
-    return Math.max(1, bottom - window.innerHeight);
+    return Math.max(1, hero ? hero.offsetHeight : window.innerHeight);
   }
   function progress() {
     var p = window.scrollY / run();
     return p < 0 ? 0 : p > 1 ? 1 : p;
-  }
-  function fade() {
-    var r = run();
-    var y = window.scrollY;
-    if (y < r * 0.60) return 1;
-    var t = (y - r * 0.60) / (r * 0.40);
-    return t > 1 ? 0 : 1 - t;
   }
 
   var M = new Float32Array(120);   // ten 3x4s for the frame being drawn
@@ -149,10 +147,6 @@
   var scratch = [];
   function draw() {
     if (!links || !motion || !W || !H) return;
-    var op = fade();
-    canvas.style.opacity = op;
-    if (op <= 0.01) { g.clearRect(0, 0, W, H); return; }
-
     var tool = poseAt(progress());
     g.clearRect(0, 0, W, H);
 
