@@ -301,14 +301,48 @@
     dirty = true; request();
   }, { passive: true });
 
+  var dragging = false, dragId = -1, lastX = 0, lastY = 0;
+
   if (!reduce) {
     window.addEventListener("pointermove", function (e) {
+      if (dragging) return;              // the drag owns the camera while it lasts
       // A quarter turn across the window, and a much smaller lift: pitching as
       // far as it yaws puts the camera under the floor.
       yawT = -0.62 + (e.clientX / window.innerWidth - 0.5) * 0.85;
       pitchT = 0.30 + (e.clientY / window.innerHeight - 0.5) * 0.34;
       request();
     }, { passive: true });
+
+    // Drag the robot to turn it. The pointer-follow above is ambient -- it
+    // moves whether or not you meant it to -- and this is the part that is
+    // actually yours: grab the machine and it goes where you put it, and
+    // stays there until you let go and the ambient aim eases back in.
+    canvas.style.pointerEvents = "auto";
+    canvas.style.cursor = "grab";
+
+    canvas.addEventListener("pointerdown", function (e) {
+      dragging = true; dragId = e.pointerId;
+      lastX = e.clientX; lastY = e.clientY;
+      canvas.style.cursor = "grabbing";
+      if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    canvas.addEventListener("pointermove", function (e) {
+      if (!dragging || e.pointerId !== dragId) return;
+      // Straight to the value, not to the target: a drag that eases feels
+      // like the object is on a spring rather than in your hand.
+      yaw = yawT = yaw - (e.clientX - lastX) * 0.007;
+      pitch = pitchT = Math.max(-0.25, Math.min(0.95, pitch + (e.clientY - lastY) * 0.005));
+      lastX = e.clientX; lastY = e.clientY;
+      dirty = true; request();
+    });
+    function endDrag(e) {
+      if (!dragging || (e && e.pointerId !== dragId)) return;
+      dragging = false; dragId = -1;
+      canvas.style.cursor = "grab";
+    }
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
   }
 
   var rt;

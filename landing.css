@@ -22,6 +22,56 @@
      declares where its tokens come from. */
 }
 
+/* ── the cursor ────────────────────────────────────────────────────────
+   A dot at the pointer and a ring easing after it, both built by
+   immersive.js and only on this page. The drawn cursor in style.css stays
+   the fallback: it is what shows before the script runs, without JS, on
+   touch, and on demo.html, where you are placing obstacles by hand and a
+   pointer that lags a frame behind the truth is a bug rather than a mood. */
+.cur-dot, .cur-ring {
+  position: fixed; top: 0; left: 0;
+  z-index: 70;                       /* over the grain (55) and the bar (60) */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease);
+  will-change: transform;
+}
+.cur-dot {
+  width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--landing-accent);
+}
+.cur-ring {
+  width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 138, 92, .55);
+  transition: opacity var(--dur-hover) var(--ease),
+              width var(--dur-hover) var(--ease),
+              height var(--dur-hover) var(--ease),
+              margin var(--dur-hover) var(--ease),
+              border-color var(--dur-hover) var(--ease),
+              background var(--dur-hover) var(--ease);
+}
+.cur-ring.is-hot {
+  width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-color: var(--landing-accent);
+  background: rgba(255, 138, 92, .08);
+}
+body.cur-on .cur-dot, body.cur-on .cur-ring { opacity: 1; }
+/* The system pointer would sit inside the ring. Only hidden once the script
+   has actually put something there. */
+body.has-cur.cur-on, body.has-cur.cur-on * { cursor: none !important; }
+
+/* Magnets and tilt both animate transform, so they need a transition for the
+   return trip -- immersive.js only clears the inline style. */
+body.home .btn, .rail__cta, .carousel__btn {
+  transition: transform var(--dur-hover) var(--ease), opacity var(--dur-hover) var(--ease),
+              background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+body.home .proj { transition: transform var(--dur-move) var(--ease),
+                              border-color var(--dur-hover) var(--ease),
+                              box-shadow var(--dur-hover) var(--ease); }
+
 /* ── grain ─────────────────────────────────────────────────────────────
    A single inline SVG turbulence filter, painted once into a fixed layer
    at low opacity. Static, not animated: an animated grain reads as video
@@ -236,8 +286,15 @@ body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-ac
    in the plain stacked column this page has always shown -- same rule
    .no-js [data-reveal] already follows in style.css. */
 .carousel__viewport { overflow: hidden; }
+/* carousel.js writes the active slide's height here; the transition is what
+   makes paging between a short card and a tall one read as one movement
+   rather than a jump. Only ever set while the carousel is driving. */
+.carousel.is-active .carousel__viewport {
+  transition: height var(--dur-move) var(--ease-in-out);
+}
 .carousel.is-active .carousel__track {
   display: flex;
+  align-items: flex-start;      /* a short card ends where its content does */
   transition: transform var(--dur-move) var(--ease-in-out);
 }
 .carousel.is-active .proj {
@@ -398,7 +455,8 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
 
 /* ── accessibility ─────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .carousel.is-active .carousel__track { transition: none; }
+  .carousel.is-active .carousel__track,
+  .carousel.is-active .carousel__viewport { transition: none; }
 }
 @media (prefers-contrast: more) {
   body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
@@ -411,4 +469,6 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
   .carousel.is-active .carousel__track { display: block; }
   .carousel.is-active .proj { flex: none; }
+  /* the inline height carousel.js set would clip nine cards off the page */
+  .carousel__viewport { height: auto !important; overflow: visible !important; }
 }

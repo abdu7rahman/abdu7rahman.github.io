@@ -16,6 +16,7 @@
   var slides = track ? Array.prototype.slice.call(track.children) : [];
   if (!track || slides.length < 2) return;
 
+  var view = root.querySelector(".carousel__viewport");
   var prev = root.querySelector(".carousel__btn--prev");
   var next = root.querySelector(".carousel__btn--next");
   var pos = root.querySelector(".carousel__pos");
@@ -23,8 +24,19 @@
 
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
 
+  // Flex rows stretch every item to the tallest one, so slide 01 -- four
+  // lines of prose -- was drawn as a card with a third of its interior empty,
+  // reserved for the longest card in the set. The viewport takes the height of
+  // the slide actually on screen instead, and animates between them, so a
+  // short card is a short card.
+  function fit() {
+    if (!view || !slides[i]) return;
+    view.style.height = slides[i].getBoundingClientRect().height + "px";
+  }
+
   function render() {
     track.style.transform = "translateX(-" + i * 100 + "%)";
+    fit();
     prev.disabled = i === 0;
     next.disabled = i === slides.length - 1;
     if (pos) pos.textContent = pad(i + 1) + " / " + pad(slides.length);
@@ -77,6 +89,15 @@
       card.style.setProperty("--mx", ((e.clientX - b.left) / b.width * 100).toFixed(2) + "%");
       card.style.setProperty("--my", ((e.clientY - b.top) / b.height * 100).toFixed(2) + "%");
     }, { passive: true });
+  }
+
+  // Re-measure on anything that reflows a card: the viewport width, a web
+  // font arriving after first paint, a stat table wrapping to another line.
+  window.addEventListener("resize", fit, { passive: true });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(fit);
+    slides.forEach(function (s) { ro.observe(s); });
   }
 
   root.classList.add("is-active");
