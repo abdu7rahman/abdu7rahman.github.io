@@ -16,9 +16,7 @@
 (function () {
   "use strict";
 
-  if (!document.body) return;
-  var RUNNER = document.body.classList.contains("runner-page");
-  if (!document.body.classList.contains("home") && !RUNNER) return;
+  if (!document.body || !document.body.classList.contains("home")) return;
 
   var reduce = window.matchMedia &&
                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -174,10 +172,7 @@
 
   // Half resolution. Nothing in the image has an edge, so the only thing the
   // extra pixels would buy is heat.
-  // Half resolution on the landing page. A third on the runner, where the
-  // shader shares a GPU with seven live simulations and is the only thing on
-  // screen that nobody came for.
-  var SCALE = RUNNER ? 0.34 : 0.5;
+  var SCALE = 0.5;
   function resize() {
     var w = Math.max(1, Math.round(window.innerWidth * SCALE));
     var h = Math.max(1, Math.round(window.innerHeight * SCALE));
@@ -255,26 +250,6 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) stop(); else play();
   });
-
-  /* On the runner the atmosphere holds still while an instrument is on
-     screen. Those canvases are the page -- they are running real planners at
-     a real rate -- and the weather behind them is not worth a frame taken off
-     one. It breathes in the reading parts, where there is nothing to starve,
-     and freezes where you work: the fog is still drawn, it just stops
-     advancing. */
-  if (RUNNER && window.IntersectionObserver) {
-    var live = 0;
-    var io = new IntersectionObserver(function (entries) {
-      for (var i = 0; i < entries.length; i++) {
-        var e = entries[i], was = e.target.__fieldSeen === true;
-        if (e.isIntersecting && !was) { e.target.__fieldSeen = true; live++; }
-        else if (!e.isIntersecting && was) { e.target.__fieldSeen = false; live--; }
-      }
-      if (live > 0) stop(); else if (!document.hidden) play();
-    }, { rootMargin: "120px" });
-    var instruments = document.querySelectorAll("[data-demo] canvas");
-    for (var n = 0; n < instruments.length; n++) io.observe(instruments[n]);
-  }
 
   var t;
   window.addEventListener("resize", function () {

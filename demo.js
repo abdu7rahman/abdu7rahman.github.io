@@ -4,6 +4,37 @@
 (function () {
   "use strict";
 
+  /* Whether a section has gone out of reach. Every loop below keeps scheduling
+     itself -- that is how it notices it has come back -- and does no work while
+     its own section is off screen.
+
+     The IntersectionObserver at the bottom of this file only ever gated the
+     *boot*: once a demo had started it stepped its controller and redrew its
+     canvas for the rest of the visit, whether or not anyone could see it.
+     Measured with the runtimes actually running, at the very bottom of the
+     page with nothing on screen, frames were still 500 ms apart -- the same as
+     standing on a demo. Four sections' worth of Python was running for a
+     reader looking at the reference block.
+
+     200px of margin, so a section is already going by the time it is read. */
+  var asleep = (function () {
+    if (!window.IntersectionObserver) return function () { return false; };
+    var gone = Object.create(null), watched = Object.create(null);
+    var io = new IntersectionObserver(function (es) {
+      for (var i = 0; i < es.length; i++) gone[es[i].target.id] = !es[i].isIntersecting;
+    }, { rootMargin: "200px" });
+    return function (id) {
+      if (!watched[id]) {
+        var el = document.getElementById(id);
+        if (!el) return false;                 // no section, nothing to gate
+        watched[id] = true; io.observe(el);
+        return false;                          // before the observer first reports
+      }
+      return gone[id] === true;
+    };
+  })();
+
+
   /* Every canvas on this page was authored with a fixed backing store -- 1204
      wide for three of them -- and then scaled by CSS to whatever the column
      gave it. On a desktop that is roughly 1:1 and nobody notices. On a phone
@@ -1890,7 +1921,7 @@
 
     function tick(now) {
       raf = requestAnimationFrame(tick);
-      if (!live) return;
+      if (!live || asleep("foresee")) return;
       var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.02;
       last = now;
       t += dt;
@@ -2346,6 +2377,7 @@
     function step(ts) {
       if (!live) return;
       requestAnimationFrame(step);
+      if (asleep("drive")) return;
 
       // integrate the base every frame with whatever cmd_vel is current
       var dt = lastFrame ? Math.min(0.05, (ts - lastFrame) / 1000) : 0;
@@ -2927,7 +2959,14 @@
           " reached the goal · " + sim.toFixed(1) + " s simulated"
         : running + " still driving · " + sim.toFixed(1) + " s simulated" + cost;
       if (done) { live = false; runBtnEl.textContent = "Run it again"; return; }
-      raf2 = requestAnimationFrame(function () { if (live) worker.postMessage({ type: "step" }); });
+      raf2 = requestAnimationFrame(function again() {
+        if (!live) return;
+        // Keep the chain alive rather than skipping a turn: the next step is
+        // only ever asked for from here, so returning without rescheduling
+        // would stop the race for good instead of pausing it.
+        if (asleep("race")) { raf2 = requestAnimationFrame(again); return; }
+        worker.postMessage({ type: "step" });
+      });
     }
 
     function onInit(msg) {
@@ -3310,6 +3349,7 @@
     function step(ts) {
       if (!live) return;
       requestAnimationFrame(step);
+      if (asleep("reach")) return;
       if (ts - lastF < 110) return;                   // a shade under the node's 20 Hz
       // Real elapsed time, capped so a backgrounded tab does not teleport the
       // tool past an obstacle on the frame it comes back.

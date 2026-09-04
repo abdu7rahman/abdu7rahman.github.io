@@ -91,6 +91,14 @@ FLOOR = 24
 #: decimator work at all. See `_cluster`.
 WELD = 5e-4
 
+#: The weld is what actually caps the bake. The sources carry 129621 triangles
+#: between them; snapping to 0.5 mm collapses that to about 31600 before the
+#: decimator is even asked for a number, which is why raising the budget past
+#: it changes nothing. The hero bake passes --weld 1e-4 instead: one UNIT, the
+#: finest the int16 vertices can express, so nothing is merged that the format
+#: could have kept.
+HERO_WELD = 1e-4
+
 
 def _rpy(roll, pitch, yaw):
     import numpy as np
@@ -239,30 +247,54 @@ def _group(link_parts, budget):
     four shapes instead of seven, and the decimator gets to collapse across the
     seams where two geometries meet.
 
-    The budget is split by surface area, not by triangle count. Triangle count
-    is what the exporter happened to spend, and it spent most of it on slivers
-    in trim that is a few millimetres wide; area is what the reader sees.
+    The budget is split by surface area weighted by how much of the part is
+    actually curved. Triangle count is what the exporter happened to spend, and
+    it spent most of it on slivers in trim that is a few millimetres wide. Area
+    alone is better but still wrong in one direction that shows: a joint cap is
+    small next to the shell it sits on and is the roundest thing on the robot,
+    so area-splitting starved exactly the parts whose silhouette is a circle.
+    A flat panel holds its shape at any triangle count; a dome does not.
+
+    `bend` is the fraction of a part's shared edges that are not flat, measured
+    on the source before anything is thrown away: about 0 for a panel and near
+    1 for a cap. It buys a part up to three times the share its area alone
+    would have earned.
     """
     import trimesh
     by_colour = {}
     for m in link_parts:
         by_colour.setdefault(tuple(_colour(m)), []).append(m)
     merged = {c: trimesh.util.concatenate(ms) for c, ms in by_colour.items()}
-    total = sum(float(m.area) for m in merged.values())
+    def weight(m):
+        w = m.copy()
+        w.merge_vertices()
+        a = w.face_adjacency_angles
+        bend = float((a > 0.175).mean()) if len(a) else 0.0    # 10 degrees
+        return float(m.area) * (1.0 + 2.0 * bend)
+
+    wts = {c: weight(m) for c, m in merged.items()}
+    total = sum(wts.values())
     out = []
-    for c, m in sorted(merged.items(), key=lambda kv: -float(kv[1].area)):
-        share = float(m.area) / total if total else 0.0
+    for c, m in sorted(merged.items(), key=lambda kv: -wts[kv[0]]):
+        share = wts[c] / total if total else 0.0
         out.append((list(c), _decimate(m, round(budget * share))))
     return out
 
 
 def main():
+    # _decimate reads the weld as a module global; this is the only place it is
+    # ever reassigned, and the declaration has to precede the parser default
+    # that reads it.
+    global WELD
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True, type=pathlib.Path,
                     help="checkout of reactive-replanning-ur12e with third_party/ present")
     ap.add_argument("--budget", type=int, default=BUDGET)
+    ap.add_argument("--weld", type=float, default=WELD,
+                    help="vertex snap lattice in metres before decimating")
     ap.add_argument("--out", type=pathlib.Path, default=OUT)
     args = ap.parse_args()
+    WELD = args.weld
 
     sys.path.insert(0, str(args.src.resolve()))
     import numpy as np

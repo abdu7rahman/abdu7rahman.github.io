@@ -54,6 +54,7 @@
     "uniform mat4 uView;",
     "uniform mat4 uProj;",
     "varying vec3 vNrm;",
+    "varying vec3 vPos;",
     "void main(){",
     "  mat4 mv=uView*uModel;",
     // Normals are wanted in eye space, where the rim term has a fixed axis to
@@ -61,29 +62,56 @@
     // translation, no scale -- so the rotation block is its own
     // inverse-transpose and none needs shipping.
     "  vNrm=mat3(mv)*aNrm;",
-    "  gl_Position=uProj*mv*vec4(aPos,1.0);",
+    // Eye-space position too, because a specular highlight needs to know
+    // where the eye is and in eye space the eye is the origin.
+    "  vec4 p=mv*vec4(aPos,1.0);",
+    "  vPos=p.xyz;",
+    "  gl_Position=uProj*p;",
     "}"
   ].join("\n");
 
+  /* The arm read as faceted long after its normals were smooth, and the
+     geometry was not what was left: trebling the triangles changed nothing
+     visible. It was this shader. One directional light, a flat 0.20 ambient
+     and no specular gives a curved part exactly two regions -- a Lambert
+     ramp and a constant -- so the only gradient anywhere is the terminator,
+     and every remaining normal discontinuity lands on it as a hard line.
+     Machined surfaces do not read as machined because of their polygons;
+     they read that way because of the highlight travelling across them.
+
+     So: a studio rig rather than a lamp. Hemispheric ambient so the unlit
+     side has a gradient of its own, a key and a dim cool fill, and a
+     Blinn-Phong highlight whose tightness comes from what the part is made
+     of. Lights are fixed in eye space, which keeps the rig with the camera
+     as the robot turns instead of sliding around it. */
   var FRAG = [
     "precision mediump float;",
     "uniform vec3 uColor;",
     "uniform vec3 uEmber;",
     "uniform float uGlow;",
+    "uniform vec2 uSpec;",          // strength, exponent
     "varying vec3 vNrm;",
+    "varying vec3 vPos;",
     "void main(){",
     "  vec3 n=normalize(vNrm);",
-    // Two-sided: with culling off, a triangle wound the other way arrives with
-    // its normal pointing into the screen and would shade as unlit.
-    "  if(n.z<0.0) n=-n;",
-    // Both in eye space: a key from the upper left and slightly behind, which
-    // is what lays the warm edge down the side of the arm facing the headline.
-    "  vec3 l=normalize(vec3(-0.45,0.55,0.70));",
-    "  float lam=max(dot(n,l),0.0);",
-    // In eye space z points at the viewer, so a surface turning away from the
-    // camera is one whose normal has little z left.
-    "  float rim=pow(1.0-abs(n.z),3.0);",
-    "  vec3 col=uColor*(0.20+0.92*lam)+uEmber*(rim*0.95+uGlow);",
+    // Culling is off, so a back face arrives with its normal reversed. Asking
+    // the rasteriser which side this is beats the old test on the sign of
+    // n.z: that one also fired along every silhouette, where n.z passes
+    // through zero on a face that was never back-facing at all, and drew a
+    // seam there.
+    "  if(!gl_FrontFacing) n=-n;",
+    "  vec3 v=normalize(-vPos);",
+    // Screen-up rather than world-up: the rig belongs to the camera.
+    "  vec3 amb=mix(vec3(0.052,0.048,0.048),vec3(0.27,0.26,0.28),n.y*0.5+0.5);",
+    "  vec3 kd=normalize(vec3(-0.42,0.55,0.72));",
+    "  vec3 fd=normalize(vec3(0.68,-0.30,0.30));",
+    "  float key=max(dot(n,kd),0.0);",
+    "  float fill=max(dot(n,fd),0.0)*0.26;",
+    "  float sp=pow(max(dot(n,normalize(kd+v)),0.0),uSpec.y)*uSpec.x;",
+    // A surface turning away from the eye, measured against the eye rather
+    // than against the z axis, so it holds up under perspective.
+    "  float rim=pow(1.0-max(dot(n,v),0.0),3.0);",
+    "  vec3 col=uColor*(amb+key*0.80+fill)+vec3(sp)+uEmber*(rim*0.50+uGlow);",
     "  gl_FragColor=vec4(col,1.0);",
     "}"
   ].join("\n");
@@ -109,6 +137,7 @@
   var uColor = gl.getUniformLocation(prog, "uColor");
   var uEmber = gl.getUniformLocation(prog, "uEmber");
   var uGlow = gl.getUniformLocation(prog, "uGlow");
+  var uSpec = gl.getUniformLocation(prog, "uSpec");
   gl.uniform3f(uEmber, ember[0], ember[1], ember[2]);
 
   gl.enable(gl.DEPTH_TEST);
@@ -167,8 +196,23 @@
     else if (wide.addListener) wide.addListener(arrive);
   }
 
+  /* How hard a part reflects, from what the part is. A UR is three materials
+     and the mesh names them by colour: the blue caps and the pale shells are
+     moulded plastic, which takes a tight bright highlight; the light grey
+     tubes are painted aluminium, broader and softer; everything near-black is
+     matte and barely catches anything. Giving all three the same highlight is
+     what makes a render look like plastic all the way through. */
+  function material(c) {
+    var r = c[0], g = c[1], b = c[2];
+    var lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    if (b > r + 24) return [0.30, 64];        // the blue joint caps: gloss
+    if (lum > 0.62)  return [0.17, 40];       // painted tube
+    if (lum > 0.32)  return [0.10, 26];       // mid grey shell
+    return [0.05, 18];                        // matte black
+  }
+
   // Faces meeting at less than this are one surface; past it, an edge.
-  var CREASE = Math.cos(52 * Math.PI / 180);
+  var CREASE = Math.cos(78 * Math.PI / 180);
 
   function build(m) {
     var u = m.unit;
@@ -255,6 +299,7 @@
         gl.bufferData(gl.ARRAY_BUFFER, nrm, gl.STATIC_DRAW);
         parts.push({ link: li, pb: pb, nb: nb, count: n,
                      colour: [src.c[0] / 255, src.c[1] / 255, src.c[2] / 255],
+                     spec: material(src.c),
                      glow: li >= TOOL_FIRST ? 0.75 : 0.0 });
       }
     }
@@ -347,6 +392,7 @@
       gl.uniformMatrix4fv(uModel, false, modelFrom(M, p.link * 12));
       gl.uniform3f(uColor, p.colour[0], p.colour[1], p.colour[2]);
       gl.uniform1f(uGlow, p.glow);
+      gl.uniform2f(uSpec, p.spec[0], p.spec[1]);
       gl.bindBuffer(gl.ARRAY_BUFFER, p.pb);
       gl.enableVertexAttribArray(aPos);
       gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
