@@ -16,42 +16,10 @@
    ============================================================ */
 
 :root {
-  /* Verified against tools/check_contrast.py's own contrast() math before
-     being chosen, not picked by eye -- see the new rows it gates. */
-  --landing-bg:     #0a0a0a;   /* shader.se's own value; not pure black */
-  --landing-bg-2:   #141414;   /* a band, one level up */
-  --landing-card:   #1c1c1c;   /* a carousel slide / card surface */
-  --landing-fg:     #fcf9f3;   /* warm cream, 18.8:1 on --landing-bg */
-  --landing-mut:    #86868b;   /* = style.css's unused --night-mut */
-  --landing-rule:   #272727;   /* solid hex, not rgba -- matches style.css's
-                                   own convention, and lands at 1.33:1 on
-                                   --landing-bg, inside the existing hairline
-                                   band of 1.05-1.35 */
-  /* The one accent. Not --signal (#d70015): that reads at 3.68-3.90:1 on
-     black, below the 4.5:1 floor every link on this page has to clear.
-     #ff8a5c is already this site's colour for "this matters, look here" --
-     it is demo.js's own preempt/alert colour in the reach demo -- and it
-     clears 7.3-8.5:1 on every landing surface. */
-  --landing-accent: #ff8a5c;
-
-  /* STIX Two Text, self-hosted rather than linked from Google Fonts' CDN.
-     The analytics worker goes out of its way not to leak a visitor's IP to
-     a third party (no IP, UA or cookie stored, ever); loading a Google
-     Fonts CDN on every pageview would undo that for the sake of a font
-     file. Single variable file, weight 400-700, Latin subset only --
-     fonts.googleapis.com/css2?family=STIX+Two+Text:wght@400..700,
-     the unicode-range:U+0000-00FF block it serves. SIL Open Font License. */
-  --font-display: "STIX Two Text", Georgia, "Times New Roman", serif;
-}
-
-@font-face {
-  font-family: "STIX Two Text";
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url("assets/fonts/stix-two-text-latin.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
-                 U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
+  /* The --landing-* palette, --font-display and the @font-face that backs it
+     all moved to style.css when demo.html started reading them too: one set
+     of values, two dark documents. This block stays so the file still
+     declares where its tokens come from. */
 }
 
 /* ── grain ─────────────────────────────────────────────────────────────

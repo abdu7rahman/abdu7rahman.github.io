@@ -36,6 +36,7 @@
       RULE = tok("--rule", "#e8e8ed"),
       RULE2 = tok("--rule-2", "#d2d2d7"),
       PAPER3 = tok("--paper-3", "#ffffff"),
+      PAPER = tok("--paper", "#fbfbfd"),
       SIGNAL = tok("--signal", "#d70015"),
       ACCENT = tok("--accent", "#007a3d"),
       SUN = tok("--sun", "#ff9500");
@@ -139,7 +140,7 @@
     var STACKS = [
       { key: "nav2_inflation", label: "nav2_inflation", col: SIGNAL },
       { key: "reactive", label: "reactive", col: SUN },
-      { key: "learned", label: "learned", col: "#2a6ebb", baked: true },
+      { key: "learned", label: "learned", col: "#5b9bd5", baked: true },
       { key: "irl", label: "irl", col: ACCENT, baked: true },
       { key: "oracle", label: "oracle (ceiling)", col: INK2, dashed: true }
     ];
@@ -689,14 +690,14 @@
       g.save();
       if (mode === "top") {
         var a = proj([x0, y0, 0], box, mode), b = proj([x1, y1, 0], box, mode);
-        g.fillStyle = "#f0f0f3"; g.strokeStyle = RULE2; g.lineWidth = 1;
+        g.fillStyle = PAPER3; g.strokeStyle = RULE2; g.lineWidth = 1;
         g.beginPath();
         if (g.roundRect) g.roundRect(a[0], b[1], b[0] - a[0], a[1] - b[1], 4);
         else g.rect(a[0], b[1], b[0] - a[0], a[1] - b[1]);
         g.fill(); g.stroke();
       } else {
         var c = proj([x0, 0, 0.019], box, mode), d = proj([x1, 0, 0.019], box, mode);
-        g.fillStyle = "#f0f0f3"; g.strokeStyle = RULE2; g.lineWidth = 1;
+        g.fillStyle = PAPER3; g.strokeStyle = RULE2; g.lineWidth = 1;
         g.beginPath();
         g.rect(c[0], c[1], d[0] - c[0], 7);
         g.fill(); g.stroke();
@@ -836,7 +837,7 @@
       g.fillRect(box.x + 1, y - 16, box.w - 2, 40);
       g.font = "400 9.5px " + mono;
       if (task === "connector_insertion") {
-        g.fillStyle = "#f2f2f5";
+        g.fillStyle = PAPER;
         g.fillRect(x, y, w, h);
         var scale = w / spec.max_force_n;
         [["min", spec.min_reaction_force_n], ["nominal", spec.nominal_seating_force_n],

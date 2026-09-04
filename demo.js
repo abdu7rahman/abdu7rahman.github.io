@@ -56,11 +56,14 @@
   // running something other than what the repo ships. On a robot with a real
   // CPU it makes its 20 Hz; in a browser it does not.
   var RACERS = [
-    { key: "pure_pursuit", file: "pure_pursuit_controller.py", label: "Pure Pursuit", col: "#3f6b57", on: true },
-    { key: "stanley",      file: "stanley_controller.py",      label: "Stanley",      col: "#d6b27c", on: true },
-    { key: "dwa",          file: "dwa_controller.py",          label: "DWA",          col: "#9a4a26", on: true },
-    { key: "teb",          file: "teb_controller.py",          label: "TEB",          col: "#5a7d8c", on: true },
-    { key: "mppi",         file: "mppi_controller.py",         label: "MPPI",         col: "#8a6a94", on: false }
+    // Lifted for the dark plate: the originals were chosen against near-white
+    // and the darker three (green, rust, slate) disappeared on #141414. Same
+    // five hues, same order, enough lightness to read as traces.
+    { key: "pure_pursuit", file: "pure_pursuit_controller.py", label: "Pure Pursuit", col: "#63b98f", on: true },
+    { key: "stanley",      file: "stanley_controller.py",      label: "Stanley",      col: "#e3c489", on: true },
+    { key: "dwa",          file: "dwa_controller.py",          label: "DWA",          col: "#e0714a", on: true },
+    { key: "teb",          file: "teb_controller.py",          label: "TEB",          col: "#79a9bd", on: true },
+    { key: "mppi",         file: "mppi_controller.py",         label: "MPPI",         col: "#b795c9", on: false }
   ];
   // The arm's detector comes from a different repo, and it ships a headless
   // harness -- tests/harness.py loads the node with ROS stubbed and tests/
@@ -1819,7 +1822,7 @@
       g.lineWidth = 1;
       for (var k = -GRID; k <= GRID; k++) {
         var v = k * 0.25;
-        g.strokeStyle = k === 0 ? "#dcdce4" : "#ececf2";
+        g.strokeStyle = k === 0 ? C.mut : C.rule;
         line([v, -e, 0], [v, e, 0]);
         line([-e, v, 0], [e, v, 0]);
       }
@@ -1833,7 +1836,7 @@
 
     function draw() {
       g.clearRect(0, 0, cvf._w, cvf._h);
-      g.fillStyle = "#fbfbfd"; g.fillRect(0, 0, cvf._w, cvf._h);
+      g.fillStyle = C.paper; g.fillRect(0, 0, cvf._w, cvf._h);
       if (!cam) return;
       floor();
       sink.reset();

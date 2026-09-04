@@ -43,6 +43,28 @@
   --night-ink: #f5f5f7;
   --night-mut: #86868b;
 
+  /* The dark palette. It lives here rather than in landing.css because both
+     dark documents now read it: index.html paints its own rules with it, and
+     demo.html remaps the tokens above onto it so that page's chrome and the
+     canvases demo.js draws from --paper/--ink/--rule/--signal come out of one
+     set of values instead of two that can drift apart.
+     Every pair carrying text was checked with tools/check_contrast.py's own
+     maths before being chosen. */
+  --landing-bg:     #0a0a0a;   /* not pure black */
+  --landing-bg-2:   #141414;   /* a band, one level up */
+  --landing-card:   #1c1c1c;   /* a card surface */
+  --landing-fg:     #fcf9f3;   /* warm cream, 18.8:1 on --landing-bg */
+  --landing-mut:    #86868b;   /* = --night-mut */
+  --landing-rule:   #272727;   /* 1.33:1 on --landing-bg, inside the hairline band */
+  /* Not --signal (#d70015): that reads at 3.68-3.90:1 on black, under the
+     4.5:1 floor link text has to clear. #ff8a5c is already demo.js's own
+     preempt colour and clears 7.3-8.5:1 on every dark surface here. */
+  --landing-accent: #ff8a5c;
+  /* The second categorical, charts and traces only, never text. --accent
+     (#007a3d) is too dark to survive on black. This teal is the colour
+     demo.js already draws the arm chain in. */
+  --landing-teal:   #5aa5af;
+
   /* Depth. Three levels, each a soft wide shadow at low opacity rather than a
      tight dark one -- a big surface reads as thicker than a small one, which
      is what the blur radius encodes. */
@@ -83,6 +105,14 @@
           "Liberation Mono", monospace;
   --serif: var(--sans);   /* kept so nothing referencing it breaks */
 
+  /* The one webfont, self-hosted rather than linked from Google Fonts' CDN:
+     the analytics worker goes out of its way never to store a visitor's IP,
+     UA or cookie, and a font CDN on every pageview would hand that away for
+     a single file. Display sizes only -- body copy stays in --sans. Single
+     variable file, weight 400-700, Latin subset. SIL Open Font License.
+     Shared, because both dark documents set their titles in it. */
+  --font-display: "STIX Two Text", Georgia, "Times New Roman", serif;
+
   /* Motion tokens. Built-in CSS easings are too weak for UI; these are the
      curves from Emil Kowalski's animation guidance, not hand-rolled. */
   --ease:        cubic-bezier(0.23, 1, 0.32, 1);   /* strong ease-out, the default */
@@ -92,6 +122,16 @@
   --dur-hover:  180ms;   /* hover, colour */
   --dur-move:   240ms;   /* something travelling on screen */
   --dur-reveal: 480ms;   /* first-time scroll reveal, allowed to be slower */
+}
+
+@font-face {
+  font-family: "STIX Two Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/fonts/stix-two-text-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

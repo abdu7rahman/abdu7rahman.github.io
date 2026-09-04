@@ -4,7 +4,45 @@
    rules, ticked corners, tabular numerals, no card soup.
    ============================================================ */
 
-.runner-page { background: var(--paper); }
+/* ── the dark repaint ────────────────────────────────────────────────────
+   This page used to be the one light document left, which read as a
+   different site to the one that links to it. Rather than restyle it rule by
+   rule, the shared tokens are remapped here onto the same dark palette
+   index.html uses -- and because demo.js builds its canvas colours by
+   reading --paper/--ink/--rule/--signal/--accent off :root (see its tok()
+   helper), four of the five plates repaint from this block too, with no
+   change to any drawing code.
+
+   It has to be :root and not .runner-page: custom properties inherit
+   downwards, and demo.js reads them from document.documentElement. This file
+   only ever loads on demo.html, so the override cannot reach anything else.
+
+   Relative lightness is kept, inverted: --paper is the plate, --paper-2 the
+   recessed band, --paper-3 the raised card. --ink-2 collapses onto --ink;
+   two levels of foreground rather than three, which is the one thing this
+   mapping gives up. */
+:root {
+  color-scheme: dark;
+
+  --paper:    var(--landing-bg-2);
+  --paper-2:  var(--landing-bg);
+  --paper-3:  var(--landing-card);
+
+  --ink:      var(--landing-fg);
+  --ink-2:    var(--landing-fg);
+  --ink-3:    var(--landing-mut);
+
+  --rule:     var(--landing-rule);
+  --rule-2:   #333333;
+
+  --signal:   var(--landing-accent);
+  --signal-w: #2a1a12;             /* the accent, dark enough to sit under cream */
+  --accent:   var(--landing-teal); /* --accent (#007a3d) is too dark on black */
+}
+
+/* The page sits a step below the plates so a canvas has an edge without
+   needing a heavier border. */
+.runner-page { background: var(--landing-bg); }
 
 .runner {
   max-width: 1320px;
@@ -33,8 +71,12 @@
 }
 
 .runner__title {
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: clamp(2.4rem, 5.4vw, 4rem);
   line-height: .98; letter-spacing: -.028em; margin-top: 10px;
+  /* The same phosphor the landing page puts on its headings. */
+  text-shadow: 0 0 1px rgba(255, 249, 240, .5), 0 0 22px rgba(255, 138, 92, .24);
 }
 .runner__lede {
   margin-top: 20px; max-width: 70ch;
@@ -210,7 +252,9 @@
   max-height: 240px; overflow: auto;
   white-space: pre-wrap; word-break: break-word;
 }
-.log::selection { background: var(--signal); color: #fff; }
+/* White on the accent is 2.3:1; #1a0e08 is 8.1:1 and the pairing every other
+   accent-backed label on the site already uses. */
+.log::selection { background: var(--signal); color: #1a0e08; }
 .console__note {
   margin-top: 14px; font-size: .8125rem; line-height: 1.65;
   color: var(--ink-3); max-width: 76ch;
@@ -301,7 +345,7 @@
   .er-src.is-on:hover { opacity: 1; }
   .racer:hover { opacity: .85; }
   .racer.is-on:hover { opacity: 1; }
-  .run:hover:not(:disabled) { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .run:hover:not(:disabled) { background: var(--signal); border-color: var(--signal); color: #1a0e08; }
 }
 /* The canvases fade in when their runtime is ready rather than popping
    from an empty plate. Opacity only -- a moving canvas is a repaint. */
@@ -353,7 +397,7 @@
    hues do not separate. */
 .kx--nav2  { background: var(--signal); height: 3px; border-radius: 2px; }
 .kx--react { background: var(--sun); height: 3px; border-radius: 2px; }
-.kx--learn { background: #2a6ebb; height: 3px; border-radius: 2px; }
+.kx--learn { background: #5b9bd5; height: 3px; border-radius: 2px; }   /* matches lab.js's "learned" trace */
 .kx--irl   { background: var(--accent); height: 3px; border-radius: 2px; }
 .kx--orc   { background: repeating-linear-gradient(90deg, var(--ink-2) 0 5px, transparent 5px 8px); height: 3px; }
 .kx--body  { background: var(--ink); height: 3px; border-radius: 2px; }
