@@ -857,6 +857,36 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
   }
 }
 
+/* 404 was the last document on the light palette once index.html and
+   demo.html both went dark. It loads this file and nothing else, so its remap
+   lives here rather than in a page stylesheet it does not have.
+
+   On body rather than :root, which is the one difference from demo.css's
+   version: that page has canvases whose colours demo.js reads off
+   documentElement, and this one has no script at all.
+
+   The light values above are not dead because of this. They are what every
+   one of these three documents falls back to if its remap does not arrive,
+   which is exactly why tools/check_contrast.py still has to hold them to
+   their ratios. */
+body.err {
+  color-scheme: dark;
+  --paper:    var(--landing-bg);
+  --paper-2:  var(--landing-bg-2);
+  --paper-3:  var(--landing-card);
+  --ink:      var(--landing-fg);
+  --ink-2:    var(--landing-fg);
+  --ink-3:    var(--landing-mut);
+  --rule:     var(--landing-rule);
+  --rule-2:   #333333;
+  --signal:   var(--landing-accent);
+  --signal-w: #2a1a12;
+  --accent:   var(--landing-teal);
+  background: var(--landing-bg);
+  color: var(--landing-fg);
+}
+body.err .btn--solid { color: #1a0e08; }
+
 /* The top bar earns its background: transparent over the top of the page,
    and settling onto its surface once the reader has moved. scroll() rather
    than view(), because this tracks the document, not an element. */
