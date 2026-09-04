@@ -163,6 +163,31 @@ html { scroll-behavior: smooth; scroll-padding-top: 32px; }
    new page immediately, which is the cut this reader asked for. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  [style*="view-transition-name"], .rail__cta, .runner__title { view-transition-name: none !important; }
+}
+
+/* One element crosses the navigation instead of fading with the rest of the
+   page: the words "Run my robots". They are the label on the pill in the bar
+   here and the title of the page there, and clicking the first is how you get
+   the second, so the pill travelling across and growing into the headline is
+   the literal truth of what just happened rather than an effect.
+
+   Names have to be unique per document, which is why the hero's copy of the
+   same button does not carry one -- the bar's is the one that is always on
+   screen to leave from. */
+body.home .rail__cta { view-transition-name: run-robots; }
+body.runner-page .runner__title { view-transition-name: run-robots; }
+::view-transition-group(run-robots) {
+  animation-duration: 460ms;
+  animation-timing-function: var(--ease);
+}
+/* The pill and the headline are different shapes and different sizes, so
+   cross-fading the two snapshots over the morph is what stops it reading as a
+   stretched screenshot of one of them. */
+::view-transition-old(run-robots), ::view-transition-new(run-robots) {
+  animation-duration: 300ms;
+  height: 100%;
+  object-fit: contain;
 }
 
 body {
@@ -692,6 +717,67 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
     --cur-cross: crosshair;
   }
 }
+
+/* ── the drawn cursor ──────────────────────────────────────────────────
+   A dot at the pointer and a ring easing after it, both built by
+   immersive.js. The ring is the part carrying information: it swells over
+   anything you can act on, so the page answers before the click.
+
+   Both dark pages. The cursors drawn in --cur-arrow and friends stay the
+   fallback: they are what shows before the script runs, without JS, on
+   touch, and -- the case that matters -- over a demo canvas, where the
+   crosshair sits on the pixel you mean and a ring easing toward it a frame
+   behind is worse than no cursor at all. immersive.js drops .cur-on over
+   those, which hands the pointer straight back.
+
+   --cur-ink rather than --signal directly, so index.html can point it at the
+   accent it paints with; demo.html and the body.util pages already remap
+   --signal itself. */
+:root { --cur-ink: var(--signal); }
+.cur-dot, .cur-ring {
+  position: fixed; top: 0; left: 0;
+  z-index: 70;                       /* over the grain (55) and the bar (60) */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease);
+  will-change: transform;
+}
+.cur-dot {
+  width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--cur-ink);
+}
+.cur-ring {
+  width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 1px solid var(--cur-ink);
+  transition: opacity var(--dur-hover) var(--ease),
+              width var(--dur-hover) var(--ease),
+              height var(--dur-hover) var(--ease),
+              margin var(--dur-hover) var(--ease),
+              background var(--dur-hover) var(--ease);
+}
+.cur-ring.is-hot {
+  width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  background: color-mix(in srgb, var(--cur-ink) 8%, transparent);
+}
+body.cur-on .cur-dot { opacity: 1; }
+body.cur-on .cur-ring { opacity: .58; }
+body.cur-on .cur-ring.is-hot { opacity: 1; }
+/* The system pointer would sit inside the ring. Only hidden once the script
+   has actually put something there, and never over a canvas. */
+body.has-cur.cur-on, body.has-cur.cur-on * { cursor: none !important; }
+
+/* field.js's shader, built and appended at runtime. Fixed and full-bleed, so
+   the whole page sits in the same weather rather than one section of it; the
+   content is lifted one layer above it. The grain (z-index 55) and the
+   read-position bar (60) stay on top of both. Shared, because both dark
+   documents run the shader now. */
+.bg-field {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+body.home .shell, body.runner-page .runner { position: relative; z-index: 1; }
 
 /* A card in the corner, not a bar across the middle. Centred at the foot of
    the page it sat over the reading column on every width -- a toast shaped

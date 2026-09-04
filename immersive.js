@@ -6,14 +6,22 @@
  * is off under prefers-reduced-motion, on touch, or without JS, because every
  * one of these is an embellishment on a page that already works.
  *
- * Landing page only. demo.html is a set of instruments you draw maps and place
- * obstacles on: a cursor that lags its own position by a frame and a page that
- * keeps sliding after you stop are exactly wrong there.
+ * Both dark pages. It used to be the landing page alone, on the grounds that
+ * demo.html is a set of instruments you draw maps and place obstacles on and a
+ * cursor lagging its own position by a frame is wrong there. That was the
+ * right objection to the wrong scope: it is true of the canvases, not of the
+ * page around them. So the runner gets the same scroll and the same cursor,
+ * and the cursor stands down the moment it is over an instrument -- the
+ * crosshair demo.css sets on those canvases is load-bearing, and it comes
+ * back.
  */
 (function () {
   "use strict";
 
-  if (!document.body || !document.body.classList.contains("home")) return;
+  if (!document.body) return;
+  var cls = document.body.classList;
+  var RUNNER = cls.contains("runner-page");
+  if (!cls.contains("home") && !RUNNER) return;
 
   var reduce = window.matchMedia &&
                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -65,6 +73,11 @@
     }
 
     window.addEventListener("wheel", function (e) {
+      // Already claimed. demo.js sizes the obstacle you are about to drop with
+      // the wheel and calls preventDefault to say so; scrolling the page as
+      // well would move the cell out from under the hand placing the thing.
+      // Anything that calls preventDefault on a wheel event owns it.
+      if (e.defaultPrevented) return;
       // Leave anything with its own scrollbar alone -- the log on a demo card,
       // a code block, a select. Hijacking those breaks them.
       var n = e.target;
@@ -142,19 +155,37 @@
   document.body.classList.add("has-cur");
 
   var mx = window.innerWidth / 2, my = window.innerHeight / 2;
-  var rx = mx, ry = my, shown = false;
+  var rx = mx, ry = my, shown = false, cold = false;
+
+  // cur-on carries both halves of the effect: it reveals the dot and ring,
+  // and it is what hides the system pointer. Dropping it is therefore the
+  // whole stand-down -- ours goes, theirs comes back, in one class.
+  function sync() {
+    if (shown && !cold) document.body.classList.add("cur-on");
+    else document.body.classList.remove("cur-on");
+  }
 
   window.addEventListener("pointermove", function (e) {
     if (e.pointerType !== "mouse") return;
     mx = e.clientX; my = e.clientY;
-    if (!shown) { shown = true; rx = mx; ry = my; document.body.classList.add("cur-on"); }
+    if (!shown) { shown = true; rx = mx; ry = my; sync(); }
     dot.style.transform = "translate3d(" + mx + "px," + my + "px,0)";
     curTick();
   }, { passive: true });
 
   document.addEventListener("pointerleave", function () {
-    document.body.classList.remove("cur-on");
-    shown = false;
+    shown = false; sync();
+  });
+
+  // The instruments. A canvas here is something you aim at -- a wall you are
+  // drawing, a point you are putting an obstacle on -- and it is drawn under a
+  // crosshair placed exactly on the pixel you mean. A ring easing toward that
+  // pixel a frame behind is worse than no cursor at all.
+  document.addEventListener("pointerover", function (e) {
+    if (e.target.closest && e.target.closest("canvas")) { cold = true; sync(); }
+  });
+  document.addEventListener("pointerout", function (e) {
+    if (e.target.closest && e.target.closest("canvas")) { cold = false; sync(); }
   });
 
   var curRaf = null;
@@ -179,7 +210,10 @@
      Inside a small radius the control leans toward the pointer. A third of
      the distance, capped: past that it stops reading as attraction and starts
      reading as the button running away. */
-  var MAGNETS = document.querySelectorAll(".btn, .rail__cta, .carousel__btn");
+  // Not the runner's own controls: .seg__btn and .tbtn are small, adjacent
+  // and switch what a running simulation is doing, and a control that leans
+  // away from where you clicked is a control you miss.
+  var MAGNETS = document.querySelectorAll(".btn, .rail__cta, .carousel__btn, .runner__back");
   Array.prototype.forEach.call(MAGNETS, function (el) {
     el.addEventListener("pointermove", function (e) {
       var b = el.getBoundingClientRect();

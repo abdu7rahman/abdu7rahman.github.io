@@ -16,7 +16,9 @@
 (function () {
   "use strict";
 
-  if (!document.body || !document.body.classList.contains("home")) return;
+  if (!document.body) return;
+  var RUNNER = document.body.classList.contains("runner-page");
+  if (!document.body.classList.contains("home") && !RUNNER) return;
 
   var reduce = window.matchMedia &&
                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -45,6 +47,7 @@
     "uniform vec2 u_mouse;",   // 0..1, already smoothed on the JS side
     "uniform float u_glow;",   // 0..1, fades the pointer light in and out
     "uniform float u_scroll;", // page offset, in viewport heights
+    "uniform float u_rush;",   // 0..1, how fast the page is moving right now
     "float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}",
     "float noise(vec2 p){",
     "  vec2 i=floor(p),f=fract(p);",
@@ -79,7 +82,15 @@
     "  vec2 q=vec2(fbm(p+vec2(0.0,t)),fbm(p+vec2(5.2,1.3-t)));",
     "  vec2 r=vec2(fbm(p+3.0*q+vec2(1.7,9.2)+t*0.6),",
     "              fbm(p+3.0*q+vec2(8.3,2.8)-t*0.4));",
-    "  float f=fbm(p+2.6*r);",
+    // Motion smear. The screen-space part of y is compressed while the page is
+    // moving, so the same features come out drawn along the direction of
+    // travel -- the volume reads as being passed through rather than scrolled
+    // in front of. The scroll term is taken out and put back rather than
+    // scaled with it, or the whole field would lurch every time the speed
+    // changed. Costs one vec2 op: no extra fbm, which is the whole point at
+    // the moment frames are scarcest.
+    "  vec2 pf=p; pf.y=(pf.y-u_scroll*0.45)*(1.0-0.45*u_rush)+u_scroll*0.45;",
+    "  float f=fbm(pf+2.6*r);",
     // Weight the smoke to the right, where the robot is. The reference does
     // the same thing and it is not only composition: the type lives in the
     // left half, and every bit of light put behind it is contrast spent.
@@ -146,6 +157,7 @@
   var uMouse = gl.getUniformLocation(prog, "u_mouse");
   var uGlow = gl.getUniformLocation(prog, "u_glow");
   var uScroll = gl.getUniformLocation(prog, "u_scroll");
+  var uRush = gl.getUniformLocation(prog, "u_rush");
 
   function hexToRgb01(hex) {
     var h = hex.replace("#", "").trim();
@@ -162,7 +174,10 @@
 
   // Half resolution. Nothing in the image has an edge, so the only thing the
   // extra pixels would buy is heat.
-  var SCALE = 0.5;
+  // Half resolution on the landing page. A third on the runner, where the
+  // shader shares a GPU with seven live simulations and is the only thing on
+  // screen that nobody came for.
+  var SCALE = RUNNER ? 0.34 : 0.5;
   function resize() {
     var w = Math.max(1, Math.round(window.innerWidth * SCALE));
     var h = Math.max(1, Math.round(window.innerHeight * SCALE));
@@ -177,7 +192,7 @@
   // light that tracks exactly reads as a cursor decoration, one that lags
   // reads as something in the scene responding.
   var mx = 0.5, my = 0.5, tx = 0.5, ty = 0.5, glow = 0, glowTarget = 0;
-  var scroll = 0;
+  var scroll = 0, seen = 0, rush = 0;
 
   function onPointer(e) {
     tx = e.clientX / window.innerWidth;
@@ -204,9 +219,17 @@
     mx += (tx - mx) * k * 4.0;
     my += (ty - my) * k * 4.0;
     glow += (glowTarget - glow) * k * 2.2;
+    // Speed off the frame's own delta rather than a second scroll listener:
+    // it is already the rate this is drawn at. A tenth of a viewport in one
+    // frame counts as flat out. Quick to arrive and slow to leave, so the
+    // smear tracks a flick and then relaxes instead of strobing.
+    var want = Math.min(1, Math.abs(scroll - seen) / 0.10);
+    seen = scroll;
+    rush += (want - rush) * k * (want > rush ? 7.0 : 1.6);
     gl.uniform2f(uMouse, mx, my);
     gl.uniform1f(uGlow, glow);
     gl.uniform1f(uScroll, scroll);
+    gl.uniform1f(uRush, rush);
     gl.uniform1f(uTime, (now - start) / 1000);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     raf = requestAnimationFrame(frame);
@@ -222,6 +245,7 @@
     gl.uniform2f(uMouse, 0.5, 0.5);
     gl.uniform1f(uGlow, 0.0);
     gl.uniform1f(uScroll, 0.0);
+    gl.uniform1f(uRush, 0.0);
     gl.uniform1f(uTime, 12.0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   } else {
@@ -231,6 +255,26 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) stop(); else play();
   });
+
+  /* On the runner the atmosphere holds still while an instrument is on
+     screen. Those canvases are the page -- they are running real planners at
+     a real rate -- and the weather behind them is not worth a frame taken off
+     one. It breathes in the reading parts, where there is nothing to starve,
+     and freezes where you work: the fog is still drawn, it just stops
+     advancing. */
+  if (RUNNER && window.IntersectionObserver) {
+    var live = 0;
+    var io = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i], was = e.target.__fieldSeen === true;
+        if (e.isIntersecting && !was) { e.target.__fieldSeen = true; live++; }
+        else if (!e.isIntersecting && was) { e.target.__fieldSeen = false; live--; }
+      }
+      if (live > 0) stop(); else if (!document.hidden) play();
+    }, { rootMargin: "120px" });
+    var instruments = document.querySelectorAll("[data-demo] canvas");
+    for (var n = 0; n < instruments.length; n++) io.observe(instruments[n]);
+  }
 
   var t;
   window.addEventListener("resize", function () {
