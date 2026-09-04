@@ -152,14 +152,22 @@ body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
    columns, so the type goes back to the middle and the object steps out
    rather than shrinking into a smudge behind it. */
 .hero__arm {
-  position: absolute; top: 0; right: 0; bottom: 0;
-  width: 54%; height: 100%;
+  position: fixed; top: 0; right: 0;
+  width: 54%; height: 100vh;
   z-index: 0; pointer-events: none;
+  /* No opacity transition: hero-arm.js already sets it every frame the scroll
+     moves, and a transition on top of that restarts continuously and lands
+     the element behind where the page actually is. */
 }
 @media (max-width: 900px) {
   .hero__arm { display: none; }
 }
 @media (min-width: 901px) {
+  /* Tall enough that scrolling the hero is a scrub rather than a flicker.
+     The content stays at the top; the extra height is the runway the robot's
+     move plays out over, and it ends before any other section's prose can
+     reach the half of the window the robot occupies. */
+  body.home .hero { min-height: 145vh; align-content: start; }
   body.home .hero { text-align: left; }
   body.home .hero__eyebrow,
   body.home .hero__name,

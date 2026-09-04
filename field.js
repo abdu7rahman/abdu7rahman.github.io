@@ -80,13 +80,22 @@
     "  vec2 r=vec2(fbm(p+3.0*q+vec2(1.7,9.2)+t*0.6),",
     "              fbm(p+3.0*q+vec2(8.3,2.8)-t*0.4));",
     "  float f=fbm(p+2.6*r);",
+    // Weight the smoke to the right, where the robot is. The reference does
+    // the same thing and it is not only composition: the type lives in the
+    // left half, and every bit of light put behind it is contrast spent.
+    "  float side=smoothstep(0.20,0.92,uv.x);",
     // Weighted hard towards the top end: light only in the places the noise
     // really peaks, so most of the frame stays the page's own black and the
     // glow reads as a source rather than a tint over everything.
-    "  f=smoothstep(0.46,0.98,f);",
+    "  f=smoothstep(0.30,0.98,f);",
     "  vec3 base=vec3(0.039,0.039,0.039);",
-    "  vec3 col=base+u_ember*f*0.085;",
-    "  col+=u_ember*pow(smoothstep(0.62,1.0,length(r)),2.0)*0.025;",
+    // Smoke is not the same colour as the light in it: a warm source through
+    // grey particulate. Two terms, so the fog has body of its own instead of
+    // being a wash of the accent.
+    "  vec3 smoke=vec3(0.62,0.60,0.58);",
+    "  float d=f*(0.16+0.84*side);",
+    "  vec3 col=base+smoke*d*0.085+u_ember*d*0.11;",
+    "  col+=u_ember*pow(smoothstep(0.62,1.0,length(r)),2.0)*0.03*side;",
     // Pull the corners down so the type in the middle always has the darkest
     // ground under it.
     // A pool of warm light under the cursor. Multiplied by the noise as well
