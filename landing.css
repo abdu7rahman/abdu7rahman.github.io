@@ -1,0 +1,323 @@
+/* ============================================================
+   The landing page, restyled after shader.se -- dark, a warm serif
+   display face with a phosphor glow, film grain, a project carousel.
+
+   Scoped entirely under `body.home`. style.css is shared with demo.html,
+   which hosts seven live canvases still drawn light-on-white; repainting
+   its :root tokens dark would either break those or force reskinning
+   ~3,300 lines of drawing code neither of which was asked for. demo.css
+   already exists as demo.html's own page-scoped layer on top of the same
+   shared style.css -- this file is that same pattern for index.html.
+
+   New custom properties still live in :root (custom properties are global
+   by nature), but every rule that reads them is scoped to `body.home`, so
+   demo.html's cascade is untouched: it never sets that class and never
+   loads this file.
+   ============================================================ */
+
+:root {
+  /* Verified against tools/check_contrast.py's own contrast() math before
+     being chosen, not picked by eye -- see the new rows it gates. */
+  --landing-bg:     #0a0a0a;   /* shader.se's own value; not pure black */
+  --landing-bg-2:   #141414;   /* a band, one level up */
+  --landing-card:   #1c1c1c;   /* a carousel slide / card surface */
+  --landing-fg:     #fcf9f3;   /* warm cream, 18.8:1 on --landing-bg */
+  --landing-mut:    #86868b;   /* = style.css's unused --night-mut */
+  --landing-rule:   #272727;   /* solid hex, not rgba -- matches style.css's
+                                   own convention, and lands at 1.33:1 on
+                                   --landing-bg, inside the existing hairline
+                                   band of 1.05-1.35 */
+  /* The one accent. Not --signal (#d70015): that reads at 3.68-3.90:1 on
+     black, below the 4.5:1 floor every link on this page has to clear.
+     #ff8a5c is already this site's colour for "this matters, look here" --
+     it is demo.js's own preempt/alert colour in the reach demo -- and it
+     clears 7.3-8.5:1 on every landing surface. */
+  --landing-accent: #ff8a5c;
+
+  /* STIX Two Text, self-hosted rather than linked from Google Fonts' CDN.
+     The analytics worker goes out of its way not to leak a visitor's IP to
+     a third party (no IP, UA or cookie stored, ever); loading a Google
+     Fonts CDN on every pageview would undo that for the sake of a font
+     file. Single variable file, weight 400-700, Latin subset only --
+     fonts.googleapis.com/css2?family=STIX+Two+Text:wght@400..700,
+     the unicode-range:U+0000-00FF block it serves. SIL Open Font License. */
+  --font-display: "STIX Two Text", Georgia, "Times New Roman", serif;
+}
+
+@font-face {
+  font-family: "STIX Two Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/fonts/stix-two-text-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
+}
+
+/* ── grain ─────────────────────────────────────────────────────────────
+   A single inline SVG turbulence filter, painted once into a fixed layer
+   at low opacity. Static, not animated: an animated grain reads as video
+   noise and costs a repaint every frame for no legibility gain, and a
+   still one still reads as film rather than a flat gradient. Zero extra
+   requests -- the whole texture is the data: URI below. */
+body.home::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 55;
+  pointer-events: none;
+  opacity: .035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@media (prefers-reduced-transparency: reduce) {
+  body.home::before { display: none; }
+}
+
+/* ── base ──────────────────────────────────────────────────────────── */
+body.home {
+  background: var(--landing-bg);
+  color: var(--landing-fg);
+}
+body.home h1, body.home h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+/* The phosphor bloom. Layered rather than one shadow -- a tight inner glow
+   for the letterforms themselves and a wider soft one for the halo -- and
+   kept off body prose: it only ever brightens against black, so it cannot
+   fail the contrast gate it sits on top of, but it would still blur small
+   text at these radii. */
+body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
+body.home .carousel__pos {
+  text-shadow: 0 0 1px rgba(255, 249, 240, .7), 0 0 28px rgba(255, 138, 92, .30);
+}
+
+body.home .hero__eyebrow, body.home .sec__label .tag { color: var(--landing-accent); }
+body.home .hero__lede, body.home .proj__desc, body.home .lead,
+body.home .bench__note, body.home .bench__cap p, body.home .stack dd,
+body.home .path__what p, body.home .path__roles, body.home .closing {
+  color: var(--landing-mut);
+}
+body.home .sec__note { color: var(--landing-mut); }
+
+/* ── nav ───────────────────────────────────────────────────────────── */
+body.home .rail {
+  background: rgba(10, 10, 10, .72);
+  border-bottom: 1px solid var(--landing-rule);
+}
+body.home .rail::after { display: none; }
+body.home .mark__initials { color: var(--landing-fg); font-family: var(--font-display); }
+body.home .rail__nav a, body.home .icolink { color: var(--landing-mut); }
+body.home .rail__nav a[aria-current="true"] { color: var(--landing-fg); background: rgba(255, 255, 255, .08); }
+body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg); background: rgba(255, 255, 255, .06); }
+
+/* The nav CTA: the hero's own "run the robots" action, surfaced a second
+   time where shader.se puts "Book a call" -- this site's highest-value
+   action is the live demos, so that is what gets the permanent seat. */
+.rail__cta {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 15px; margin-left: 4px;
+  border-radius: var(--r-pill);
+  background: var(--landing-accent); color: #1a0e08;
+  font: 500 13px/1 var(--sans); letter-spacing: -.01em;
+  text-decoration: none; white-space: nowrap;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.rail__cta:hover { opacity: .86; }
+.rail__cta .ico { width: 14px; height: 14px; }
+
+/* ── hero ──────────────────────────────────────────────────────────── */
+body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); }
+body.home .hero__meta dt { color: var(--landing-mut); }
+body.home .hero__meta dd { color: var(--landing-fg); }
+body.home .hero__meta .ico { color: var(--landing-mut); }
+
+body.home .btn { border-color: var(--landing-accent); color: var(--landing-accent); }
+body.home .btn:hover { background: rgba(255, 138, 92, .12); }
+body.home .btn--solid { background: var(--landing-accent); border-color: var(--landing-accent); color: #1a0e08; }
+body.home .btn--solid:hover { background: #ff9f78; border-color: #ff9f78; }
+
+/* The "screen": a real screenshot of the foresee demo mid-replan, in a dark
+   bezel -- not a fabricated prop. tools/gen_hero.js writes assets/hero.png
+   from the actual running demo, the same way tools/gen_og.js already
+   writes assets/og.png from the page's own tokens. */
+.hero__screen {
+  grid-column: 1 / -1;
+  margin: 48px auto 0;
+  max-width: 720px;
+  padding: 14px;
+  background: var(--landing-card);
+  border: 1px solid var(--landing-rule);
+  border-radius: var(--r-xl);
+  box-shadow: 0 0 0 1px rgba(255, 138, 92, .10), 0 30px 80px rgba(0, 0, 0, .55),
+              0 0 120px rgba(255, 138, 92, .08);
+}
+.hero__screen img { display: block; width: 100%; height: auto; border-radius: var(--r-lg); }
+.hero__screen figcaption {
+  margin-top: 10px; padding: 0 4px;
+  font: 400 12.5px/1.4 var(--mono); letter-spacing: 0; color: var(--landing-mut);
+}
+
+/* ── about ─────────────────────────────────────────────────────────── */
+#about .sec__body { max-width: 62ch; }
+#about p { font-size: 1.0625rem; line-height: 1.5; color: var(--landing-mut); margin-top: 18px; }
+#about p:first-child { margin-top: 0; }
+#about strong { color: var(--landing-fg); font-weight: 600; }
+
+/* ── sections ──────────────────────────────────────────────────────── */
+body.home .sec--band, body.home #work { background: var(--landing-bg-2); }
+body.home .rule-row, body.home .stack > div, body.home .path > li,
+body.home .contact li, body.home .proj__stats > div, body.home .bench__table tbody tr,
+body.home .bench__meta, body.home .bench__table thead th {
+  border-color: var(--landing-rule);
+}
+body.home a.inline, body.home .stack dt, body.home .path__what .at,
+body.home .demo, body.home code { color: var(--landing-accent); }
+body.home code { background: rgba(255, 138, 92, .12); }
+body.home a.inline { border-color: rgba(255, 138, 92, .28); }
+body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-accent); }
+
+/* ── work: carousel ────────────────────────────────────────────────────
+   Same ten <li class="proj"> the page always had -- same title, links,
+   chips, stats -- paged one at a time instead of scrolled past. A "peek"
+   layout of two-up was tried in thinking about this and dropped: these
+   cards carry a stat table each, and two half-width stat tables side by
+   side is the thing that stops being readable first.
+
+   Ships already wrapped in the markup; carousel.js adds `.is-active` once
+   it can actually drive it, so a reader without JavaScript gets every card
+   in the plain stacked column this page has always shown -- same rule
+   .no-js [data-reveal] already follows in style.css. */
+.carousel__viewport { overflow: hidden; }
+.carousel.is-active .carousel__track {
+  display: flex;
+  transition: transform var(--dur-move) var(--ease-in-out);
+}
+.carousel.is-active .proj {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+}
+.carousel:not(.is-active) .carousel__nav,
+.carousel:not(.is-active) .carousel__pos { display: none; }
+
+.carousel__nav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 18px;
+}
+.carousel__btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--r-pill);
+  border: 1px solid var(--landing-rule); background: transparent;
+  color: var(--landing-fg); cursor: var(--cur-hand);
+  transition: border-color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
+}
+.carousel__btn:hover { border-color: var(--landing-accent); background: rgba(255, 138, 92, .10); }
+.carousel__btn:disabled { opacity: .3; cursor: default; }
+.carousel__btn:disabled:hover { border-color: var(--landing-rule); background: transparent; }
+.carousel__btn .ico { width: 18px; height: 18px; }
+.carousel__pos {
+  font: 400 13px/1 var(--mono); letter-spacing: 0; color: var(--landing-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+body.home .proj {
+  background: var(--landing-card);
+  box-shadow: none;
+  border: 1px solid var(--landing-rule);
+}
+@media (hover: hover) and (pointer: fine) {
+  body.home .proj:hover { box-shadow: 0 12px 32px rgba(0, 0, 0, .4); }
+}
+body.home .proj__idx { color: var(--landing-accent); }
+body.home .proj__title, body.home .proj__title a { color: var(--landing-fg); }
+body.home .proj__title a { background-image: linear-gradient(var(--landing-accent), var(--landing-accent)); }
+body.home .proj__title a:hover { color: var(--landing-accent); }
+body.home .chips li { color: var(--landing-mut); border-color: var(--landing-rule); }
+body.home .proj__stats dt { color: var(--landing-mut); }
+body.home .proj__stats dd { color: var(--landing-fg); }
+body.home .proj__stats .unit { color: var(--landing-mut); }
+body.home .tryit { background: rgba(255, 138, 92, .08); border-color: var(--landing-accent); color: var(--landing-fg); }
+body.home .tryit:hover { background: var(--landing-card); }
+body.home .tryit__tag { color: var(--landing-accent); border-color: var(--landing-accent); }
+body.home .tryit__body { color: var(--landing-mut); }
+body.home .tryit__body b { color: var(--landing-fg); }
+body.home .tryit .ico--link { color: var(--landing-accent); }
+
+/* ── measured ──────────────────────────────────────────────────────── */
+body.home .bench__table tbody th { color: var(--landing-fg); }
+body.home .bench__table tbody td { color: var(--landing-mut); }
+body.home .bench__table tbody tr:hover { background: var(--landing-card); }
+body.home .bench__table tr.is-mine { background: rgba(255, 138, 92, .10); }
+body.home .bench__table tr.is-mine:hover { background: rgba(255, 138, 92, .14); }
+body.home .bench__table tr.is-mine th, body.home .bench__table tr.is-mine td { color: var(--landing-fg); }
+body.home .bench__table b { color: var(--landing-accent); }
+body.home .bar--cpp { background: var(--landing-accent); }
+body.home .bar--py { background: #5aa5af; }   /* demo.js's own "clear/safe" teal */
+body.home .sw--cpp { background: var(--landing-accent); }
+body.home .sw--py { background: #5aa5af; }
+body.home .legend li { color: var(--landing-mut); }
+body.home .bench__meta { color: var(--landing-mut); }
+body.home .bench__meta .ico { color: var(--landing-accent); }
+
+/* ── stack / path ──────────────────────────────────────────────────── */
+body.home .path__when { color: var(--landing-mut); }
+body.home .path__what h3 { color: var(--landing-fg); }
+
+/* ── contact ───────────────────────────────────────────────────────── */
+body.home .closing { color: var(--landing-fg); }
+body.home .contact a { color: var(--landing-fg); }
+body.home .contact a:hover { color: var(--landing-accent); background: var(--landing-card); }
+
+/* A row with nowhere to link to -- shader.se's own location line isn't a
+   link either. Same layout as .contact a, no hover state, no trailing
+   arrow: that arrow means "goes somewhere on click" and this doesn't. */
+.contact__row {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 14px;
+  padding: 17px 4px;
+  font: 400 17px/1 var(--sans); letter-spacing: -.022em;
+  color: var(--landing-mut);
+}
+.contact__row .ico { color: var(--landing-mut); }
+
+/* ── footer ────────────────────────────────────────────────────────── */
+body.home .foot { border-color: var(--landing-rule); }
+body.home .foot__l { color: var(--landing-fg); }
+body.home .foot__r, body.home .foot p { color: var(--landing-mut); }
+
+/* ── "say something", the nudge bar ───────────────────────────────────
+   Injected by feedback.js at runtime, so these rules exist even though
+   the markup does not ship in index.html. */
+body.home .say { background: var(--landing-card); border-color: var(--landing-rule); }
+body.home .say__h { color: var(--landing-fg); }
+body.home .say__p, body.home .say__l span, body.home .say__msg { color: var(--landing-mut); }
+body.home .say__l { color: var(--landing-mut); }
+body.home .say__t, body.home .say__i { background: var(--landing-bg-2); border-color: var(--landing-rule); color: var(--landing-fg); }
+body.home .say__b { background: var(--landing-accent); color: #1a0e08; }
+body.home .nudge { background: rgba(20, 20, 20, .88); border-color: var(--landing-rule); }
+body.home .nudge__p { color: var(--landing-fg); }
+body.home .nudge__b { border-color: var(--landing-rule); color: var(--landing-mut); }
+body.home .nudge__b:hover { background: var(--landing-bg-2); }
+body.home .nudge__b--go { background: var(--landing-accent); border-color: var(--landing-accent); color: #1a0e08; }
+
+/* ── responsive ────────────────────────────────────────────────────── */
+@media (max-width: 620px) {
+  .hero__screen { margin-top: 36px; }
+}
+
+/* ── accessibility ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .carousel.is-active .carousel__track { transition: none; }
+}
+@media (prefers-contrast: more) {
+  body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
+  body.home .proj, body.home .hero__screen { border-color: var(--landing-rule); }
+  body.home::before { display: none; }
+  body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
+  body.home .carousel__pos { text-shadow: none; }
+}
+@media print {
+  body.home::before { display: none; }
+  .hero__screen, .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
+  .carousel.is-active .carousel__track { display: block; }
+  .carousel.is-active .proj { flex: none; }
+}

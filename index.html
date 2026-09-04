@@ -21,9 +21,10 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=9513f5e8">
+<link rel="stylesheet" href="landing.css?v=ff3693ac">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
-<body class="no-js">
+<body class="home no-js">
 
 <a class="skip" href="#main">Skip to content</a>
 
@@ -36,6 +37,8 @@
     <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
     <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
     <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7 0-.7 0-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></symbol>
     <symbol id="i-linkedin" viewBox="0 0 24 24"><path fill="currentColor" d="M20.4 20.4h-3.6v-5.6c0-1.3 0-3-1.9-3s-2.1 1.4-2.1 2.9v5.7H9.4V9h3.4v1.6h.1a3.8 3.8 0 0 1 3.4-1.9c3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2zm1.8 13H3.5V9h3.6v11.4zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 1 .8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7c0-1-.8-1.7-1.8-1.7z"/></symbol>
   </defs>
@@ -55,11 +58,12 @@
     <nav class="rail__nav" aria-label="Sections">
       <ol>
         <li><a href="#intro"    data-nav><span class="num">01</span><span class="lbl">Intro</span></a></li>
-        <li><a href="#work"     data-nav><span class="num">02</span><span class="lbl">Work</span></a></li>
-        <li><a href="#measured" data-nav><span class="num">03</span><span class="lbl">Measured</span></a></li>
-        <li><a href="#stack"    data-nav><span class="num">04</span><span class="lbl">Stack</span></a></li>
-        <li><a href="#path"     data-nav><span class="num">05</span><span class="lbl">Path</span></a></li>
-        <li><a href="#contact"  data-nav><span class="num">06</span><span class="lbl">Contact</span></a></li>
+        <li><a href="#about"    data-nav><span class="num">02</span><span class="lbl">About</span></a></li>
+        <li><a href="#work"     data-nav><span class="num">03</span><span class="lbl">Work</span></a></li>
+        <li><a href="#measured" data-nav><span class="num">04</span><span class="lbl">Measured</span></a></li>
+        <li><a href="#stack"    data-nav><span class="num">05</span><span class="lbl">Stack</span></a></li>
+        <li><a href="#path"     data-nav><span class="num">06</span><span class="lbl">Path</span></a></li>
+        <li><a href="#contact"  data-nav><span class="num">07</span><span class="lbl">Contact</span></a></li>
       </ol>
     </nav>
 
@@ -68,6 +72,8 @@
         <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
       <a class="icolink" href="https://linkedin.com/in/abdu7rahman" rel="me noopener" target="_blank">
         <svg class="ico" aria-hidden="true"><use href="#i-linkedin"/></svg><span>LinkedIn</span></a>
+      <a class="rail__cta" href="demo.html">
+        <svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Run my robots</span></a>
     </div>
   </aside>
 
@@ -105,14 +111,44 @@
             <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span>Résumé (PDF)</span>
           </a>
         </div>
+
+        <figure class="hero__screen" data-reveal>
+          <img src="assets/hero.png" width="1200" height="744" alt="The predictive-replanning demo mid-run: a UR12e reaching past a forecast obstacle cone, drawn from Universal Robots' own meshes." loading="eager">
+          <figcaption>The <code>foresee</code> demo, live &mdash; not a render. <a class="inline" href="demo.html#foresee">Run it yourself &rarr;</a></figcaption>
+        </figure>
       </div>
     </header>
+
+    <!-- about -->
+    <section class="sec" id="about">
+      <div class="grid">
+        <div class="sec__label">
+          <span class="tag">02</span>
+          <h2>About</h2>
+        </div>
+        <div class="sec__body">
+          <p>
+            I write the software that decides where a robot goes next, and the bringup that gets it
+            onto real hardware. Global planners, local controllers, reactive replanning for
+            manipulators &mdash; most of it started as someone else&rsquo;s published method, checked
+            against its own paper or a reference implementation, then fixed where it didn&rsquo;t
+            hold up.
+          </p>
+          <p>
+            Right now that means <strong>physical AI</strong>: learned policies for bimanual
+            manipulation, moved off the simulator and onto a UR12e. Before Northeastern it was five
+            seasons with Team Robocon MJCET, building robots that had to work on a specific day in
+            front of a judge, which is its own kind of benchmark.
+          </p>
+        </div>
+      </div>
+    </section>
 
     <!-- work -->
     <section class="sec" id="work">
       <div class="grid">
         <div class="sec__label">
-          <span class="tag">02</span>
+          <span class="tag">03</span>
           <h2>Work</h2>
           <p class="sec__note">Ten systems worth showing. Everything else lives on GitHub.</p>
         </div>
@@ -133,7 +169,9 @@
             <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
           </a>
 
-          <ol class="projects">
+          <div class="carousel" data-carousel role="region" aria-roledescription="carousel" aria-label="Selected work">
+          <div class="carousel__viewport">
+          <ol class="projects carousel__track">
 
             <li class="proj" data-reveal>
               <span class="proj__idx">01</span>
@@ -416,6 +454,15 @@
             </li>
 
           </ol>
+          </div>
+          <div class="carousel__nav">
+            <button type="button" class="carousel__btn carousel__btn--prev" aria-label="Previous project">
+              <svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg></button>
+            <span class="carousel__pos" aria-live="polite">01 / 10</span>
+            <button type="button" class="carousel__btn carousel__btn--next" aria-label="Next project">
+              <svg class="ico" aria-hidden="true"><use href="#i-chev-r"/></svg></button>
+          </div>
+          </div>
         </div>
       </div>
     </section>
@@ -424,7 +471,7 @@
     <section class="sec sec--band" id="measured">
       <div class="grid">
         <div class="sec__label">
-          <span class="tag">03</span>
+          <span class="tag">04</span>
           <h2>Measured</h2>
           <p class="sec__note">Claims I could check, checked &mdash; including the ones that came out badly.</p>
         </div>
@@ -616,7 +663,7 @@
     <section class="sec" id="stack">
       <div class="grid">
         <div class="sec__label">
-          <span class="tag">04</span>
+          <span class="tag">05</span>
           <h2>Stack</h2>
           <p class="sec__note">Things I have shipped something with, not things I have read about.</p>
         </div>
@@ -639,7 +686,7 @@
     <section class="sec sec--band" id="path">
       <div class="grid">
         <div class="sec__label">
-          <span class="tag">05</span>
+          <span class="tag">06</span>
           <h2>Path</h2>
           <p class="sec__note">Five ABU Robocon seasons, then grad school.</p>
         </div>
@@ -720,7 +767,7 @@
     <section class="sec sec--end" id="contact">
       <div class="grid">
         <div class="sec__label">
-          <span class="tag">06</span>
+          <span class="tag">07</span>
           <h2>Contact</h2>
         </div>
         <div class="sec__body">
@@ -744,6 +791,9 @@
               <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg>
               <span>Résumé (PDF)</span>
               <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
+            <li class="contact__row">
+              <svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>
+              <span>Berkeley, California</span></li>
           </ul>
         </div>
       </div>
@@ -766,5 +816,6 @@
 <script src="feedback.js?v=f83ef280" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
 <script src="main.js?v=6bcc448c" defer></script>
+<script src="carousel.js?v=5d96e4dc" defer></script>
 </body>
 </html>

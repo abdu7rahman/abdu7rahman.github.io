@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Contrast gates for the site's palette, read out of style.css.
+"""Contrast gates for the site's palette, read out of style.css and landing.css.
 
 The tokens are not picked by eye. Every pair that carries text is checked at
 the floor its role needs: body prose at 7:1, muted and secondary text at 4.5:1,
 the accent at 4.5:1 because it is what links are set in, and the hairlines
 inside a band where they must be visible without becoming a divider.
 
-Reads style.css directly, so the check cannot drift from what ships.
+Reads both files directly, so the check cannot drift from what ships.
+landing.css's tokens (the dark, shader.se-influenced landing page) sit in
+their own :root block, same as style.css's -- adding a second file here beat
+adding a body.home-scoped duplicate to style.css's, which would have mixed
+two visual languages in one token block.
 
     python3 tools/check_contrast.py
 """
@@ -15,13 +19,21 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-CSS = (ROOT / "style.css").read_text()
+FILES = [ROOT / "style.css", ROOT / "landing.css"]
 
 
 def tokens():
-    block = re.search(r":root\s*\{(.*?)\n\}", CSS, re.S).group(1)
-    return {m.group(1): m.group(2).strip()
-            for m in re.finditer(r"(--[\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;", block)}
+    # The first `:root { ... }` per file only. Both files also carry a second
+    # one nested inside `@media (prefers-contrast: more)` that overrides a
+    # handful of tokens for that one preference -- a `finditer` over every
+    # match would let that override clobber the default it is conditional on,
+    # gating the page against a palette nothing sees by default.
+    out = {}
+    for f in FILES:
+        block = re.search(r":root\s*\{(.*?)\n\}", f.read_text(), re.S).group(1)
+        for m in re.finditer(r"(--[\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;", block):
+            out[m.group(1)] = m.group(2).strip()
+    return out
 
 
 def srgb_to_lin(c):
@@ -60,13 +72,28 @@ PAIRS = [
     ("--night-ink", "--night",   7.0,  "prose on a black band"),
     ("--night-mut", "--night",   4.5,  "muted on a black band"),
     ("--paper",     "--signal",  4.5,  "a solid button's label"),
+
+    # landing.css -- the dark, shader.se-influenced page.
+    # --signal was tried here first and rejected: 3.68-3.90:1 on black,
+    # below every one of these floors. --landing-accent is demo.js's own
+    # preempt/alert colour (#ff8a5c, reused rather than invented).
+    ("--landing-fg",     "--landing-bg",   7.0, "prose on the landing page"),
+    ("--landing-fg",     "--landing-bg-2", 7.0, "prose on a landing band"),
+    ("--landing-fg",     "--landing-card", 7.0, "prose on a landing card"),
+    ("--landing-mut",    "--landing-bg",   4.5, "muted labels on the landing page"),
+    ("--landing-mut",    "--landing-bg-2", 4.5, "muted labels on a landing band"),
+    ("--landing-mut",    "--landing-card", 4.5, "muted labels on a landing card"),
+    ("--landing-accent", "--landing-bg",   4.5, "links on the landing page"),
+    ("--landing-accent", "--landing-bg-2", 4.5, "links on a landing band"),
+    ("--landing-accent", "--landing-card", 4.5, "links on a landing card"),
 ]
 
 # Hairlines are meant to be felt, not seen. Too low and they vanish; too high
 # and they become the dividers this design deliberately stopped using.
 HAIRLINES = [("--rule", "--paper", 1.05, 1.35),
              ("--rule-2", "--paper", 1.15, 1.9),
-             ("--rule", "--paper-2", 1.02, 1.3)]
+             ("--rule", "--paper-2", 1.02, 1.3),
+             ("--landing-rule", "--landing-bg", 1.05, 1.35)]
 
 
 def main():
