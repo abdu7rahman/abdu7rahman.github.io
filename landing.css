@@ -64,16 +64,14 @@ body.home h1, body.home h2 {
    kept off body prose: it only ever brightens against black, so it cannot
    fail the contrast gate it sits on top of, but it would still blur small
    text at these radii. */
-body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
-body.home .carousel__pos {
+/* The bloom belongs to one element. It was on the eyebrow, every section
+   tag, the carousel counter and every h2 as well, and a glow applied to
+   everything stops being a light source and becomes a filter over the page --
+   the specific tell of a template rather than a designed thing. It is spent
+   here, on the one piece of display type the page is built around, and
+   nowhere else. */
+body.home .hero__name {
   text-shadow: 0 0 1px rgba(255, 249, 240, .7), 0 0 28px rgba(255, 138, 92, .30);
-}
-
-/* The same phosphor on every section heading, at a radius that suits 1.75rem
-   rather than the hero's 5.5 -- h1's 28px halo around type this size reads as
-   a smudge instead of a bloom. */
-body.home .sec__label h2 {
-  text-shadow: 0 0 1px rgba(255, 249, 240, .5), 0 0 18px rgba(255, 138, 92, .22);
 }
 
 body.home .hero__eyebrow, body.home .sec__label .tag { color: var(--landing-accent); }
@@ -99,10 +97,7 @@ body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg
    page's red and the one piece of chrome the dark repaint missed: it only
    ever overrode body::before (the grain), and this is body::after. Same bar,
    this page's accent, lit like everything else here. */
-body.home::after {
-  background: var(--landing-accent);
-  box-shadow: 0 0 12px rgba(255, 138, 92, .5);
-}
+body.home::after { background: var(--landing-accent); }
 
 /* The other two the repaint missed, for the same reason: both are set on bare
    element selectors in style.css, so nothing scoped to body.home was ever
@@ -136,7 +131,6 @@ body.home .skip {
   background: var(--landing-accent); color: #1a0e08;
   font: 500 13px/1 var(--sans); letter-spacing: -.01em;
   text-decoration: none; white-space: nowrap;
-  box-shadow: 0 0 20px rgba(255, 138, 92, .28);
   transition: opacity var(--dur-hover) var(--ease);
 }
 .rail__cta:hover { opacity: .86; }
@@ -345,11 +339,10 @@ body.home .bench__table tr.is-mine { background: rgba(255, 138, 92, .10); }
 body.home .bench__table tr.is-mine:hover { background: rgba(255, 138, 92, .14); }
 body.home .bench__table tr.is-mine th, body.home .bench__table tr.is-mine td { color: var(--landing-fg); }
 body.home .bench__table b { color: var(--landing-accent); }
-/* Each bar lit in its own hue. Both, not just the accent one: glowing one of
-   two adjacent bars reads as "this is the answer", and these charts have
-   cases where the other one wins. */
-body.home .bar--cpp { background: var(--landing-accent); box-shadow: 0 0 10px rgba(255, 138, 92, .35); }
-body.home .bar--py { background: #5aa5af; box-shadow: 0 0 10px rgba(90, 165, 175, .35); }   /* demo.js's own "clear/safe" teal */
+/* Flat. A bar in a benchmark table is a measurement, and a measurement that
+   glows is decorated rather than read. */
+body.home .bar--cpp { background: var(--landing-accent); }
+body.home .bar--py { background: var(--landing-teal); }
 body.home .sw--cpp { background: var(--landing-accent); }
 body.home .sw--py { background: #5aa5af; }
 body.home .legend li { color: var(--landing-mut); }
@@ -411,10 +404,7 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
   body.home .proj { border-color: var(--landing-rule); }
   body.home::before { display: none; }
-  body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
-  body.home .sec__label h2, body.home .carousel__pos { text-shadow: none; }
-  body.home .bar--cpp, body.home .bar--py, body.home .rail__cta,
-  body.home::after { box-shadow: none; }
+  body.home .hero__name { text-shadow: none; }
 }
 @media print {
   body.home::before { display: none; }
