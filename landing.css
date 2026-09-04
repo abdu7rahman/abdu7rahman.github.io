@@ -93,74 +93,14 @@ body.home .proj { transition: transform var(--dur-move) var(--ease),
   body.home .hero__grip { animation: soft-in 500ms linear both; animation-delay: 1000ms; }
 }
 
-/* ── the page as states ─────────────────────────────────────────────────
-   Everything here hangs off `is-staged`, which only states.js ever sets. The
-   stylesheet on its own never locks the page: no JS, an old browser, reduced
-   motion, a phone, a thrown exception, and what is left is the scrolling
-   document this has always been.
-
-   Each state is its own scroll container. That is the part that lets a page
-   with five tables and 182 measured numbers work like a page with 516 words:
-   a short state is a held frame, a tall one is read normally, and the wheel
-   only moves you on once the state you are in has run out. */
-body.home.is-staged { height: 100dvh; overflow: hidden; }
-body.home.is-staged .shell { height: 100dvh; display: flex; flex-direction: column; }
-/* Clipped, because a state arriving from 46px below is out of flow and its
-   transform still counts toward the document's scrollable overflow -- the page
-   came out 946px tall in a 900px window and quietly had a scrollbar again. */
-body.home.is-staged #main { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-
-body.home.is-staged #main > .hero,
-body.home.is-staged #main > .sec {
-  position: absolute; inset: 0;
-  overflow-y: auto; overscroll-behavior: contain;
-  scrollbar-width: thin;
-  /* Content sits in the middle of the frame when it fits and runs from the
-     top when it does not, which is the difference between a held state and a
-     page you are reading. */
-  display: grid; align-content: safe center;
-  padding-block: clamp(24px, 5vh, 64px);
-  min-height: 0;
-  opacity: 0; visibility: hidden;
-  transform: translateY(46px) scale(.985);
-  transition: opacity 560ms var(--ease), transform 620ms var(--ease),
-              visibility 0s linear 620ms;
-}
-/* Leaving upward and leaving downward should not look like the same movement. */
-body.home.is-staged #main > .is-back { transform: translateY(-46px) scale(.985); }
-body.home.is-staged #main > .is-live {
-  opacity: 1; visibility: visible; transform: none;
-  transition: opacity 560ms var(--ease), transform 620ms var(--ease), visibility 0s;
-}
-/* The hero keeps its own height rule out of the way once it is a state. */
-body.home.is-staged #main > .hero { min-height: 0; }
-/* The reveals and the section recede both read the document's scroll, and in
-   this mode there is not one. The state transition is the reveal now. */
-body.home.is-staged [data-reveal],
-body.home.is-staged .sec { animation: none !important; opacity: 1; }
-body.home.is-staged .sec { transform: none; }
-/* The read-position bar tracks a scroll that no longer moves. */
-body.home.is-staged::after { display: none; }
-/* The robot belongs to the whole page now, not to the hero it started in.
-   An explicit height, not `auto`: height: auto on a canvas resolves against
-   the *buffer's* aspect ratio, and since hero-arm.js sizes that buffer from
-   the element, the two chase each other and settle at 2:1 -- the canvas came
-   out 389px tall in an 848px space. */
-body.home.is-staged .hero__arm {
-  position: fixed; top: var(--nav-h); right: 0; left: auto; bottom: auto;
-  width: 54%; height: calc(100dvh - var(--nav-h)); z-index: 0;
-}
-
-/* Where you are, in the page's own counting. The bar already names the
-   sections; this is the part that says how far in you are. */
-.stage-count {
-  position: fixed; right: clamp(18px, 4vw, 40px); bottom: 26px; z-index: 61;
-  font: 400 12px/1 var(--mono); letter-spacing: .1em;
-  color: var(--landing-mut); pointer-events: none;
-  opacity: 0; transition: opacity var(--dur-hover) var(--ease);
-}
-body.home.is-staged .stage-count { opacity: 1; }
-.stage-count b { color: var(--landing-fg); font-weight: 400; }
+/* The world's canvas: fixed behind everything, never in the way of anything.
+   The DOM above it keeps the headings real, the text selectable and the
+   layout responsive -- the canvas is the room the page is standing in, not a
+   texture the page has been baked into. */
+#world-mount { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+#world-mount canvas.world { display: block; width: 100%; height: 100%; }
+/* Once the world is up, the flat gradient it replaces steps aside. */
+body.home.has-world { background-image: none; }
 
 /* ── grain ─────────────────────────────────────────────────────────────
    A single inline SVG turbulence filter, painted once into a fixed layer
