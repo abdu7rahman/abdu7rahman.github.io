@@ -21,8 +21,8 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=bcb166b6">
-<link rel="stylesheet" href="landing.css?v=784fcfdc">
+<link rel="stylesheet" href="style.css?v=d636bdf3">
+<link rel="stylesheet" href="landing.css?v=07638885">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="home no-js">
@@ -69,11 +69,11 @@
     </nav>
 
     <div class="rail__foot">
-      <a class="icolink" href="https://github.com/abdu7rahman" rel="me noopener" target="_blank">
+      <a class="icolink" href="https://github.com/abdu7rahman" rel="me noopener" target="_blank" data-cur="open">
         <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
       <a class="icolink" href="https://linkedin.com/in/abdu7rahman" rel="me noopener" target="_blank">
         <svg class="ico" aria-hidden="true"><use href="#i-linkedin"/></svg><span>LinkedIn</span></a>
-      <a class="rail__cta" href="demo.html">
+      <a class="rail__cta" href="demo.html" data-cur="run">
         <svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Run my robots</span></a>
     </div>
   </aside>
@@ -85,7 +85,12 @@
     <header class="hero" id="intro">
       <div class="grid">
         <p class="hero__eyebrow">Robotics engineer</p>
-        <h1 class="hero__name">Mohammed<br>Abdul&nbsp;Rahman</h1>
+        <!-- Each line in a box of its own height, so it rises out from behind that
+             box's edge rather than fading in where it already was. The whitespace
+             between the two is load-bearing: it is what keeps the accessible name
+             "Mohammed Abdul Rahman" and not one run-on word. -->
+        <h1 class="hero__name"><span class="rise"><span>Mohammed</span></span>
+          <span class="rise"><span>Abdul&nbsp;Rahman</span></span></h1>
         <p class="hero__lede">
           I build motion software — global planners, local controllers, reactive replanning for
           manipulators, and the bringup that makes any of it run on real hardware. Currently working
@@ -105,10 +110,10 @@
             <svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg>
             <span>mohammedabdulr.1@northeastern.edu</span>
           </a>
-          <a class="btn" href="demo.html">
+          <a class="btn" href="demo.html" data-cur="run">
             <svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Run my robots</span>
           </a>
-          <a class="btn" href="Resume.pdf">
+          <a class="btn" href="Resume.pdf" data-cur="PDF">
             <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span>Résumé (PDF)</span>
           </a>
         </div>
@@ -193,7 +198,7 @@
               <span class="proj__idx">02</span>
               <div class="proj__main">
                 <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">
+                  <a href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener" data-cur="open">
                     Pick and place that replans around what the camera sees
                     <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
                   </a>
@@ -220,7 +225,7 @@
               <span class="proj__idx">03</span>
               <div class="proj__main">
                 <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
+                  <a href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener" data-cur="open">
                     Reactive autonomous navigation stack
                     <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
                   </a>
@@ -246,7 +251,7 @@
               <span class="proj__idx">04</span>
               <div class="proj__main">
                 <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/K.A.L.B" target="_blank" rel="noopener">
+                  <a href="https://github.com/abdu7rahman/K.A.L.B" target="_blank" rel="noopener" data-cur="open">
                     K.A.L.B — kinematical autonomous legged robot
                     <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
                   </a>
@@ -260,7 +265,7 @@
                 <ul class="chips">
                   <li>ROS&nbsp;2</li><li>Gazebo</li><li>gmapping</li><li>AMCL</li><li>Inverse&nbsp;RL</li>
                 </ul>
-                <a class="demo" href="https://youtu.be/ESjXvtUxYeM" target="_blank" rel="noopener">
+                <a class="demo" href="https://youtu.be/ESjXvtUxYeM" target="_blank" rel="noopener" data-cur="open">
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch it walk</span></a>
               </div>
               <dl class="proj__stats">
@@ -274,7 +279,7 @@
               <span class="proj__idx">05</span>
               <div class="proj__main">
                 <h3 class="proj__title">
-                  <a href="https://github.com/abdu7rahman/Custom-DWA-Local-Planner" target="_blank" rel="noopener">
+                  <a href="https://github.com/abdu7rahman/Custom-DWA-Local-Planner" target="_blank" rel="noopener" data-cur="open">
                     Custom DWA local planner
                     <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg>
                   </a>
@@ -288,7 +293,7 @@
                 <ul class="chips">
                   <li>ROS&nbsp;2 Humble</li><li>TurtleBot3</li><li>RViz</li>
                 </ul>
-                <a class="demo" href="https://youtu.be/yFtexC6-Z1g" target="_blank" rel="noopener">
+                <a class="demo" href="https://youtu.be/yFtexC6-Z1g" target="_blank" rel="noopener" data-cur="open">
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch the rollouts</span></a>
               </div>
               <dl class="proj__stats">
@@ -452,10 +457,10 @@
           </ol>
           </div>
           <div class="carousel__nav">
-            <button type="button" class="carousel__btn carousel__btn--prev" aria-label="Previous project">
+            <button type="button" class="carousel__btn carousel__btn--prev" data-cur="prev" aria-label="Previous project">
               <svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg></button>
             <span class="carousel__pos" aria-live="polite">01 / 10</span>
-            <button type="button" class="carousel__btn carousel__btn--next" aria-label="Next project">
+            <button type="button" class="carousel__btn carousel__btn--next" data-cur="next" aria-label="Next project">
               <svg class="ico" aria-hidden="true"><use href="#i-chev-r"/></svg></button>
           </div>
           </div>
@@ -649,7 +654,7 @@
             <svg class="ico ico--sm" aria-hidden="true"><use href="#i-terminal"/></svg>
             Intel Xeon 2.10 GHz · g++ 13.3 <code>-O2</code> · Python 3.11, numpy 2.4. Nothing is
             reimplemented: both harnesses call the planners' own code.
-            <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav/tree/bench/planner-latency/bench" target="_blank" rel="noopener">Harness and method</a>.
+            <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav/tree/bench/planner-latency/bench" target="_blank" rel="noopener" data-cur="open">Harness and method</a>.
           </p>
         </div>
       </div>
@@ -779,7 +784,7 @@
               <svg class="ico" aria-hidden="true"><use href="#i-linkedin"/></svg>
               <span>linkedin.com/in/abdu7rahman</span>
               <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
-            <li><a href="https://github.com/abdu7rahman" target="_blank" rel="noopener me">
+            <li><a href="https://github.com/abdu7rahman" target="_blank" rel="noopener me" data-cur="open">
               <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>
               <span>github.com/abdu7rahman</span>
               <svg class="ico ico--link" aria-hidden="true"><use href="#i-arrow"/></svg></a></li>
@@ -814,7 +819,7 @@
 <script src="main.js?v=5bea3d3b" defer></script>
 <script src="carousel.js?v=755033b7" defer></script>
 <script src="field.js?v=899beb28" defer></script>
-<script src="hero-arm.js?v=7c706804" defer></script>
-<script src="immersive.js?v=e7cfd41d" defer></script>
+<script src="hero-arm.js?v=615d2e07" defer></script>
+<script src="immersive.js?v=6a029aa3" defer></script>
 </body>
 </html>

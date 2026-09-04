@@ -148,6 +148,12 @@
   dot.className = "cur-dot";
   var ring = document.createElement("div");
   ring.className = "cur-ring";
+  // A word inside the ring for the things whose affordance is not obvious
+  // from looking at them. The robot in the hero is the case this exists for:
+  // nothing about a rendered arm says you can take hold of it and turn it.
+  var label = document.createElement("span");
+  label.className = "cur-ring__l";
+  ring.appendChild(label);
   dot.setAttribute("aria-hidden", "true");
   ring.setAttribute("aria-hidden", "true");
   document.body.appendChild(ring);
@@ -200,10 +206,18 @@
 
   var HOT = "a[href],button,summary,[role=radio],input,textarea,.proj";
   document.addEventListener("pointerover", function (e) {
-    if (e.target.closest && e.target.closest(HOT)) ring.classList.add("is-hot");
+    if (!e.target.closest) return;
+    if (e.target.closest(HOT)) ring.classList.add("is-hot");
+    var said = e.target.closest("[data-cur]");
+    if (said) {
+      label.textContent = said.getAttribute("data-cur");
+      ring.classList.add("is-say");
+    }
   });
   document.addEventListener("pointerout", function (e) {
-    if (e.target.closest && e.target.closest(HOT)) ring.classList.remove("is-hot");
+    if (!e.target.closest) return;
+    if (e.target.closest(HOT)) ring.classList.remove("is-hot");
+    if (e.target.closest("[data-cur]")) ring.classList.remove("is-say");
   });
 
   /* ── magnetic buttons ──────────────────────────────────────────────────

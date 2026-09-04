@@ -761,6 +761,19 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
   width: 52px; height: 52px; margin: -26px 0 0 -26px;
   background: color-mix(in srgb, var(--cur-ink) 8%, transparent);
 }
+/* Grid rather than absolute positioning, so the word is centred in the ring
+   whatever size the ring currently is. */
+.cur-ring { display: grid; place-items: center; }
+.cur-ring__l {
+  font: 500 9.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--cur-ink); white-space: nowrap;
+  opacity: 0; transition: opacity var(--dur-hover) var(--ease);
+}
+.cur-ring.is-say {
+  width: 68px; height: 68px; margin: -34px 0 0 -34px;
+  background: color-mix(in srgb, var(--cur-ink) 13%, transparent);
+}
+.cur-ring.is-say .cur-ring__l { opacity: 1; }
 body.cur-on .cur-dot { opacity: 1; }
 body.cur-on .cur-ring { opacity: .58; }
 body.cur-on .cur-ring.is-hot { opacity: 1; }

@@ -193,10 +193,15 @@ body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
   body.home .hero { min-height: 100vh; align-content: center; }
   body.home .hero { text-align: left; }
   body.home .hero__eyebrow,
-  body.home .hero__name,
   body.home .hero__lede,
   body.home .hero__meta,
   body.home .hero__actions { grid-column: 1 / 8; }
+  /* One column wider than the rest of the hero, because "Abdul Rahman" set at
+     the display size needs 575px and seven columns give it 541. It has always
+     overflowed here -- silently, into empty space -- and only showed up when
+     the line reveal put a clipping box around it and shaved the last glyph
+     off. The name gets the room instead of the mask getting a hole in it. */
+  body.home .hero__name { grid-column: 1 / 9; }
   body.home .hero__lede { margin-left: 0; margin-right: 0; }
   /* Four facts across seven columns is too tight; two rows of two reads. */
   body.home .hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -332,13 +337,35 @@ body.home .proj {
   to   { opacity: 1; transform: none; }
 }
 body.home .hero__eyebrow,
-body.home .hero__name,
 body.home .hero__lede,
 body.home .hero__meta,
 body.home .hero__actions {
   animation: hero-rise var(--dur-reveal) var(--ease) both;
 }
-body.home .hero__name    { animation-delay: 80ms; }
+
+/* The name is the one thing on the page worth spending a second reveal on,
+   so it gets the mask rather than the fade: a box the height of one line,
+   clipping, and the line travelling up out of it. Opacity is left alone --
+   type sliding out from behind an edge is the whole effect, and fading it at
+   the same time makes it look like it is arriving through fog instead. */
+@keyframes line-rise {
+  from { transform: translateY(105%); }
+  to   { transform: none; }
+}
+/* The clip is meant to be horizontal only. Padding on the end widens the box
+   past the glyphs without moving them, so sub-pixel rounding in a face the
+   reader may be substituting can never take a sliver off the last letter. */
+body.home .hero__name .rise {
+  display: block; overflow: hidden;
+  padding-inline-end: .1em; margin-inline-end: -.1em;
+}
+body.home .hero__name .rise > span {
+  display: block;
+  padding-bottom: .08em;              /* descenders, which the clip would cut */
+  animation: line-rise 760ms var(--ease) both;
+}
+body.home .hero__name .rise:nth-child(1) > span { animation-delay: 90ms; }
+body.home .hero__name .rise:nth-child(2) > span { animation-delay: 200ms; }
 body.home .hero__lede    { animation-delay: 170ms; }
 body.home .hero__meta    { animation-delay: 250ms; }
 body.home .hero__actions { animation-delay: 330ms; }

@@ -319,6 +319,9 @@
     // stays there until you let go and the ambient aim eases back in.
     canvas.style.pointerEvents = "auto";
     canvas.style.cursor = "grab";
+    // Nothing about a rendered arm says you can take hold of it. immersive.js
+    // puts this word inside the ring while the pointer is over it.
+    canvas.setAttribute("data-cur", "drag");
 
     canvas.addEventListener("pointerdown", function (e) {
       dragging = true; dragId = e.pointerId;
