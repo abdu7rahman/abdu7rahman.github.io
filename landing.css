@@ -127,7 +127,15 @@ body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg
 .rail__cta .ico { width: 14px; height: 14px; }
 
 /* ── hero ──────────────────────────────────────────────────────────── */
-body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); }
+body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; overflow: hidden; }
+body.home .hero .grid { position: relative; z-index: 1; }
+
+/* field.js's canvas: a few dozen points pushed around by slow repellers,
+   the same shape of problem the Measured section benchmarks DWA/MPPI/TEB
+   against. Sits behind the text, ignores the pointer, gone entirely for
+   prefers-reduced-motion (field.js checks that before it ever draws). */
+.hero__field { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
 body.home .hero__meta dt { color: var(--landing-mut); }
 body.home .hero__meta dd { color: var(--landing-fg); }
 body.home .hero__meta .ico { color: var(--landing-mut); }
@@ -136,27 +144,6 @@ body.home .btn { border-color: var(--landing-accent); color: var(--landing-accen
 body.home .btn:hover { background: rgba(255, 138, 92, .12); }
 body.home .btn--solid { background: var(--landing-accent); border-color: var(--landing-accent); color: #1a0e08; }
 body.home .btn--solid:hover { background: #ff9f78; border-color: #ff9f78; }
-
-/* The "screen": a real screenshot of the foresee demo mid-replan, in a dark
-   bezel -- not a fabricated prop. tools/gen_hero.js writes assets/hero.png
-   from the actual running demo, the same way tools/gen_og.js already
-   writes assets/og.png from the page's own tokens. */
-.hero__screen {
-  grid-column: 1 / -1;
-  margin: 48px auto 0;
-  max-width: 720px;
-  padding: 14px;
-  background: var(--landing-card);
-  border: 1px solid var(--landing-rule);
-  border-radius: var(--r-xl);
-  box-shadow: 0 0 0 1px rgba(255, 138, 92, .10), 0 30px 80px rgba(0, 0, 0, .55),
-              0 0 120px rgba(255, 138, 92, .08);
-}
-.hero__screen img { display: block; width: 100%; height: auto; border-radius: var(--r-lg); }
-.hero__screen figcaption {
-  margin-top: 10px; padding: 0 4px;
-  font: 400 12.5px/1.4 var(--mono); letter-spacing: 0; color: var(--landing-mut);
-}
 
 /* ── about ─────────────────────────────────────────────────────────── */
 #about .sec__body { max-width: 62ch; }
@@ -299,25 +286,20 @@ body.home .nudge__b { border-color: var(--landing-rule); color: var(--landing-mu
 body.home .nudge__b:hover { background: var(--landing-bg-2); }
 body.home .nudge__b--go { background: var(--landing-accent); border-color: var(--landing-accent); color: #1a0e08; }
 
-/* ── responsive ────────────────────────────────────────────────────── */
-@media (max-width: 620px) {
-  .hero__screen { margin-top: 36px; }
-}
-
 /* ── accessibility ─────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .carousel.is-active .carousel__track { transition: none; }
 }
 @media (prefers-contrast: more) {
   body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
-  body.home .proj, body.home .hero__screen { border-color: var(--landing-rule); }
+  body.home .proj { border-color: var(--landing-rule); }
   body.home::before { display: none; }
   body.home h1, body.home .hero__eyebrow, body.home .sec__label .tag,
   body.home .carousel__pos { text-shadow: none; }
 }
 @media print {
   body.home::before { display: none; }
-  .hero__screen, .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
+  .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
   .carousel.is-active .carousel__track { display: block; }
   .carousel.is-active .proj { flex: none; }
 }

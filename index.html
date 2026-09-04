@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=9513f5e8">
-<link rel="stylesheet" href="landing.css?v=ff3693ac">
+<link rel="stylesheet" href="landing.css?v=b14413fd">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
 <body class="home no-js">
@@ -82,6 +82,7 @@
 
     <!-- hero -->
     <header class="hero" id="intro">
+      <canvas class="hero__field" aria-hidden="true"></canvas>
       <div class="grid">
         <p class="hero__eyebrow">Robotics engineer</p>
         <h1 class="hero__name">Mohammed<br>Abdul&nbsp;Rahman</h1>
@@ -111,11 +112,6 @@
             <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span>Résumé (PDF)</span>
           </a>
         </div>
-
-        <figure class="hero__screen" data-reveal>
-          <img src="assets/hero.png" width="1200" height="744" alt="The predictive-replanning demo mid-run: a UR12e reaching past a forecast obstacle cone, drawn from Universal Robots' own meshes." loading="eager">
-          <figcaption>The <code>foresee</code> demo, live &mdash; not a render. <a class="inline" href="demo.html#foresee">Run it yourself &rarr;</a></figcaption>
-        </figure>
       </div>
     </header>
 
@@ -817,5 +813,6 @@
 <script src="visits.js?v=e085290f" defer></script>
 <script src="main.js?v=6bcc448c" defer></script>
 <script src="carousel.js?v=5d96e4dc" defer></script>
+<script src="field.js?v=42c287dc" defer></script>
 </body>
 </html>
