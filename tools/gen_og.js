@@ -6,10 +6,12 @@
  * no og:image at all.
  *
  * The card is drawn from the site's own tokens rather than a separate design,
- * so the preview and the page it opens are recognisably the same thing. Fonts
- * are fetched once and inlined as base64, because the renderer has to produce
- * the same picture on any machine -- a card that silently falls back to
- * Georgia on a build box is worse than no card.
+ * so the preview and the page it opens are recognisably the same thing. Since
+ * the landing page went dark and set its display type in a self-hosted STIX
+ * Two Text (landing.css), the card follows: same background, same warm cream,
+ * same accent, same font file -- inlined as base64 from the exact file the
+ * page itself loads, so the renderer produces the same picture on any
+ * machine and can never drift to a second copy of the font.
  *
  *   node tools/gen_og.js
  *
@@ -22,15 +24,13 @@ const https = require('https');
 
 const ROOT = path.dirname(__dirname);
 const OUT = path.join(ROOT, 'assets', 'og.png');
+const FONT_FILE = path.join(ROOT, 'assets', 'fonts', 'stix-two-text-latin.woff2');
 
 // Chrome's UA is what makes the Google Fonts CSS come back as woff2 rather
-// than a truetype fallback three times the size.
+// than a truetype fallback three times the size. Unused now that the font is
+// read from the self-hosted file below, kept because get() is still the
+// right tool if this card ever needs to fetch something else.
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
-
-// The site is set in the system font now, and so is the card. Nothing to
-// fetch: whatever this machine resolves -apple-system to is what a reader's
-// machine resolves it to, and the card is a raster either way.
-const CSS_URL = null;
 
 function get(url) {
   return new Promise((resolve, reject) => {
@@ -46,19 +46,31 @@ function get(url) {
   });
 }
 
-async function inlineFonts() {
-  return { css: '', files: 0 };
+function inlineFonts() {
+  const b64 = fs.readFileSync(FONT_FILE).toString('base64');
+  const css = `@font-face {
+  font-family: "STIX Two Text";
+  font-style: normal;
+  font-weight: 400 700;
+  src: url(data:font/woff2;base64,${b64}) format("woff2");
+}`;
+  return { css, files: 1 };
 }
 
-// The site's tokens, not a second palette. If these drift from style.css the
-// card stops looking like the page, which is the only thing it is for.
+// landing.css's own tokens, not a second palette. If these drift from
+// landing.css the card stops looking like the page, which is the only thing
+// it is for.
 const T = {
-  paper: '#fbfbfd', paper2: '#f5f5f7', paper3: '#ffffff', rule: '#d2d2d7',
-  ink: '#1d1d1f', ink2: '#424245', ink3: '#6e6e73',
-  signal: '#d70015', signalW: '#f9ecef', accent: '#007a3d',
+  bg: '#0a0a0a', bg2: '#141414', card: '#1c1c1c',
+  fg: '#fcf9f3', mut: '#86868b', rule: '#272727', accent: '#ff8a5c',
 };
 const SANS = '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",'
            + 'Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif';
+const DISPLAY = '"STIX Two Text",Georgia,"Times New Roman",serif';
+// The same layered glow landing.css puts on h1/.hero__eyebrow/.sec__label
+// .tag/.carousel__pos: a tight bloom on the letterforms, a wide soft one for
+// the halo, both of which only ever brighten against black.
+const GLOW = '0 0 1px rgba(255, 249, 240, .7), 0 0 28px rgba(255, 138, 92, .30)';
 
 // Kept short enough to sit on one line each. nowrap below turns a value that
 // outgrows its column into a frame overflow, which the check catches, rather
@@ -75,26 +87,26 @@ ${fontCss}
 * { margin:0; padding:0; box-sizing:border-box }
 html,body { width:1200px; height:630px }
 body {
-  background:${T.paper}; color:${T.ink}; font-family:${SANS};
+  background:${T.bg}; color:${T.fg}; font-family:${SANS};
   padding:64px 76px; display:flex; flex-direction:column; justify-content:space-between;
   position:relative; overflow:hidden; text-align:center;
 }
 .l { position:relative }
-.eyebrow { font-size:22px; font-weight:600; letter-spacing:-.01em; color:${T.signal} }
+.eyebrow { font-size:22px; font-weight:600; letter-spacing:-.01em; color:${T.accent}; text-shadow:${GLOW} }
 h1 {
-  font-weight:700; font-size:82px; line-height:1.05; letter-spacing:-.03em;
-  margin-top:14px; color:${T.ink};
+  font-family:${DISPLAY}; font-weight:600; font-size:82px; line-height:1.05; letter-spacing:-.03em;
+  margin-top:14px; color:${T.fg}; text-shadow:${GLOW};
 }
 .rule { display:none }
 .lede { margin:22px auto 0; font-size:26px; line-height:1.36; letter-spacing:-.02em;
-  color:${T.ink2}; max-width:30ch }
+  color:${T.mut}; max-width:30ch }
 .facts { display:flex; justify-content:center; gap:56px; margin-top:auto; padding-top:26px }
-.fact dt { font-size:16px; letter-spacing:-.01em; color:${T.ink3} }
-.fact dd { margin-top:6px; font-size:19px; font-weight:500; color:${T.ink}; white-space:nowrap }
+.fact dt { font-size:16px; letter-spacing:-.01em; color:${T.mut} }
+.fact dd { margin-top:6px; font-size:19px; font-weight:500; color:${T.fg}; white-space:nowrap }
 .foot { position:relative; display:flex; align-items:center; justify-content:center;
   border-top:1px solid ${T.rule}; padding-top:24px; margin-top:26px }
-.url { font-size:22px; font-weight:500; color:${T.signal} }
-.tag { font-size:16px; color:${T.ink3} }
+.url { font-size:22px; font-weight:500; color:${T.accent} }
+.tag { font-size:16px; color:${T.mut} }
 .chips { display:none }
 </style>
 <div class="l">
@@ -119,7 +131,7 @@ h1 {
 }
 
 (async () => {
-  const { css } = await inlineFonts();
+  const { css } = inlineFonts();
 
   const b = await chromium.launch({
     executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
