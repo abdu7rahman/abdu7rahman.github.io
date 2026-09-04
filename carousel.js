@@ -65,6 +65,20 @@
   // than left at the reveal's rest state forever.
   slides.forEach(function (s) { s.classList.add("is-in"); });
 
+  // The light that follows the pointer across a card. Coordinates are written
+  // as percentages of the card, so landing.css can position the gradient
+  // without needing the card's size. One listener on the track rather than
+  // ten on the cards, and nothing runs for a reader who never hovers.
+  if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+    track.addEventListener("pointermove", function (e) {
+      var card = e.target.closest && e.target.closest(".proj");
+      if (!card) return;
+      var b = card.getBoundingClientRect();
+      card.style.setProperty("--mx", ((e.clientX - b.left) / b.width * 100).toFixed(2) + "%");
+      card.style.setProperty("--my", ((e.clientY - b.top) / b.height * 100).toFixed(2) + "%");
+    }, { passive: true });
+  }
+
   root.classList.add("is-active");
   render();
 })();

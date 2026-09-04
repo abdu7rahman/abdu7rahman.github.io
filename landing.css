@@ -143,14 +143,17 @@ body.home .skip {
 .rail__cta .ico { width: 14px; height: 14px; }
 
 /* ── hero ──────────────────────────────────────────────────────────── */
-body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; overflow: hidden; }
-body.home .hero .grid { position: relative; z-index: 1; }
+body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
 
-/* field.js's canvas: a few dozen points pushed around by slow repellers,
-   the same shape of problem the Measured section benchmarks DWA/MPPI/TEB
-   against. Sits behind the text, ignores the pointer, gone entirely for
-   prefers-reduced-motion (field.js checks that before it ever draws). */
-.hero__field { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+/* field.js's shader, built and appended at runtime. Fixed and full-bleed, so
+   the whole page sits in the same weather rather than the hero alone; the
+   content is lifted one layer above it. The grain (z-index 55) and the
+   read-position bar (60) stay on top of both. */
+.bg-field {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+body.home .shell { position: relative; z-index: 1; }
 
 body.home .hero__meta dt { color: var(--landing-mut); }
 body.home .hero__meta dd { color: var(--landing-fg); }
@@ -239,13 +242,48 @@ body.home .proj {
 }
 @media (hover: hover) and (pointer: fine) {
   body.home .proj {
+    position: relative;
     transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
   }
   body.home .proj:hover {
     border-color: rgba(255, 138, 92, .38);
     box-shadow: 0 12px 32px rgba(0, 0, 0, .4), 0 0 44px rgba(255, 138, 92, .10);
   }
+  /* A light that follows the pointer across the card. carousel.js writes --mx
+     and --my; until it does they sit at the centre, so a card that is hovered
+     before the first pointermove still lights sensibly rather than in the
+     top-left corner. */
+  body.home .proj::after {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-hover) var(--ease);
+    background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%),
+                                rgba(255, 138, 92, .10), transparent 70%);
+  }
+  body.home .proj:hover::after { opacity: 1; }
 }
+
+/* The hero arriving. Each part a beat behind the one above it, so the page
+   assembles downwards instead of appearing all at once. Transform and opacity
+   only -- both composited, neither triggers layout. */
+@keyframes hero-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+body.home .hero__eyebrow,
+body.home .hero__name,
+body.home .hero__lede,
+body.home .hero__meta,
+body.home .hero__actions {
+  animation: hero-rise var(--dur-reveal) var(--ease) both;
+}
+body.home .hero__name    { animation-delay: 80ms; }
+body.home .hero__lede    { animation-delay: 170ms; }
+body.home .hero__meta    { animation-delay: 250ms; }
+body.home .hero__actions { animation-delay: 330ms; }
 body.home .proj__idx { color: var(--landing-accent); }
 body.home .proj__title, body.home .proj__title a { color: var(--landing-fg); }
 body.home .proj__title a { background-image: linear-gradient(var(--landing-accent), var(--landing-accent)); }
