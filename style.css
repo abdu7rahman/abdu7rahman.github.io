@@ -147,6 +147,24 @@ html { scroll-behavior: smooth; scroll-padding-top: 32px; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 
+/* The three pages of this site cross-fade into each other instead of cutting.
+   Cross-document, so it needs declaring in every document that takes part --
+   all three load this file, which is the whole set. Browsers without it
+   navigate exactly as they did; the reduced-motion rule above already flattens
+   the transition to nothing, and this only ever fires on a same-origin
+   navigation, so leaving for GitHub or a mailto still cuts. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease);
+}
+/* The blanket rule above reaches `*`, and these are in a separate tree it
+   does not match, so the opt-out has to name them. animation: none lands the
+   new page immediately, which is the cut this reader asked for. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+
 body {
   margin: 0;
   background: var(--paper);
