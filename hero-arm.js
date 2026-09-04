@@ -173,7 +173,7 @@
       motion = both[1];
       var hero = document.getElementById("intro");
       (hero || document.body).appendChild(canvas);
-      if (!reduce) (hero || document.body).appendChild(handle);
+      if (!reduce) document.body.appendChild(handle);
       resize();
       dirty = true; request();
     }).catch(function () { /* the hero stands without it */ });
@@ -447,9 +447,21 @@
     var dq = [0,0,0,0,0,0];
     for (i = 0; i < 6; i++) dq[i] = Jx[i]*w[0] + Jy[i]*w[1] + Jz[i]*w[2];
 
-    // (I - J+ J) b, the part of the rest pull that does not move the tool
+    // (I - J+ J) b, the part of the rest pull that does not move the tool.
+    //
+    // "The part that does not move the tool" is only exactly true for an
+    // undamped pseudo-inverse; damped, the projector leaks, and the leak pulls
+    // against the task. It showed as a first drag away from the rest pose
+    // landing 80px short while the third landed within 3 -- the bias fighting
+    // hardest exactly when the arm was furthest from where it wanted to be. So
+    // the bias is earned rather than constant: nothing while there is real
+    // error to clear, full strength once the tool is within a couple of
+    // centimetres and the spare freedom is genuinely spare.
+    var ex = tx - tcp[0], ey = ty - tcp[1], ez = tz - tcp[2];
+    var err = Math.sqrt(ex * ex + ey * ey + ez * ez);
+    var pull = REST_PULL * Math.max(0, Math.min(1, 1 - err / 0.02));
     var b = [0,0,0,0,0,0];
-    for (i = 0; i < 6; i++) b[i] = (REST[i] - q[i]) * REST_PULL;
+    for (i = 0; i < 6; i++) b[i] = (REST[i] - q[i]) * pull;
     var w2 = [0, 0, 0];
     solve3(dot(Jx,b), dot(Jy,b), dot(Jz,b), w2);
     for (i = 0; i < 6; i++) dq[i] += b[i] - (Jx[i]*w2[0] + Jy[i]*w2[1] + Jz[i]*w2[2]);
@@ -477,7 +489,22 @@
     var hero = document.getElementById("intro");
     return Math.max(1, hero ? hero.offsetHeight : window.innerHeight);
   }
+  //: Set by states.js when the page is a set of states rather than a scroll.
+  //: The move is the same one; what is driving it is where you are in the
+  //: page instead of how far down it you have come.
+  var byState = -1;
+  window.addEventListener("stagechange", function (e) {
+    var d = e.detail;
+    byState = d.index / Math.max(1, (window.__stage ? window.__stage.of : 7) - 1);
+    // Staging moves this canvas out of the hero and onto the viewport, which
+    // changes its size without firing a resize event. Without re-measuring,
+    // the backing store keeps the shape it had before the page was staged and
+    // the browser scales the difference.
+    resize();
+    dirty = true; request();
+  });
   function progress() {
+    if (byState >= 0 && document.body.classList.contains("is-staged")) return byState;
     var p = window.scrollY / run();
     return p < 0 ? 0 : p > 1 ? 1 : p;
   }
@@ -636,12 +663,14 @@
     var s = project(tcp);
     if (!s) { handle.hidden = true; return; }
     handle.hidden = false;
-    // project() gives pixels inside the canvas; the handle is positioned
-    // against the hero, and the canvas is only the right half of it. Both
-    // share the hero as their offset parent, so its own offset is the whole
-    // correction.
-    handle.style.transform = "translate3d(" + (canvas.offsetLeft + s[0]) + "px," +
-                                              (canvas.offsetTop + s[1]) + "px,0)";
+    // Fixed and measured off the canvas's own box rather than positioned in
+    // the hero: staged, the canvas is fixed to the viewport and the states are
+    // absolutely positioned over it, so a handle living inside the hero would
+    // be underneath the content and unreachable. A viewport rect is the one
+    // frame both layouts agree on.
+    var box = canvas.getBoundingClientRect();
+    handle.style.transform = "translate3d(" + (box.left + s[0]) + "px," +
+                                             (box.top + s[1]) + "px,0)";
   }
 
   var posing = false, poseId = -1, goal = [0, 0, 0];
@@ -656,14 +685,27 @@
     goal[1] += (view[4] * dx - view[5] * dy) * k;
     goal[2] += (view[8] * dx - view[9] * dy) * k;
     reach(goal[0], goal[1], goal[2], M);
+    window.__ik = { goal: goal.slice(), tcp: tcp.slice(), q: q.slice(),
+                    err: Math.hypot(goal[0]-tcp[0], goal[1]-tcp[1], goal[2]-tcp[2]),
+                    yaw: yaw, yawT: yawT, posed: posed };
     dirty = true; request();
   }
 
   function takeHold() {
-    if (!posed) { posed = true; goal[0] = tcp[0]; goal[1] = tcp[1]; goal[2] = tcp[2]; }
+    if (posed) return;
+    posed = true;
+    // Recompute from the angles before reading the tool point. Until this
+    // moment tcp is whatever the *baked* frames said, and the solver works
+    // from q; the two agree to about a millimetre, but the goal was being set
+    // from one and chased from the other, so the first drag opened with an
+    // offset it then spent the whole gesture working off -- 71px out on the
+    // first pull, 17 on the second, 3 by the third.
+    forward(M);
+    goal[0] = tcp[0]; goal[1] = tcp[1]; goal[2] = tcp[2];
   }
 
   handle.addEventListener("pointerdown", function (e) {
+    window.__dbg = (window.__dbg||{}); window.__dbg.down = (window.__dbg.down||0)+1;
     if (reduce) return;
     posing = true; poseId = e.pointerId;
     takeHold();
@@ -673,7 +715,10 @@
     e.preventDefault(); e.stopPropagation();
   });
   handle.addEventListener("pointermove", function (e) {
+    window.__dbg = (window.__dbg||{}); window.__dbg.move = (window.__dbg.move||0)+1;
+    window.__dbg.posing = posing; window.__dbg.idmatch = (e.pointerId === poseId);
     if (!posing || e.pointerId !== poseId) return;
+    window.__dbg.pass = (window.__dbg.pass||0)+1;
     nudge(e.clientX - lastX, e.clientY - lastY);
     lastX = e.clientX; lastY = e.clientY;
     e.stopPropagation();
@@ -704,7 +749,12 @@
 
   if (!reduce) {
     window.addEventListener("pointermove", function (e) {
-      if (dragging) return;              // the drag owns the camera while it lasts
+      // Posing owns the camera too. This listener is on the window, so it kept
+      // running through a handle drag: the solver put the tool where it was
+      // asked and the camera swung underneath it at the same time, and the
+      // handle came to rest somewhere else entirely. It read as the first drag
+      // barely moving -- 4px of 71 -- because the two cancelled.
+      if (dragging || posing) return;    // the drag owns the camera while it lasts
       // A quarter turn across the window, and a much smaller lift: pitching as
       // far as it yaws puts the camera under the floor.
       yawT = -0.62 + (e.clientX / window.innerWidth - 0.5) * 0.85;

@@ -78,6 +78,9 @@
       // well would move the cell out from under the hand placing the thing.
       // Anything that calls preventDefault on a wheel event owns it.
       if (e.defaultPrevented) return;
+      // And in staged mode there is no document scroll to ease: states.js owns
+      // the wheel, and two things easing the same gesture is one too many.
+      if (document.body.classList.contains("is-staged")) return;
       // Leave anything with its own scrollbar alone -- the log on a demo card,
       // a code block, a select. Hijacking those breaks them.
       var n = e.target;

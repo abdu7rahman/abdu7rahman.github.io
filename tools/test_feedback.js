@@ -90,6 +90,14 @@ async function session() {
     ok('and out of the tab order', await p.evaluate(() =>
       document.querySelector('.say__hp input').tabIndex === -1));
 
+    // The page may be a set of states rather than a scroll, in which case the
+    // form lives in one that has to be navigated to -- same as a reader
+    // clicking Contact in the bar.
+    await p.evaluate(() => {
+      if (window.__stage && window.__stage.on()) window.__stage.go(window.__stage.of - 1);
+    });
+    await p.waitForTimeout(800);
+
     const said = await p.evaluate(() => {
       document.querySelector('.say__b').click();
       return document.querySelector('.say__msg').textContent;
@@ -120,15 +128,22 @@ async function session() {
     await p.evaluate(() => window.scrollTo(0, 0));
     await p.waitForTimeout(FAST + 1600);
     ok('appears once the reading time is earned', await p.evaluate(() => !!document.querySelector('.nudge')));
+    // The guarantee is that the prompt does not trap you: the page still moves
+    // underneath it. How the page moves depends on what the page is -- a
+    // document scrolls, and a staged one changes state -- so ask for whichever
+    // one this is and check the same thing either way.
+    //
     // The site sets scroll-behavior: smooth, so scrollY has not moved by the
     // time a synchronous read happens -- ask for an instant scroll and give it
     // a frame regardless.
-    const before = await p.evaluate(() => window.scrollY);
-    await p.evaluate(() => window.scrollBy({ top: 240, behavior: 'instant' }));
-    await p.waitForTimeout(250);
-    const after = await p.evaluate(() => window.scrollY);
-    ok('it is not a modal -- the page still scrolls underneath', after !== before,
-       'scrollY ' + before + ' -> ' + after);
+    const staged = await p.evaluate(() => !!(window.__stage && window.__stage.on()));
+    const before = await p.evaluate((s) => s ? window.__stage.at() : window.scrollY, staged);
+    await p.evaluate((s) => s ? window.__stage.go(window.__stage.at() + 1)
+                              : window.scrollBy({ top: 240, behavior: 'instant' }), staged);
+    await p.waitForTimeout(staged ? 800 : 250);
+    const after = await p.evaluate((s) => s ? window.__stage.at() : window.scrollY, staged);
+    ok('it is not a modal -- the page still moves underneath', after !== before,
+       (staged ? 'state ' : 'scrollY ') + before + ' -> ' + after);
     ok('and it takes no focus', await p.evaluate(() =>
       !document.querySelector('.nudge').contains(document.activeElement)));
     await c.close();
