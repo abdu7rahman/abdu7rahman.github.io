@@ -236,7 +236,15 @@ a { color: inherit; }
 }
 .mark__rule { display: none; }
 
-.rail__nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+/* flex: 1 with min-width: 0 let the siblings win outright: at 320px the mark,
+   the two social links and the call to action took the whole bar and the
+   section nav was laid out 0px wide -- present, focusable, and impossible to
+   see or reach. It gets a floor now and the siblings give way instead. */
+.rail__nav {
+  flex: 1 1 auto; min-width: min(160px, 100%);
+  overflow-x: auto; scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
 .rail__nav::-webkit-scrollbar { display: none; }
 .rail__nav ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
 
@@ -254,6 +262,11 @@ a { color: inherit; }
 .rail__nav a[aria-current="true"] { color: var(--ink); background: rgba(0, 0, 0, .06); }
 
 .rail__foot { display: flex; gap: 2px; flex: none; }
+/* Both pages list GitHub and LinkedIn in full further down. On a phone the
+   bar has one job -- get you to a section -- and 60px of duplicate icons is
+   the cost of it not doing that job. The call to action beside them is not a
+   duplicate of anything and stays. */
+@media (max-width: 560px) { .rail__foot .icolink { display: none; } }
 .icolink {
   display: inline-flex; align-items: center; gap: 7px;
   font: 400 13px/1 var(--sans); letter-spacing: -.01em;
@@ -717,6 +730,13 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
      base rule now. */
   .rail { gap: 14px; padding-inline: clamp(18px, 5vw, 40px); }
   .rail__nav a { padding: 7px 9px; font-size: 12.5px; }
+  /* The strip scrolls at every width below the one that fits all six labels,
+     so say so: a hard cut through the middle of a word reads as a broken
+     layout, a fade reads as more to the right. */
+  .rail__nav {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
 
   .proj { grid-template-columns: 26px minmax(0, 1fr); }
   .proj__stats { grid-column: 2; display: flex; flex-wrap: wrap; gap: 0 32px; margin-top: 18px; }
@@ -901,9 +921,14 @@ body.err .btn--solid { color: #1a0e08; }
     animation-timeline: scroll(root block);
     animation-range: 0 180px;
   }
+  /* --rail-edge, not --rule: an animation beats a regular declaration, so
+     body.home setting a dark border on .rail lost to this keyframe and the
+     bar settled onto the light palette's hairline -- a white line across a
+     near-black bar. The keyframe reads a token each document can point
+     somewhere, and demo.css gets it for free through its own --rule remap. */
   @keyframes rail-settle {
     from { border-bottom-color: transparent; }
-    to   { border-bottom-color: var(--rule); }
+    to   { border-bottom-color: var(--rail-edge, var(--rule)); }
   }
 }
 

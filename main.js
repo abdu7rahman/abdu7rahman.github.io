@@ -15,11 +15,29 @@
     .filter(Boolean);
 
   var current = null;
+  var strip = document.querySelector(".rail__nav");
+  var smooth = !(window.matchMedia &&
+                 window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  // Below the width that fits all six labels the strip scrolls sideways, and
+  // a current-section marker parked off its right edge marks nothing. Move
+  // the strip, not the page: scrollIntoView would walk up to the document
+  // and scroll that too, undoing the scroll that got us here.
+  function reveal(a) {
+    if (!strip || strip.scrollWidth <= strip.clientWidth + 2) return;
+    var ab = a.getBoundingClientRect(), sb = strip.getBoundingClientRect();
+    var pad = 24, to = strip.scrollLeft;
+    if (ab.left - pad < sb.left) to += ab.left - pad - sb.left;
+    else if (ab.right + pad > sb.right) to += ab.right + pad - sb.right;
+    if (to === strip.scrollLeft) return;
+    if (strip.scrollTo) strip.scrollTo({ left: to, behavior: smooth ? "smooth" : "auto" });
+    else strip.scrollLeft = to;
+  }
 
   function setCurrent(entry) {
     if (entry === current) return;
     if (current) current.link.removeAttribute("aria-current");
-    if (entry) entry.link.setAttribute("aria-current", "true");
+    if (entry) { entry.link.setAttribute("aria-current", "true"); reveal(entry.link); }
     current = entry;
   }
 

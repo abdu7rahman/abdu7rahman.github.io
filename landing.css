@@ -134,6 +134,7 @@ body.home .sec__note { color: var(--landing-mut); }
 
 /* ── nav ───────────────────────────────────────────────────────────── */
 body.home .rail {
+  --rail-edge: var(--landing-rule);
   background: rgba(10, 10, 10, .72);
   border-bottom: 1px solid var(--landing-rule);
 }
@@ -185,6 +186,15 @@ body.home .skip {
 }
 .rail__cta:hover { opacity: .86; }
 .rail__cta .ico { width: 14px; height: 14px; }
+/* Below the width where the bar fits, the label goes and the button stays: a
+   round play button next to the section strip, still the same link, still
+   named for a screen reader by the text it is hiding. */
+@media (max-width: 700px) {
+  .rail__cta { padding: 0; width: 34px; height: 34px; justify-content: center; gap: 0; }
+  .rail__cta span { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                    clip-path: inset(50%); white-space: nowrap; }
+  .rail__cta .ico { width: 15px; height: 15px; }
+}
 
 /* ── hero ──────────────────────────────────────────────────────────── */
 body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
