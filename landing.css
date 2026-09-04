@@ -145,6 +145,33 @@ body.home .skip {
 /* ── hero ──────────────────────────────────────────────────────────── */
 body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
 
+/* The robot, drawn by hero-arm.js. It sits in the right half and the type
+   moves to the left of it, which is the arrangement the page was pointed at:
+   an object lit in the fog with the sentence beside it rather than a block of
+   centred text on an empty field. Below 900px there is no room for two
+   columns, so the type goes back to the middle and the object steps out
+   rather than shrinking into a smudge behind it. */
+.hero__arm {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 54%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+@media (max-width: 900px) {
+  .hero__arm { display: none; }
+}
+@media (min-width: 901px) {
+  body.home .hero { text-align: left; }
+  body.home .hero__eyebrow,
+  body.home .hero__name,
+  body.home .hero__lede,
+  body.home .hero__meta,
+  body.home .hero__actions { grid-column: 1 / 8; }
+  body.home .hero__lede { margin-left: 0; margin-right: 0; }
+  /* Four facts across seven columns is too tight; two rows of two reads. */
+  body.home .hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.home .hero__actions { justify-content: flex-start; }
+}
+
 /* field.js's shader, built and appended at runtime. Fixed and full-bleed, so
    the whole page sits in the same weather rather than the hero alone; the
    content is lifted one layer above it. The grain (z-index 55) and the
