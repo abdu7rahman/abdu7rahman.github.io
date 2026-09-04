@@ -801,6 +801,77 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
   .runner__back:hover { gap: 8px; }
 }
 
+/* ── scroll-driven motion ──────────────────────────────────────────────
+   Where the browser has view() timelines, the reveal stops being a one-shot
+   class the observer flips and becomes scrubbed: tied to the element's own
+   progress through the viewport, so it runs backwards when the reader
+   scrolls back up. This is what a ScrollTrigger scrub buys, without the
+   library -- and the reveal above stays exactly as it is for the browsers
+   that do not have it, which is why none of this is written as a
+   replacement.
+
+   Everything here is inside both @supports and a no-preference query. An
+   animation whose whole purpose is to respond to scrolling is not something
+   to hand someone who asked for less movement. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    [data-reveal] {
+      transition: none;                /* the timeline drives it now */
+      animation: reveal-scrub linear both;
+      animation-timeline: view();
+      /* Finish well before the element is centred: content that is still
+         fading at the point you are trying to read it is worse than content
+         that simply arrived. */
+      animation-range: entry 5% cover 30%;
+    }
+    @keyframes reveal-scrub {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* The benchmark bars draw themselves as their row arrives. These are the
+       page's own measurements, so the bar growing is the number being read
+       out rather than decoration for its own sake. */
+    .bar {
+      transform-origin: left center;
+      animation: bar-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 15% cover 40%;
+    }
+    @keyframes bar-draw {
+      from { transform: scaleX(0); }
+      to   { transform: scaleX(1); }
+    }
+
+    /* A section's label drifts a little slower than its body. Small enough
+       that it reads as depth rather than as the page coming apart. */
+    .sec__label {
+      animation: label-drift linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+    @keyframes label-drift {
+      from { transform: translateY(-14px); }
+      to   { transform: translateY(14px); }
+    }
+  }
+}
+
+/* The top bar earns its background: transparent over the top of the page,
+   and settling onto its surface once the reader has moved. scroll() rather
+   than view(), because this tracks the document, not an element. */
+@supports (animation-timeline: scroll()) {
+  .rail {
+    animation: rail-settle linear both;
+    animation-timeline: scroll(root block);
+    animation-range: 0 180px;
+  }
+  @keyframes rail-settle {
+    from { border-bottom-color: transparent; }
+    to   { border-bottom-color: var(--rule); }
+  }
+}
+
 /* ── the other two accessibility preferences ──────────────────────────
    Reduced motion was honoured and these two were not, which is half an
    answer: the same reader who turns motion down is the one who turns
