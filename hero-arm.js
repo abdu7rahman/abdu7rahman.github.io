@@ -173,6 +173,7 @@
       motion = both[1];
       var hero = document.getElementById("intro");
       (hero || document.body).appendChild(canvas);
+      if (!reduce) (hero || document.body).appendChild(handle);
       resize();
       dirty = true; request();
     }).catch(function () { /* the hero stands without it */ });
@@ -318,6 +319,159 @@
     return model;
   }
 
+
+  /* ---- kinematics -------------------------------------------------------
+     The same six joint origins the baked motion was computed from:
+     config/ur12e/default_kinematics.yaml in Universal_Robots_ROS2_Description,
+     which is byte-identical to the UR10e's because the UR12e is a payload
+     variant of it. Copied out of predictive_replanning.ur12e rather than
+     re-derived, and checked against the bake: recomputing frame 0 of
+     assets/hero-motion.json from these lands within 4.7e-06 of the stored
+     values, which is float32 storage precision.
+
+     Everything below is 3x4 row-major, the same layout the baked frames use,
+     so one shape flows from here to the shader. */
+  var ORIGINS = [
+    [1,0,0,0, 0,1,0,0, 0,0,1,0.1807],
+    [1,0,0,0, 0,-2.051034285e-10,-1,0, 0,1,-2.051034285e-10,0],
+    [1,0,0,-0.6127, 0,1,0,0, 0,0,1,0],
+    [1,0,0,-0.57155, 0,1,0,0, 0,0,1,0.17415],
+    [1,0,0,0, 0,-2.051034285e-10,-1,-0.11985, 0,1,-2.051034285e-10,0],
+    [1,-1.224646799e-16,1.224646799e-16,0, -1.224646799e-16,-2.05103551e-10,1,0.11655,
+     -1.224646799e-16,-1,-2.05103551e-10,0]
+  ];
+  //: wrist_3 -> tool0. The flange and tool0 rotations cancel to identity; it
+  //: is kept as a matrix because that is what it is, not because it does work.
+  var FLANGE = [1,0,0,0, 0,1,0,0, 0,0,1,0];
+  //: Gripper origin to the point between the fingertips, down tool0's z.
+  var TCP_Z = 0.1565;
+  //: Where the arm sits when nothing is asking it for anything -- KEYS[0] of
+  //: tools/bake_hero_arm.py, so posing starts from the pose the scroll ends at.
+  var REST = [0.52, -1.02, 1.3, -1.86, -1.57, 0];
+
+  function mul34(a, b, out) {
+    for (var r = 0; r < 3; r++) {
+      var a0 = a[r * 4], a1 = a[r * 4 + 1], a2 = a[r * 4 + 2], a3 = a[r * 4 + 3];
+      out[r * 4]     = a0 * b[0] + a1 * b[4] + a2 * b[8];
+      out[r * 4 + 1] = a0 * b[1] + a1 * b[5] + a2 * b[9];
+      out[r * 4 + 2] = a0 * b[2] + a1 * b[6] + a2 * b[10];
+      out[r * 4 + 3] = a0 * b[3] + a1 * b[7] + a2 * b[11] + a3;
+    }
+    return out;
+  }
+  var _rz = [1,0,0,0, 0,1,0,0, 0,0,1,0];
+  function rotz(t) {
+    var c = Math.cos(t), s = Math.sin(t);
+    _rz[0] = c; _rz[1] = -s; _rz[4] = s; _rz[5] = c;
+    return _rz;
+  }
+
+  var joints = [];                       // six joint frames, base -> wrist_3
+  for (var _j = 0; _j < 6; _j++) joints.push(new Float64Array(12));
+  var _acc = new Float64Array(12), _tmp = new Float64Array(12);
+  var tool = new Float64Array(12);
+  var tcp = [0, 0, 0];
+
+  //: Joint angles and gripper opening, when the arm is being posed rather
+  //: than played back.
+  var q = REST.slice(), grip = 0.0, posed = false;
+
+  function forward(out) {
+    // base_link_inertia is the identity; the mesh is already in that frame.
+    for (var k = 0; k < 12; k++) out[k] = 0;
+    out[0] = out[5] = out[10] = 1;
+    var cur = _acc;
+    for (var k2 = 0; k2 < 12; k2++) cur[k2] = 0;
+    cur[0] = cur[5] = cur[10] = 1;
+    for (var i = 0; i < 6; i++) {
+      mul34(cur, ORIGINS[i], _tmp);
+      mul34(_tmp, rotz(q[i]), joints[i]);
+      cur = joints[i];
+      for (var m = 0; m < 12; m++) out[(i + 1) * 12 + m] = cur[m];
+    }
+    mul34(cur, FLANGE, tool);
+    for (var m2 = 0; m2 < 12; m2++) out[7 * 12 + m2] = tool[m2];
+    // Both fingers are baked closed and slide the same way along tool0's x.
+    var slide = [1,0,0,grip, 0,1,0,0, 0,0,1,0];
+    mul34(tool, slide, _tmp);
+    for (var m3 = 0; m3 < 12; m3++) { out[8 * 12 + m3] = _tmp[m3]; out[9 * 12 + m3] = _tmp[m3]; }
+    // The point between the fingertips, which is what the handle sits on.
+    tcp[0] = tool[3]  + tool[2]  * TCP_Z;
+    tcp[1] = tool[7]  + tool[6]  * TCP_Z;
+    tcp[2] = tool[11] + tool[10] * TCP_Z;
+  }
+
+  /* ---- inverse kinematics -----------------------------------------------
+     Damped least squares. A revolute chain hands its own Jacobian over for
+     free once the frames are known -- column i is the joint axis crossed with
+     the vector from that joint to the tool -- so there is no numeric
+     differencing here and no six extra forward passes per iteration.
+
+     Damped rather than a plain pseudo-inverse because the arm has to stay
+     usable when you drag the handle somewhere it cannot reach: near a
+     singularity an undamped solve asks for an enormous joint step and the
+     robot snaps. The damping trades a little tracking error for a bounded
+     one, which is the right way round for something you are holding.
+
+     Three equations, six unknowns, so the solution is a whole subspace. The
+     null-space term spends that freedom pulling gently back toward the rest
+     pose, which is what stops the elbow drifting into a fold that tracks the
+     point perfectly and looks nothing like a robot. */
+  var LAMBDA2 = 0.02, REST_PULL = 0.12, MAX_STEP = 0.22;
+
+  function solve(tx, ty, tz) {
+    var Jx = [0,0,0,0,0,0], Jy = [0,0,0,0,0,0], Jz = [0,0,0,0,0,0], i;
+    for (i = 0; i < 6; i++) {
+      var f = joints[i];
+      var ax = f[2], ay = f[6], az = f[10];              // joint axis, world
+      var dx = tcp[0] - f[3], dy = tcp[1] - f[7], dz = tcp[2] - f[11];
+      Jx[i] = ay * dz - az * dy;
+      Jy[i] = az * dx - ax * dz;
+      Jz[i] = ax * dy - ay * dx;
+    }
+    // A = J Jt + lambda^2 I, symmetric 3x3
+    function dot(a, b) { var s = 0; for (var k = 0; k < 6; k++) s += a[k] * b[k]; return s; }
+    var a11 = dot(Jx,Jx) + LAMBDA2, a12 = dot(Jx,Jy), a13 = dot(Jx,Jz);
+    var a22 = dot(Jy,Jy) + LAMBDA2, a23 = dot(Jy,Jz), a33 = dot(Jz,Jz) + LAMBDA2;
+    var c11 = a22*a33 - a23*a23, c12 = a13*a23 - a12*a33, c13 = a12*a23 - a13*a22;
+    var det = a11*c11 + a12*c12 + a13*c13;
+    if (Math.abs(det) < 1e-12) return false;
+    var c22 = a11*a33 - a13*a13, c23 = a13*a12 - a11*a23, c33 = a11*a22 - a12*a12;
+    function solve3(bx, by, bz, o) {
+      o[0] = (c11*bx + c12*by + c13*bz) / det;
+      o[1] = (c12*bx + c22*by + c23*bz) / det;
+      o[2] = (c13*bx + c23*by + c33*bz) / det;
+    }
+    var w = [0, 0, 0];
+    solve3(tx - tcp[0], ty - tcp[1], tz - tcp[2], w);
+    var dq = [0,0,0,0,0,0];
+    for (i = 0; i < 6; i++) dq[i] = Jx[i]*w[0] + Jy[i]*w[1] + Jz[i]*w[2];
+
+    // (I - J+ J) b, the part of the rest pull that does not move the tool
+    var b = [0,0,0,0,0,0];
+    for (i = 0; i < 6; i++) b[i] = (REST[i] - q[i]) * REST_PULL;
+    var w2 = [0, 0, 0];
+    solve3(dot(Jx,b), dot(Jy,b), dot(Jz,b), w2);
+    for (i = 0; i < 6; i++) dq[i] += b[i] - (Jx[i]*w2[0] + Jy[i]*w2[1] + Jz[i]*w2[2]);
+
+    var big = 0;
+    for (i = 0; i < 6; i++) big = Math.max(big, Math.abs(dq[i]));
+    var k = big > MAX_STEP ? MAX_STEP / big : 1;
+    for (i = 0; i < 6; i++) q[i] += dq[i] * k;
+    return true;
+  }
+
+  //: Enough passes that a drag lands where you put it within a frame, few
+  //: enough that the whole thing is a rounding error next to drawing 21000
+  //: triangles. Each pass is six cross products and one 3x3 solve.
+  function reach(tx, ty, tz, M) {
+    for (var n = 0; n < 8; n++) {
+      forward(M);
+      if (!solve(tx, ty, tz)) break;
+    }
+    forward(M);
+  }
+
   /* ---- the frame the scroll is asking for ------------------------------- */
   function run() {
     var hero = document.getElementById("intro");
@@ -337,12 +491,29 @@
     var t = f - i;
     var a = motion.T[i], b = motion.T[i + 1];
     for (var k = 0; k < 120; k++) M[k] = a[k] + (b[k] - a[k]) * t;
+    // Carry the angles alongside the frames, so the moment a reader takes hold
+    // of the tool the solver starts from the configuration already on screen.
+    if (motion.q) {
+      var qa = motion.q[i], qb = motion.q[i + 1];
+      for (var j = 0; j < 6; j++) q[j] = qa[j] + (qb[j] - qa[j]) * t;
+      grip = qa[6] + (qb[6] - qa[6]) * t;
+    }
+    toolPoint(M);
+  }
+
+  //: Where the fingertips are, read back out of whichever pose is current.
+  function toolPoint(src) {
+    var o = 7 * 12;
+    tcp[0] = src[o + 3]  + src[o + 2]  * TCP_Z;
+    tcp[1] = src[o + 7]  + src[o + 6]  * TCP_Z;
+    tcp[2] = src[o + 11] + src[o + 10] * TCP_Z;
   }
 
   /* ---- camera ----------------------------------------------------------- */
   var yaw = -0.62, pitch = 0.30, yawT = yaw, pitchT = pitch;
   var W = 0, H = 0;
   var view = new Float32Array(16), proj = new Float32Array(16);
+  var fov = 0.62;
 
   function resize() {
     var r = canvas.getBoundingClientRect();
@@ -371,7 +542,7 @@
     view[12] = 0;      view[13] = 0;       view[14] = -dist;   view[15] = 1;
 
     var aspect = W / Math.max(1, H);
-    var fov = 0.62, near = 0.1, far = 20.0;
+    var near = 0.1, far = 20.0;
     var f = 1 / Math.tan(fov / 2);
     proj[0] = f / aspect; proj[1] = 0; proj[2] = 0; proj[3] = 0;
     proj[4] = 0; proj[5] = f; proj[6] = 0; proj[7] = 0;
@@ -379,10 +550,38 @@
     proj[12] = 0; proj[13] = 0; proj[14] = 2 * far * near / (near - far); proj[15] = 0;
   }
 
+  /* ---- the handle -------------------------------------------------------
+     RViz's interactive marker, which is the thing this is: a handle on the
+     tool, and dragging it asks the solver for a pose that puts the tool
+     there. Orbiting is still the background -- drag the robot itself and the
+     camera turns, drag the handle and the robot moves -- which is the same
+     division of labour MoveIt uses.
+
+     The handle is a DOM element rather than more geometry in the scene. It
+     has to stay crisp at any size, take a pointer without a depth test, and
+     match the ring the page already draws for a cursor; all three are free in
+     CSS and all three are work in WebGL. */
+  var _eye = [0, 0, 0];
+  function project(p) {
+    var x = p[0], y = p[1], z = p[2] - Z_MID;
+    _eye[0] = view[0] * x + view[4] * y + view[8]  * z + view[12];
+    _eye[1] = view[1] * x + view[5] * y + view[9]  * z + view[13];
+    _eye[2] = view[2] * x + view[6] * y + view[10] * z + view[14];
+    var w = -_eye[2];
+    if (w < 0.01) return null;
+    return [(proj[0] * _eye[0] / w * 0.5 + 0.5) * W,
+            (0.5 - proj[5] * _eye[1] / w * 0.5) * H, w];
+  }
+
   function draw() {
     if (!parts.length || !motion || !W || !H) return;
-    poseAt(progress());
+    // Posed by hand, or still playing the move the scroll scrubs. Once a
+    // reader has taken hold of the tool the arm is theirs and stays where they
+    // put it -- an interactive marker that springs back the moment you let go
+    // is not a marker, it is a toy.
+    if (posed) forward(M); else poseAt(progress());
     camera();
+    placeHandle();
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.uniformMatrix4fv(uView, false, view);
@@ -422,6 +621,84 @@
     lastScroll = window.scrollY;
     dirty = true; request();
   }, { passive: true });
+
+  /* The handle, and posing by it. */
+  var handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "hero__grip";
+  handle.setAttribute("data-cur", "pose");
+  handle.setAttribute("aria-label",
+    "Move the robot's tool. Drag, or use the arrow keys.");
+  handle.hidden = true;
+
+  function placeHandle() {
+    if (reduce) return;
+    var s = project(tcp);
+    if (!s) { handle.hidden = true; return; }
+    handle.hidden = false;
+    // project() gives pixels inside the canvas; the handle is positioned
+    // against the hero, and the canvas is only the right half of it. Both
+    // share the hero as their offset parent, so its own offset is the whole
+    // correction.
+    handle.style.transform = "translate3d(" + (canvas.offsetLeft + s[0]) + "px," +
+                                              (canvas.offsetTop + s[1]) + "px,0)";
+  }
+
+  var posing = false, poseId = -1, goal = [0, 0, 0];
+  //: Screen pixels to metres, on the plane through the tool that faces the
+  //: camera. The view matrix holds the camera's own axes in its rows, and at
+  //: eye depth d one pixel spans 2*d*tan(fov/2)/H.
+  function nudge(dx, dy) {
+    var s = project(tcp);
+    if (!s) return;
+    var k = 2 * s[2] * Math.tan(fov / 2) / Math.max(1, H);
+    goal[0] += (view[0] * dx - view[1] * dy) * k;
+    goal[1] += (view[4] * dx - view[5] * dy) * k;
+    goal[2] += (view[8] * dx - view[9] * dy) * k;
+    reach(goal[0], goal[1], goal[2], M);
+    dirty = true; request();
+  }
+
+  function takeHold() {
+    if (!posed) { posed = true; goal[0] = tcp[0]; goal[1] = tcp[1]; goal[2] = tcp[2]; }
+  }
+
+  handle.addEventListener("pointerdown", function (e) {
+    if (reduce) return;
+    posing = true; poseId = e.pointerId;
+    takeHold();
+    lastX = e.clientX; lastY = e.clientY;
+    if (handle.setPointerCapture) handle.setPointerCapture(e.pointerId);
+    handle.classList.add("is-held");
+    e.preventDefault(); e.stopPropagation();
+  });
+  handle.addEventListener("pointermove", function (e) {
+    if (!posing || e.pointerId !== poseId) return;
+    nudge(e.clientX - lastX, e.clientY - lastY);
+    lastX = e.clientX; lastY = e.clientY;
+    e.stopPropagation();
+  });
+  function letGo(e) {
+    if (!posing || (e && e.pointerId !== poseId)) return;
+    posing = false; handle.classList.remove("is-held");
+    if (handle.releasePointerCapture && e) {
+      try { handle.releasePointerCapture(e.pointerId); } catch (err) { /* gone */ }
+    }
+  }
+  handle.addEventListener("pointerup", letGo);
+  handle.addEventListener("pointercancel", letGo);
+  // Reachable without a pointer at all.
+  handle.addEventListener("keydown", function (e) {
+    var step = e.shiftKey ? 24 : 8, dx = 0, dy = 0;
+    if (e.key === "ArrowLeft") dx = -step;
+    else if (e.key === "ArrowRight") dx = step;
+    else if (e.key === "ArrowUp") dy = -step;
+    else if (e.key === "ArrowDown") dy = step;
+    else return;
+    takeHold();
+    nudge(dx, dy);
+    e.preventDefault();
+  });
 
   var dragging = false, dragId = -1, lastX = 0, lastY = 0;
 

@@ -108,8 +108,14 @@ def main() -> int:
 
     frames = []
     tool_pts = []
+    poses = []
     for i in range(FRAMES):
         q, grip = sample(i, FRAMES)
+        # The angles as well as the frames they produce. The page needs them to
+        # hand the arm over: when a reader takes hold of the tool, the solver
+        # has to start from the configuration already on screen, or the robot
+        # jumps to a different elbow on the first drag.
+        poses.append([round(float(x), 6) for x in q] + [round(float(grip), 6)])
         T = link_transforms(ur12e, q, grip)
         flat = []
         for M in T:
@@ -124,10 +130,13 @@ def main() -> int:
         "links": 10,
         "note": ("Ten 3x4 row-major link transforms per frame, in the order "
                  "assets/ur12e.json lists its links; the omitted bottom row is "
-                 "(0,0,0,1). `tool` is the gripper origin per frame. Computed by "
+                 "(0,0,0,1). `tool` is the gripper origin per frame, and `q` is "
+                 "the six joint angles plus the gripper opening that produced it. "
+                 "Computed by "
                  "predictive_replanning.ur12e. Regenerate with "
                  "tools/bake_hero_arm.py."),
         "tool": tool_pts,
+        "q": poses,
         "T": frames,
     }, separators=(",", ":")))
     kb = OUT.stat().st_size / 1024

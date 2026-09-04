@@ -28,6 +28,36 @@
    rather than remapping the shared tokens the way demo.css does. */
 body.home { --cur-ink: var(--landing-accent); }
 
+/* The handle on the robot's tool. RViz draws its interactive markers as rings
+   on the thing they move, and this is the same idea in the page's own
+   vocabulary: the cursor ring, parked on the gripper, waiting to be taken
+   hold of. Positioned by hero-arm.js from the projected tool point, so it
+   tracks the arm through the scroll scrub as well as through a drag. */
+.hero__grip {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0;
+  border: 1.5px solid var(--landing-accent); border-radius: 50%;
+  background: rgba(255, 138, 92, .10);
+  cursor: grab; touch-action: none;
+  transition: width var(--dur-hover) var(--ease), height var(--dur-hover) var(--ease),
+              margin var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease),
+              box-shadow var(--dur-hover) var(--ease);
+}
+/* The dot in the middle is the tool point itself: the ring can be as big as it
+   needs to be to catch a finger without the thing it marks becoming vague. */
+.hero__grip::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%; background: var(--landing-accent);
+}
+.hero__grip:hover, .hero__grip:focus-visible {
+  width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  background: rgba(255, 138, 92, .16);
+  box-shadow: 0 0 22px -4px rgba(255, 138, 92, .55);
+}
+.hero__grip:focus-visible { outline: 2px solid var(--landing-fg); outline-offset: 3px; }
+.hero__grip.is-held { cursor: grabbing; background: rgba(255, 138, 92, .24); }
+
 /* Magnets and tilt both animate transform, so they need a transition for the
    return trip -- immersive.js only clears the inline style. */
 body.home .btn, .rail__cta, .carousel__btn {
