@@ -24,19 +24,25 @@
 
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
 
-  // Flex rows stretch every item to the tallest one, so slide 01 -- four
-  // lines of prose -- was drawn as a card with a third of its interior empty,
-  // reserved for the longest card in the set. The viewport takes the height of
-  // the slide actually on screen instead, and animates between them, so a
-  // short card is a short card.
-  function fit() {
-    if (!view || !slides[i]) return;
-    view.style.height = slides[i].getBoundingClientRect().height + "px";
+  // Measured, not computed from a percentage. .projects carries gap: 16px,
+  // which is a column gap once the track is a flex row, and translateX(-i *
+  // 100%) does not know about it: every slide drifted 16px further right than
+  // the last, so by card 08 it sat 112px off and the stats column was cut
+  // clean off by the viewport's own overflow: hidden. offsetLeft is layout
+  // position -- unaffected by the transform already on the track -- so this
+  // stays right whatever the gap, the padding or the direction later become.
+  //
+  // Height is measured for a related reason: a flex row stretches every item
+  // to the tallest one, which drew card 01 as a card with a third of its
+  // interior empty, reserved for the longest card in the set.
+  function place() {
+    if (!slides[i]) return;
+    track.style.transform = "translateX(" + (slides[0].offsetLeft - slides[i].offsetLeft) + "px)";
+    if (view) view.style.height = slides[i].getBoundingClientRect().height + "px";
   }
 
   function render() {
-    track.style.transform = "translateX(-" + i * 100 + "%)";
-    fit();
+    place();
     prev.disabled = i === 0;
     next.disabled = i === slides.length - 1;
     if (pos) pos.textContent = pad(i + 1) + " / " + pad(slides.length);
@@ -93,10 +99,10 @@
 
   // Re-measure on anything that reflows a card: the viewport width, a web
   // font arriving after first paint, a stat table wrapping to another line.
-  window.addEventListener("resize", fit, { passive: true });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  window.addEventListener("resize", place, { passive: true });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(place);
   if (window.ResizeObserver) {
-    var ro = new ResizeObserver(fit);
+    var ro = new ResizeObserver(place);
     slides.forEach(function (s) { ro.observe(s); });
   }
 

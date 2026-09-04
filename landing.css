@@ -308,7 +308,9 @@ body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-ac
   transition: transform var(--dur-move) var(--ease-in-out);
 }
 .carousel.is-active .proj {
-  flex: 0 0 100%;
+  /* min-width: 0 against the flex default of auto, which would let a card
+     whose content will not shrink push its own slide wider than the track. */
+  flex: 0 0 100%; min-width: 0;
   scroll-snap-align: start;
 }
 .carousel:not(.is-active) .carousel__nav,
