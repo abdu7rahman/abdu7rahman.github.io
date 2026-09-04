@@ -38,10 +38,16 @@
   function place() {
     if (!slides[i]) return;
     track.style.transform = "translateX(" + (slides[0].offsetLeft - slides[i].offsetLeft) + "px)";
-    if (view) view.style.height = slides[i].getBoundingClientRect().height + "px";
+    // offsetHeight, not a bounding rect: the cards carry a scale transform
+    // now, and a rect is the transformed box -- an inactive slide measures
+    // 95.5% of itself and the viewport came out short by the difference.
+    if (view) view.style.height = slides[i].offsetHeight + "px";
   }
 
   function render() {
+    // Marked before it is measured: place() reads a layout height, and the
+    // class is what decides which card is at full size.
+    for (var s = 0; s < slides.length; s++) slides[s].classList.toggle("is-on", s === i);
     place();
     prev.disabled = i === 0;
     next.disabled = i === slides.length - 1;

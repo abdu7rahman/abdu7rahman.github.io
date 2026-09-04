@@ -1029,6 +1029,30 @@ body.home .shell, body.runner-page .runner { position: relative; z-index: 1; }
       to   { transform: scaleX(1); }
     }
 
+    /* A section recedes as it leaves. The reveals bring a block in and then
+       nothing ever happened to it again, so the page read as a list being
+       scrolled past rather than as somewhere you are moving through.
+
+       On `.sec` rather than on the blocks inside it: the entry animation
+       already owns those, and two animations on one element do not compose --
+       the later one simply wins.
+
+       Movement only. This faded as well to begin with, and measuring it
+       killed that: for a section taller than the window `exit` starts the
+       moment its top edge reaches the top of the screen, not when it is
+       nearly gone, so sections were sitting at 0.58 opacity with 344 to 532px
+       of themselves still in front of the reader. A 22px lift and a 1.2%
+       scale give the same depth cue and take nothing away from the text. */
+    .sec {
+      animation: sec-recede linear both;
+      animation-timeline: view();
+      animation-range: exit 0% exit 100%;
+    }
+    @keyframes sec-recede {
+      from { transform: none; }
+      to   { transform: translateY(-22px) scale(.988); }
+    }
+
     /* A section's label drifts a little slower than its body. Small enough
        that it reads as depth rather than as the page coming apart. */
     .sec__label {

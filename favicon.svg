@@ -1,5 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="10" fill="#14140f"/>
-  <path d="M12 46V18h7l7 14 7-14h7v28h-6.5V29l-6 12h-3l-6-12v17z" fill="#f4f2ed"/>
-  <circle cx="49" cy="45" r="4.5" fill="#b4380f"/>
+  <!-- The M is the site's own typeface, not a lookalike: the outline is the
+       glyph lifted straight out of assets/fonts/stix-two-text-latin.woff2,
+       which is the face every heading on the page is set in. Colours are the
+       three the site actually uses now -- the old mark was still carrying
+       #14140f, #f4f2ed and #b4380f from the warm-paper identity this replaced. -->
+  <rect width="64" height="64" rx="12" fill="#0a0a0a"/>
+  <g transform="translate(8.909 44) scale(0.0389769 -0.0389769)" fill="#fcf9f3">
+    <path d="M263 0H28V30Q69 30 89.0 37.5Q109 45 116.0 70.0Q123 95 123 146V535Q123 573 116.0 592.5Q109 612 89.5 619.5Q70 627 30 627V657H234L445 154H449L659 657H849V627Q814 627 795.0 619.5Q776 612 769.0 592.5Q762 573 762 536V119Q762 83 769.0 63.5Q776 44 795.0 37.0Q814 30 850 30V0H584V30Q623 30 642.0 37.0Q661 44 667.0 63.5Q673 83 673 119V550H669L436 0H412L176 549H172V146Q172 95 179.0 70.0Q186 45 205.5 37.5Q225 30 263 30Z"/>
+  </g>
+  <circle cx="51" cy="43" r="5" fill="#ff8a5c"/>
 </svg>

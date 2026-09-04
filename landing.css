@@ -68,6 +68,29 @@ body.home .proj { transition: transform var(--dur-move) var(--ease),
                               border-color var(--dur-hover) var(--ease),
                               box-shadow var(--dur-hover) var(--ease); }
 
+/* ── the page arriving ──────────────────────────────────────────────────
+   The hero was already choreographed and nothing else was, so the page half
+   assembled itself and half just appeared: the bar, the weather and the robot
+   all snapped in at whatever moment their bytes landed.
+
+   Everything here is a plain load animation with `both`, deliberately: no
+   class to add, nothing to remove, no state a failed script can strand. If
+   the JavaScript never runs the page is simply already in its finished state,
+   which is the same guarantee the reveals make. */
+@keyframes bar-drop  { from { transform: translateY(-100%); } to { transform: none; } }
+@keyframes soft-in   { from { opacity: 0; } to { opacity: 1; } }
+@keyframes robot-in  { from { opacity: 0; transform: translateY(16px) scale(.985); }
+                       to   { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  body.home .rail { animation: bar-drop 620ms var(--ease) both; }
+  /* The weather comes up under everything over a second and a bit -- slow
+     enough that you never catch it starting, which is the point of it. */
+  body.home .bg-field { animation: soft-in 1250ms linear both; }
+  /* And the robot last, once the type it sits beside has finished arriving. */
+  body.home .hero__arm { animation: robot-in 820ms var(--ease) both; animation-delay: 380ms; }
+  body.home .hero__grip { animation: soft-in 500ms linear both; animation-delay: 1000ms; }
+}
+
 /* ── grain ─────────────────────────────────────────────────────────────
    A single inline SVG turbulence filter, painted once into a fixed layer
    at low opacity. Static, not animated: an animated grain reads as video
@@ -304,7 +327,17 @@ body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-ac
      whose content will not shrink push its own slide wider than the track. */
   flex: 0 0 100%; min-width: 0;
   scroll-snap-align: start;
+  /* Paging was a slide and nothing else: two cards crossing at the same size
+     and the same weight, which reads as a filmstrip being dragged. Holding
+     the inactive ones back and letting the arriving one come up to meet you
+     turns the same movement into one card replacing another. */
+  opacity: .3;
+  transform: scale(.955);
+  transform-origin: 50% 40%;
+  transition: opacity var(--dur-move) var(--ease-in-out),
+              transform var(--dur-move) var(--ease-in-out);
 }
+.carousel.is-active .proj.is-on { opacity: 1; transform: none; }
 .carousel:not(.is-active) .carousel__nav,
 .carousel:not(.is-active) .carousel__pos { display: none; }
 
@@ -491,7 +524,9 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
 /* ── accessibility ─────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .carousel.is-active .carousel__track,
+  .carousel.is-active .proj,
   .carousel.is-active .carousel__viewport { transition: none; }
+  .carousel.is-active .proj { opacity: 1; transform: none; }
 }
 @media (prefers-contrast: more) {
   body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
@@ -503,7 +538,7 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   body.home::before { display: none; }
   .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
   .carousel.is-active .carousel__track { display: block; }
-  .carousel.is-active .proj { flex: none; }
+  .carousel.is-active .proj { flex: none; opacity: 1; transform: none; }
   /* the inline height carousel.js set would clip nine cards off the page */
   .carousel__viewport { height: auto !important; overflow: visible !important; }
 }
