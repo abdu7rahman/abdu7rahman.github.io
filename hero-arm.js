@@ -1,6 +1,6 @@
 /* The object in the hero: the real UR12e, running a real move as you scroll.
  *
- * Universal Robots' own triangles from assets/ur12e.json, placed by link
+ * Universal Robots' own triangles from assets/ur12e-hero.json, placed by link
  * transforms tools/bake_hero_arm.py computed with the same kinematics the demo
  * page runs. Scrolling scrubs the trajectory. Nothing here solves anything --
  * it hands matrices to the GPU.
@@ -129,17 +129,46 @@
   var parts = [];       // {link, buf, count, colour}
   var motion = null;
 
-  Promise.all([
-    fetch("assets/ur12e.json").then(function (r) { if (!r.ok) throw 0; return r.json(); }),
-    fetch("assets/hero-motion.json").then(function (r) { if (!r.ok) throw 0; return r.json(); })
-  ]).then(function (both) {
-    build(both[0]);
-    motion = both[1];
-    var hero = document.getElementById("intro");
-    (hero || document.body).appendChild(canvas);
-    resize();
-    dirty = true; request();
-  }).catch(function () { /* the hero stands without it */ });
+  // Its own mesh, not the one the demos draw. That one is decimated to about
+  // 10k triangles for a Canvas2D painter's algorithm, where the cost is a fill
+  // per visible triangle; this renders on the GPU with a depth buffer, where
+  // twice the triangles cost nothing measurable, and at 10k the joint caps
+  // came out as cut gems. Same pipeline, same pinned source meshes, a budget
+  // that matches the renderer actually drawing them.
+  function load() {
+    Promise.all([
+      fetch("assets/ur12e-hero.json").then(function (r) { if (!r.ok) throw 0; return r.json(); }),
+      fetch("assets/hero-motion.json").then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    ]).then(function (both) {
+      build(both[0]);
+      motion = both[1];
+      var hero = document.getElementById("intro");
+      (hero || document.body).appendChild(canvas);
+      resize();
+      dirty = true; request();
+    }).catch(function () { /* the hero stands without it */ });
+  }
+
+  // landing.css hides this below 901px, and the two files behind it are
+  // 180 KiB no phone was ever going to see -- fetched anyway, on every visit,
+  // until now. Waiting on the query rather than reading innerWidth once, so a
+  // window dragged wider still gets the robot and a narrow one still pays
+  // nothing.
+  var wide = window.matchMedia && window.matchMedia("(min-width: 901px)");
+  if (!wide || wide.matches) { load(); }
+  else {
+    var arrive = function () {
+      if (!wide.matches) return;
+      if (wide.removeEventListener) wide.removeEventListener("change", arrive);
+      else if (wide.removeListener) wide.removeListener(arrive);
+      load();
+    };
+    if (wide.addEventListener) wide.addEventListener("change", arrive);
+    else if (wide.addListener) wide.addListener(arrive);
+  }
+
+  // Faces meeting at less than this are one surface; past it, an edge.
+  var CREASE = Math.cos(52 * Math.PI / 180);
 
   function build(m) {
     var u = m.unit;
@@ -147,30 +176,77 @@
       for (var pi = 0; pi < m.links[li].parts.length; pi++) {
         var src = m.links[li].parts[pi];
         var v = src.v, f = src.f;
-        // Expanded to non-indexed so every triangle can carry its own face
-        // normal. Smooth normals across a decimated mechanical part round off
-        // the machined edges that make it read as a machine.
+        // Expanded to non-indexed, because a vertex on a crease needs a
+        // different normal for each face meeting there.
+        //
+        // These were flat per-face normals, on the reasoning that smoothing a
+        // decimated mechanical part rounds off the machined edges that make it
+        // read as a machine. True, and the wrong trade: every facet showed, so
+        // the arm came out a stack of prisms. What a modelling tool does
+        // instead is smooth by angle -- average across faces that meet
+        // shallowly, leave the ones that meet sharply alone -- which rounds
+        // the barrels and the domed caps and keeps every real edge. 52
+        // degrees: a decimated cylinder steps 15 to 35 between facets here and
+        // a machined edge is 90 or near it, so the gap is wide. Measured on
+        // this mesh, 92.5% of corners end up blended with a neighbour.
         var n = f.length;
+        var tri = n / 3;
         var pos = new Float32Array(n * 3);
         var nrm = new Float32Array(n * 3);
-        for (var t = 0; t < n; t += 3) {
-          var i0 = f[t] * 3, i1 = f[t + 1] * 3, i2 = f[t + 2] * 3;
-          var ax = v[i0] * u, ay = v[i0 + 1] * u, az = v[i0 + 2] * u;
-          var bx = v[i1] * u, by = v[i1 + 1] * u, bz = v[i1 + 2] * u;
-          var cx = v[i2] * u, cy = v[i2 + 1] * u, cz = v[i2 + 2] * u;
-          var ex = bx - ax, ey = by - ay, ez = bz - az;
-          var gx = cx - ax, gy = cy - ay, gz = cz - az;
+
+        // Face normals twice over: unnormalised, whose length is twice the
+        // triangle's area and is the weight a broad face should carry over a
+        // sliver, and unit, for comparing angles.
+        var wx = new Float32Array(tri), wy = new Float32Array(tri), wz = new Float32Array(tri);
+        var ux = new Float32Array(tri), uy = new Float32Array(tri), uz = new Float32Array(tri);
+        var t, c, i, o, j, ln;
+        for (t = 0; t < tri; t++) {
+          var i0 = f[t * 3] * 3, i1 = f[t * 3 + 1] * 3, i2 = f[t * 3 + 2] * 3;
+          var ex = v[i1] - v[i0], ey = v[i1 + 1] - v[i0 + 1], ez = v[i1 + 2] - v[i0 + 2];
+          var gx = v[i2] - v[i0], gy = v[i2 + 1] - v[i0 + 1], gz = v[i2 + 2] - v[i0 + 2];
           var nx = ey * gz - ez * gy, ny = ez * gx - ex * gz, nz = ex * gy - ey * gx;
-          var ln = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-          nx /= ln; ny /= ln; nz /= ln;
-          var o = t * 3;
-          pos[o] = ax; pos[o + 1] = ay; pos[o + 2] = az;
-          pos[o + 3] = bx; pos[o + 4] = by; pos[o + 5] = bz;
-          pos[o + 6] = cx; pos[o + 7] = cy; pos[o + 8] = cz;
-          for (var k = 0; k < 3; k++) {
-            nrm[o + k * 3] = nx; nrm[o + k * 3 + 1] = ny; nrm[o + k * 3 + 2] = nz;
+          wx[t] = nx; wy[t] = ny; wz[t] = nz;
+          ln = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          ux[t] = nx / ln; uy[t] = ny / ln; uz[t] = nz / ln;
+        }
+
+        // Welded by position, not by index: the vertices arrive quantised to
+        // integers and the same corner can appear twice under two indices.
+        // Smoothing by index alone leaves a seam straight down the part.
+        var ids = Object.create(null), next = 0;
+        var weld = new Int32Array(n), touch = [];
+        for (t = 0; t < tri; t++) {
+          for (c = 0; c < 3; c++) {
+            i = f[t * 3 + c] * 3;
+            var key = v[i] + "," + v[i + 1] + "," + v[i + 2];
+            var id = ids[key];
+            if (id === undefined) { id = ids[key] = next++; touch.push([]); }
+            weld[t * 3 + c] = id;
+            touch[id].push(t);
           }
         }
+
+        for (t = 0; t < tri; t++) {
+          for (c = 0; c < 3; c++) {
+            i = f[t * 3 + c] * 3;
+            o = (t * 3 + c) * 3;
+            pos[o] = v[i] * u; pos[o + 1] = v[i + 1] * u; pos[o + 2] = v[i + 2] * u;
+            var near = touch[weld[t * 3 + c]];
+            var sx = 0, sy = 0, sz = 0;
+            for (j = 0; j < near.length; j++) {
+              var q = near[j];
+              if (ux[q] * ux[t] + uy[q] * uy[t] + uz[q] * uz[t] >= CREASE) {
+                sx += wx[q]; sy += wy[q]; sz += wz[q];
+              }
+            }
+            ln = Math.sqrt(sx * sx + sy * sy + sz * sz);
+            // A fan cancelling out exactly -- a needle, a degenerate -- falls
+            // back to the face it belongs to rather than to zero.
+            if (ln < 1e-9) { sx = ux[t]; sy = uy[t]; sz = uz[t]; ln = 1; }
+            nrm[o] = sx / ln; nrm[o + 1] = sy / ln; nrm[o + 2] = sz / ln;
+          }
+        }
+
         var pb = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, pb);
         gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);

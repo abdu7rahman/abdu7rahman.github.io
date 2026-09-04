@@ -56,6 +56,23 @@ UNIT = 1e-4
 #: Pyodide, where the actual work is.
 BUDGET = 10000
 
+#: The hero on index.html renders the same robot on the GPU with a depth
+#: buffer, where the reasoning above does not apply at all: there is no fill
+#: per triangle to pay and twice the geometry costs nothing measurable. At
+#: 10000 its joint caps came out as cut gems -- a silhouette no amount of
+#: normal smoothing can round -- so it gets its own bake, from the same pinned
+#: meshes through the same pipeline:
+#:
+#:   python3 tools/bake_arm.py --src <checkout> --budget 26000 \
+#:                             --out assets/ur12e-hero.json
+#:
+#: 20751 triangles, 138 KiB gzipped. The decimator stalls at about 31600 no
+#: matter how high the budget goes, which is the source meshes' own ceiling
+#: after the 0.5 mm weld; 26000 is where the caps stop reading as faceted and
+#: the file is still worth its bytes. hero-arm.js does not fetch it below
+#: 901px, where landing.css hides the robot outright.
+HERO_BUDGET = 26000
+
 #: How that is split. The links a viewer reads as "the arm" get the triangles;
 #: the base is half-hidden by the shoulder and the coupler is 17 mm tall.
 SHARE = {

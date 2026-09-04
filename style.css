@@ -273,7 +273,14 @@ a { color: inherit; }
 }
 
 .rail__top { flex: none; }
-.mark { text-decoration: none; display: inline-flex; align-items: center; gap: 10px; flex: none; }
+/* Padding, then the same amount back off the margin, so the box a finger has
+   to hit clears 24px without the mark moving on the page. WCAG 2.2 target
+   size: these are standalone links, so the exemption for a link sitting
+   inside a sentence does not cover them. */
+.mark {
+  text-decoration: none; display: inline-flex; align-items: center; gap: 10px; flex: none;
+  padding-block: 6px; margin-block: -6px;
+}
 .mark__initials {
   font: 600 15px/1 var(--sans); letter-spacing: -.01em; color: var(--ink);
 }
@@ -487,11 +494,15 @@ a { color: inherit; }
 
 .demo {
   display: inline-flex; align-items: center; gap: 7px;
-  margin-top: 16px;
+  /* 18px tall, and standing on its own rather than inside a sentence, so the
+     inline-link exemption from WCAG 2.2's 24px target minimum does not apply.
+     The extra height is padding taken back off the top margin: the hit box
+     grows, the card's rhythm does not change. */
+  margin-top: 13px;
+  padding-top: 3px; padding-bottom: 5px;
   font: 400 15px/1 var(--sans); letter-spacing: -.015em;
   color: var(--signal); text-decoration: none;
   border-bottom: 1px solid transparent;
-  padding-bottom: 2px;
   transition: border-color .18s var(--ease);
 }
 .demo:hover { border-color: var(--signal); }
@@ -574,6 +585,11 @@ code {
 a.inline {
   color: var(--signal); text-decoration: none;
   border-bottom: 1px solid var(--signal-w);
+  /* Vertical padding on an inline box grows what a finger can hit without
+     growing the line box, so the citation links in the Stack table -- alone in
+     their cell at 15px tall, and 15px is not a target -- get to 25px for free
+     and no line anywhere on the page moves. */
+  padding-block: 5px;
   transition: border-color .18s var(--ease);
 }
 a.inline:hover { border-color: var(--signal); }

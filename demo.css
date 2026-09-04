@@ -58,6 +58,7 @@
 }
 .runner__back {
   display: inline-flex; align-items: center; gap: 8px;
+  padding-block: 5px; margin-block: -5px;   /* 18px tall was under the 24px floor */
   font: 400 15px/1 var(--sans); letter-spacing: -.015em; text-transform: none;
   color: var(--ink-3); text-decoration: none; margin-bottom: 26px;
   transition: color var(--dur-hover) var(--ease);
