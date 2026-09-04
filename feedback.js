@@ -125,7 +125,13 @@
     bar.setAttribute("role", "complementary");
     bar.setAttribute("aria-label", "Leave a comment");
     bar.innerHTML =
-      '<p class="nudge__p">Any of this useful? I would like to know what you think.</p>' +
+      '<p class="nudge__p">' +
+        '<svg class="nudge__i" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 6.5 9 6.5 9-6.5"/>' +
+        '</svg>' +
+        '<span>Any of this useful? I would like to know what you think.</span>' +
+      '</p>' +
       '<div class="nudge__a">' +
         '<button class="nudge__b nudge__b--go" type="button">Leave a comment</button>' +
         '<button class="nudge__b" type="button" data-no>Not now</button>' +

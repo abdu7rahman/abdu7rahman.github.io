@@ -26,7 +26,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PAGES = ("index.html", "demo.html", "404.html")
+PAGES = ("index.html", "demo.html", "404.html", "admin.html")
 
 # src="x.js" / href="x.css", optionally already stamped. Absolute URLs and
 # anything with a host are skipped by the pattern: no "//" allowed.

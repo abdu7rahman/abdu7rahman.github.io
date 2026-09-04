@@ -693,40 +693,68 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
   }
 }
 
-/* A bar along the bottom, not a sheet over the middle: the page stays
-   readable and scrollable underneath it, and nothing steals focus. */
+/* A card in the corner, not a bar across the middle. Centred at the foot of
+   the page it sat over the reading column on every width -- a toast shaped
+   like a cookie banner, which is the shape people have trained themselves to
+   dismiss without reading. Bottom-right, narrow, out of the measure.
+
+   Surfaces come from --paper-3 and --rule-2 rather than literals. This is
+   built into .foot, which both index.html and demo.html have, and the literal
+   white it used to carry stayed white on demo.html where every other surface
+   had gone dark. */
 .nudge {
-  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
-  z-index: 40; width: min(560px, calc(100vw - 32px));
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: 12px 18px; padding: 14px 16px;
-  background: rgba(255, 255, 255, .82);
+  position: fixed; z-index: 40;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: min(348px, calc(100vw - 32px));
+  display: grid; gap: 14px;
+  padding: 15px 16px 14px;
+  background: var(--paper-3);
+  background: color-mix(in srgb, var(--paper-3) 90%, transparent);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border: 1px solid var(--rule-2); border-radius: var(--r-xl);
   box-shadow: var(--lift-3);
-  transform: translate(-50%, calc(100% + 24px));
-  transition: transform .3s cubic-bezier(.22, 1, .36, 1), opacity .3s;
+  transform: translateY(calc(100% + 28px));
+  transition: transform .38s cubic-bezier(.22, 1, .36, 1), opacity .28s linear;
   opacity: 0;
 }
-.nudge.is-up { transform: translate(-50%, 0); opacity: 1; }
-.nudge__p { font: 400 14.5px/1.4 var(--sans); letter-spacing: -.01em; color: var(--ink); flex: 1 1 220px; }
-.nudge__a { display: flex; gap: 8px; flex: none; }
-.nudge__b {
-  font: 500 13.5px/1 var(--sans); cursor: var(--cur-hand); white-space: nowrap;
-  border-radius: var(--r-pill); padding: 9px 14px;
-  background: transparent; border: 1px solid var(--rule-2); color: var(--ink-2);
+/* A lit top edge, brightest in the middle. The shadow tokens are black on
+   black and carry no depth on the dark pages; an edge catching the light is
+   how a surface reads as being in front of another one there. */
+.nudge::before {
+  content: ""; position: absolute; left: 30px; right: 30px; top: 0; height: 1px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--signal), transparent);
+  opacity: .55;
 }
-.nudge__b:hover { background: var(--paper-2); }
-.nudge__b--go { background: var(--ink); border-color: var(--ink); color: #fff; }
-.nudge__b--go:hover { background: var(--ink); opacity: .88; }
+.nudge.is-up { transform: none; opacity: 1; }
+.nudge__p {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0;
+  font: 400 14px/1.45 var(--sans); letter-spacing: -.01em; color: var(--ink-2);
+}
+/* Says "message" before the sentence is read, and inline rather than from a
+   sprite: demo.html carries the same prompt and not the same icon set. */
+.nudge__i { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--signal); }
+.nudge__a { display: flex; gap: 8px; justify-content: flex-end; }
+.nudge__b {
+  font: 500 13px/1 var(--sans); cursor: var(--cur-hand); white-space: nowrap;
+  border-radius: var(--r-pill); padding: 9px 14px;
+  background: transparent; border: 1px solid var(--rule-2); color: var(--ink-3);
+  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease),
+              border-color var(--dur-hover) var(--ease);
+}
+.nudge__b:hover { background: var(--paper-2); color: var(--ink); }
+.nudge__b--go { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.nudge__b--go:hover { background: var(--ink); color: var(--paper); opacity: .88; }
 @media (prefers-reduced-motion: reduce) {
   .nudge { transition: none; }
 }
 @media (max-width: 560px) {
   .say__row { grid-template-columns: minmax(0, 1fr); }
-  .nudge { flex-direction: column; align-items: stretch; }
-  .nudge__a { justify-content: flex-end; }
+  /* Full width down here: a 348px card floated in the corner of a 390px
+     screen is a card with a 20px margin on one side and none on the other. */
+  .nudge { left: max(16px, env(safe-area-inset-left)); width: auto; }
 }
 
 /* ── responsive ────────────────────────────────────────────── */
@@ -900,9 +928,9 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
   }
 }
 
-/* 404 was the last document on the light palette once index.html and
-   demo.html both went dark. It loads this file and nothing else, so its remap
-   lives here rather than in a page stylesheet it does not have.
+/* 404 and admin were the last documents on the light palette once index.html
+   and demo.html both went dark. Each loads this file and nothing else, so the
+   remap lives here rather than in a page stylesheet neither of them has.
 
    On body rather than :root, which is the one difference from demo.css's
    version: that page has canvases whose colours demo.js reads off
@@ -912,7 +940,7 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
    one of these three documents falls back to if its remap does not arrive,
    which is exactly why tools/check_contrast.py still has to hold them to
    their ratios. */
-body.err {
+body.err, body.util {
   color-scheme: dark;
   --paper:    var(--landing-bg);
   --paper-2:  var(--landing-bg-2);
@@ -928,7 +956,7 @@ body.err {
   background: var(--landing-bg);
   color: var(--landing-fg);
 }
-body.err .btn--solid { color: #1a0e08; }
+body.err .btn--solid, body.util .btn--solid { color: #1a0e08; }
 
 /* The top bar earns its background: transparent over the top of the page,
    and settling onto its surface once the reader has moved. scroll() rather

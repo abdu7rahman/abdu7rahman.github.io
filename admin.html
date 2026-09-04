@@ -7,40 +7,50 @@
      the worker -- but there is no reason for this page to be in an index. -->
 <meta name="robots" content="noindex,nofollow">
 <title>Traffic</title>
-<link rel="icon" href="favicon.svg">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!-- Was a self-contained copy of the light palette, back when that was the
+     site's palette. It is not any more, and a page that looks like a different
+     site is a page you distrust before you have read it. The shared stylesheet
+     and its body.util remap now, same as 404.html. -->
+<link rel="stylesheet" href="style.css?v=9119924c">
 <style>
-  :root{
-    --paper:#fbfbfd; --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73;
-    --rule:#e8e8ed; --signal:#d70015; --r-pill:980px;
-    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  }
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);
-    letter-spacing:-.022em;-webkit-font-smoothing:antialiased;
-    min-height:100vh;display:grid;place-items:center;padding:32px}
-  main{max-width:560px}
-  h1{font-size:32px;font-weight:600;letter-spacing:-.03em}
-  p{margin-top:12px;color:var(--ink-2);font-size:15px}
-  .mut{color:var(--ink-3);font-size:14px}
-  a{color:var(--signal);text-decoration:none}
-  a:hover{text-decoration:underline}
-  .btn{display:inline-block;margin-top:22px;background:var(--ink);color:#fff;
-    border-radius:var(--r-pill);padding:11px 22px;font-weight:500;font-size:16px}
-  .btn:hover{text-decoration:none;opacity:.88}
-  ol{margin:16px 0 0 20px;color:var(--ink-2);font-size:15px}
-  li{margin-top:8px}
-  code{font:400 13.5px var(--mono);background:#f0f0f3;padding:2px 6px;border-radius:5px}
-  hr{border:0;border-top:1px solid var(--rule);margin:26px 0}
+  .util-page { min-height: 100vh; display: grid; place-content: center;
+               padding: var(--gutter); max-width: 640px; margin-inline: auto; }
+  .util-page__code { font: 500 11px/1 var(--mono); letter-spacing: .16em;
+                     text-transform: uppercase; color: var(--signal); }
+  .util-page__title { font-family: var(--font-display); font-weight: 600;
+                      font-size: clamp(2.2rem, 6vw, 3.2rem); line-height: 1.02;
+                      letter-spacing: -.03em; margin: 12px 0 0;
+                      text-shadow: 0 0 1px rgba(255, 249, 240, .5), 0 0 22px rgba(255, 138, 92, .24); }
+  .util-page p { margin-top: 14px; color: var(--ink-2); line-height: 1.6; }
+  .util-page .mut { color: var(--ink-3); font-size: .9375rem; }
+  .util-page hr { border: 0; border-top: 1px solid var(--rule); margin: 28px 0; }
+  .util-page .btn { margin-top: 22px; }
+  .util-page code { font: 400 13.5px var(--mono); background: var(--paper-2);
+                    border: 1px solid var(--rule); padding: 2px 6px; border-radius: 5px;
+                    color: var(--ink); }
 </style>
 </head>
-<body>
-<main>
-  <h1>Traffic</h1>
+<body class="util">
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+  </defs>
+</svg>
+
+<main class="util-page" id="main">
+  <p class="util-page__code">Private &middot; not indexed</p>
+  <h1 class="util-page__title">Traffic</h1>
 
   <div id="go" hidden>
     <p>The dashboard lives on the worker, behind GitHub sign-in.</p>
-    <p><a class="btn" id="link" href="#">Open the dashboard</a></p>
+    <p>
+      <a class="btn btn--solid" id="link" href="#">
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg><span>Open the dashboard</span>
+      </a>
+    </p>
   </div>
 
   <div id="setup">
