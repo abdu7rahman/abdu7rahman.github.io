@@ -65,7 +65,14 @@ const RULE = 0.014;
    brightly as its own measurements competes with them. */
 const CHASSIS = 0.55;
 
-const BASE = "#9fb7bd";
+/* The instrument's own grey-teal. Lighter than it looks written down, and
+   deliberately: `new THREE.Color("#...")` converts sRGB to linear, so a hex
+   that reads as 0.62 of white arrives at the shader as 0.35 of it. At the old
+   #9fb7bd a bar's camera-facing side came out at 19 of 255 against a
+   background of 8 -- present, but not a face you could see the machining on.
+   This lands that face at 32 and its top at 60, which is where Work's floor
+   sits on the same lighting. */
+const BASE = "#bcd2d8";
 
 export function build(ctx) {
   const anchor = ctx.anchor;

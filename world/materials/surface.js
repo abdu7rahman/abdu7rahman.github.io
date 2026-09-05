@@ -44,7 +44,14 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
 
   const mat = new THREE.ShaderMaterial({
     uniforms,
-    transparent: true,
+    /* Opaque. It was transparent at 0.96, which sounds like nothing and is
+       not: hundreds of instanced blocks each letting 4% through blend over
+       one another instead of occluding, so the costmap accumulated into a
+       flat milky slab with no depth in it and no edges. Nothing here needs
+       alpha -- the erosion is a discard, not a fade -- and opaque means the
+       depth buffer sorts it, which is also what the finish pass needs to
+       focus on anything. */
+    transparent: false,
     side: THREE.DoubleSide,
     vertexShader: /* glsl */`
       ${instanced ? "attribute float aIndex;\nattribute float aSeed;" : ""}
@@ -86,13 +93,26 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         if (grain < cut - 0.09) discard;
         float edge = smoothstep(cut - 0.09, cut + 0.02, grain);
 
-        /* Three terms, because two was not enough to read a box by. A face
-           pointing away from the key got 0.16 of ambient and a little wrap,
-           which is a quarter of the base colour -- correct, and on near-black
-           indistinguishable from the room behind it. The kicker is a dim
-           second source from behind and to the other side, which is what
-           every product shot in the world uses to keep a dark side from going
-           to nothing, and it costs one dot product. */
+        /* Three terms -- key, wrap, kicker -- and the weights matter more than
+           the terms do. They were 0.30 ambient + 0.72 key + 0.34 wrap + 0.26
+           kick, which put the darkest face a surface could have at 48% of the
+           brightest one it could have. That is not a lit object in a dark
+           room, that is a mid-grey slab: on the path station the median pixel
+           of the whole render came out at 109 against a background of 10, and
+           the sum peaked at 1.36 against a base already at 0.79, so every
+           up-facing surface clipped and then bloomed. The range is the whole
+           effect. At 0.040 + 0.50 + 0.07 + 0.09 a face turned to the key lands
+           at 72 on screen and one turned away at 11 -- a ratio of 0.15 -- and
+           nothing reaches the bloom threshold except the rim, which is the
+           only thing that should.
+
+           Those figures are `uBase` in *linear*, which is not what the hex
+           passed in looks like: THREE.Color converts sRGB on the way in, so
+           #c9ccd4 arrives here as 0.584 rather than the 0.788 it reads as.
+           Worth stating because it is a factor of 1.35 and it silently makes
+           every station with a darker base a third dimmer again -- which is
+           how Measured's bars ended up at 19 of 255 while Work's floor, on
+           identical lighting, sat at 40. */
         float lam  = max(0.0, dot(n, uKey));
         float wrap = max(0.0, dot(n, uKey) * 0.5 + 0.5);
         float kick = max(0.0, dot(n, normalize(vec3(0.66, 0.30, -0.69))));
@@ -102,7 +122,16 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         // floor seen at a grazing angle has dot(n,v) near zero over its whole
         // surface, so at an exponent of 3 the entire ground plane came out
         // orange instead of the edge of it.
-        float fres = pow(1.0 - max(0.0, dot(n, v)), 4.5);
+        float fres = pow(1.0 - max(0.0, dot(n, v)), 6.0);
+        /* And a silhouette is not just a grazing angle, it is a grazing angle
+           where the surface is turning away fast. A floor grazes over its
+           whole area and turns nowhere, which is why raising the exponent only
+           ever bought a stay of execution: measured off a render, the bare
+           costmap floor came back at R-B = +30 out of 255 -- orange, not
+           rim-lit. The screen-space derivative of the normal separates the two
+           cases for one instruction, since it is zero across any flat face and
+           spikes exactly at the creases and the outline. */
+        fres *= clamp(length(fwidth(n)) * 6.0, 0.0, 1.0);
 
         // Ruled in world space so the lines belong to the object and not to
         // the screen, and thinned with distance so a far surface does not
@@ -114,14 +143,21 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
 
         float fogT = smoothstep(uFogNear, uFogFar, d);
 
-        vec3 col = uBase * (0.30 + 0.72 * lam + 0.34 * wrap + 0.26 * kick);
+        vec3 col = uBase * (0.040 + 0.50 * lam + 0.07 * wrap + 0.09 * kick);
         col += vec3(spec);
         col -= rule * uGrid;
-        // The silhouette is where one nearly-black form stops and the next
-        // begins, so it is the one place the accent is spent unconditionally.
-        // And only up close. Rim-lighting something the fog has already taken
-        // is drawing an edge on a thing that is not there.
-        col = mix(col, uAccent, fres * 0.30 * (1.0 - fogT));
+        /* The silhouette is where one nearly-black form stops and the next
+           begins, so it is the one place the accent is spent unconditionally.
+           And only up close. Rim-lighting something the fog has already taken
+           is drawing an edge on a thing that is not there.
+
+           Added rather than mixed. A mix toward saturated accent replaces the
+           surface's own value with orange, so wherever the term was strong the
+           material stopped being metal; adding puts light on an edge and
+           leaves what is under it alone. Mostly the room's own dim value at
+           that, because a grazing surface reflects the room, and this room is
+           near-black with one warm source in it. */
+        col += mix(vec3(0.070, 0.074, 0.086), uAccent, 0.30) * fres * 1.15 * (1.0 - fogT);
 
         // Whichever one is being read is lit, the rest recede. -1 lights none.
         float on = uFocus < 0.0 ? 0.0 : 1.0 - clamp(abs(vIndex - uFocus), 0.0, 1.0);
@@ -133,7 +169,10 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
 
         col = mix(col, uFog, fogT * 0.92);
 
-        gl_FragColor = vec4(col, (0.96 - fogT * 0.46) * edge);
+        // The fog is in the colour, where it belongs; putting it in alpha as
+        // well meant distance was drawn twice and the far end of everything
+        // dissolved into whatever happened to be behind it.
+        gl_FragColor = vec4(col, 1.0);
       }`
   });
 

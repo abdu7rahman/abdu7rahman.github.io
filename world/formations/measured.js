@@ -34,23 +34,28 @@ import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.j
    five rectangles and their depth is a claim nobody can check, and ten
    degrees round is enough to open a side face on every one of them. In a
    16:10 window all of that lands across 84% of the frame and 90% of the way
-   down it, centred, with nothing outside it at all. */
-export const VIEW = { pos: [0.30, 0.74, 2.78], look: [-0.52, 0.72, -0.24], fov: 44 };
+   down it, centred, with nothing outside it at all.
 
-/* Two states again, and the second is why the first had to move. Measured's
-   own key looks half a metre left of the rig, which puts the bars in the
-   right of the frame instead of behind the panel -- the panel is at its
-   widest here, because five benchmark tables need the measure, and centred
-   the whole instrument was hidden under it.
+   The look point used to sit half a metre left of that, which was not about
+   the rig at all -- it was pushing the bars out from behind the panel by
+   swinging the camera. That correction is framing.js's now, and it belongs
+   there: an offset in metres is an offset in NDC only after dividing by
+   `tan(fov/2) * aspect`, so half a metre framed correctly at 16:10 and
+   nowhere else. The key aims at the instrument again. */
+export const VIEW = { pos: [0.30, 0.74, 2.78], look: [0, 0.72, -0.24], fov: 44 };
 
-   Stack is the same rig from further out and above: the section is a list of
-   what the numbers were taken with, and the reading is the instrument entire
-   rather than any one bar. Without a key of its own the camera spent Stack
-   flying four metres onward and finished inside the rig, which is the smear
-   of white that state was rendering. */
+/* Two states, and the second needs a key of its own. Stack is the same rig
+   from further out and above: the section is a list of what the numbers were
+   taken with, and the reading is the instrument entire rather than any one
+   bar. Without a key the camera spent Stack flying four metres onward and
+   finished inside the rig, which is the smear of white that state was
+   rendering.
+
+   Both aim at the instrument rather than left of it, for the reason above:
+   getting clear of the panel is a job done in NDC, once, for every station. */
 export const VIEWS = [
   VIEW,
-  { pos: [1.42, 1.48, 3.55], look: [-0.30, 0.52, -0.34], fov: 40 }
+  { pos: [1.42, 1.48, 3.55], look: [0, 0.52, -0.34], fov: 40 }
 ];
 
 /* The measurements, exactly as the Measured tables report them: A* on three

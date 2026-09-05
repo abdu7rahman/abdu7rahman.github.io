@@ -790,3 +790,16 @@ body.home.is-staged #main > .hero {
   mask-image: linear-gradient(to bottom, transparent 0, #000 34px,
                               #000 calc(100% - 34px), transparent 100%);
 }
+
+
+/* The panel scrolls; its scrollbar does not get to be part of the picture.
+   
+   At a wide viewport the track landed dead centre of the frame -- a bright
+   vertical rule down the middle of the render, which is the single loudest
+   thing on the page and belongs to a document, not a room. The state counter
+   bottom right says where you are and the panel's own top and bottom fade say
+   there is more; neither of those is a chrome widget sitting in the shot. */
+body.home.is-staged #main > .sec,
+body.home.is-staged #main > .hero { scrollbar-width: none; }
+body.home.is-staged #main > .sec::-webkit-scrollbar,
+body.home.is-staged #main > .hero::-webkit-scrollbar { width: 0; height: 0; }

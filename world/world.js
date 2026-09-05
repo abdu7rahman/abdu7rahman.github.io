@@ -32,6 +32,7 @@ import { detect, tokens } from "./capability.js";
 import { makeScroll } from "./scroll.js";
 import { makePointer } from "./pointer.js";
 import { makeCameraRig, setKeys } from "./camera-rig.js";
+import { makeFraming } from "./framing.js";
 import { makeAtmosphere } from "./materials/atmosphere.js";
 import { makeSubstrate } from "./substrate.js";
 import { makeDissolveMaterial } from "./materials/dissolve.js";
@@ -65,6 +66,7 @@ export async function boot(mount, formationModules) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
   const rig = makeCameraRig(camera);
+  const framing = makeFraming(camera);
   const scroll = makeScroll();
   const pointer = makePointer();
 
@@ -232,12 +234,14 @@ export async function boot(mount, formationModules) {
     }
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    framing.measure(window.__stage && window.__stage.panel());
   }
   size();
   window.addEventListener("resize", size, { passive: true });
 
   let raf = 0, last = performance.now(), running = true, t = 0, baking = false;
   let state = { i: 0, mix: 0 };
+  let framedPanel;
   const jointQ = new Array(6);
   const armFrames = Array.from({ length: 6 }, () => new THREE.Matrix4());
   const hit = new THREE.Vector3();
@@ -264,6 +268,15 @@ export async function boot(mount, formationModules) {
     // watched from slightly further out than the states either side of it.
     const transit = Math.sin(Math.PI * state.mix);
     rig.update(p, pointer, dt, transit * CAMERA.transit.back, transit * CAMERA.transit.lift);
+    /* After the rig, never before it: `rig.update` calls
+       `updateProjectionMatrix` whenever the fov is still moving, which rebuilds
+       a symmetric frustum and throws the shear away. Downstream of it the shear
+       is the last thing written and survives the frame. */
+    if (framedPanel !== (window.__stage && window.__stage.panel())) {
+      framedPanel = window.__stage && window.__stage.panel();
+      framing.measure(framedPanel);
+    }
+    framing.update(dt);
 
     // The pointer as a place in the world rather than a pair of screen
     // coordinates: unprojected onto a plane a few metres ahead, which is
@@ -377,7 +390,7 @@ export async function boot(mount, formationModules) {
   // A handle for looking inside, in tests and in a console. Read-only; the
   // world is never driven from here.
   window.__world = {
-    scene, camera, renderer, scroll, cap, substrate, stations: STATIONS,
+    scene, camera, renderer, scroll, cap, substrate, stations: STATIONS, THREE,
     get station() { return state.i; },
     get mix() { return state.mix; }
   };

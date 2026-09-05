@@ -54,7 +54,7 @@ const KNOT = 0.11, NODE = 0.045;
    60 across, so the far edge is past the distance the fog finishes at. */
 const GROUND_Y = -3.11, GROUND = 60;
 
-const BASE = "#9fb7bd";
+const BASE = "#bcd2d8";
 
 export function build(ctx) {
   const anchor = ctx.anchor;

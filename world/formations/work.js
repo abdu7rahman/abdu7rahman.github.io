@@ -36,9 +36,20 @@ import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.j
    frame, taking the reader's own end of the route with it and a fifteenth of
    the cloud besides. Six tenths of a metre further out, with the look point
    pulled the same distance nearer so the eye keeps its pitch, the whole map
-   is inside it: 98% of the written points, spanning the full width, its
-   weight within a tenth of the middle of the frame. */
-export const VIEW = { pos: [0, 2.70, 5.60], look: [0, 0.02, -0.20], fov: 52 };
+   was inside it: 98% of the written points, spanning the full width, its
+   weight within a tenth of the middle of the frame.
+
+   Spanning the full width was the mistake, and it only became one once the
+   panel took the left half of that width. Framing.js pushes the composition
+   0.29 in NDC clear of the type, and a shot already touching both edges has
+   nowhere to be pushed to: measured off a render, the far right corner of the
+   map crossed the frame edge. Two metres further back along the same view
+   axis, which is the whole correction. The far edge now lands at +0.81 in the
+   narrowest window the page will stage and +0.68 in the widest, and the near
+   corners run out of frame at the sides, which is what a floor is meant to do
+   -- a map that ends inside the frame on all four sides is a diagram of a
+   room and not a room. */
+export const VIEW = { pos: [0, 3.54, 7.42], look: [0, 0.02, -0.20], fov: 52 };
 
 /* The costmap. 15 cm is about where a metre-scale base is planned: fine
    enough that a gap between two blocks is a gap rather than a rounding error,
