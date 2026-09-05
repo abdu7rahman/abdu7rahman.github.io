@@ -448,10 +448,24 @@ async function walkScroll(page, boot, ctx) {
       tier: document.body.dataset.tier,
       hasWorld: document.body.classList.contains('has-world'),
       points: w.substrate.count,
+      /* How many stations declared a solid against how many actually have one
+         in the scene. Worth a line of its own because the failure is silent:
+         world.js forgives a solid module that will not load, so a syntax error
+         in a shader -- a stray backtick in a comment closing the template
+         literal it sits in, once -- takes the whole solid layer off the page
+         and leaves something that still boots, still scrolls, still renders,
+         and is just the point cloud again. Nothing in a screenshot says which
+         of the two you are looking at. */
+      solidsWanted: w.stations.filter(s => s.solid).length,
+      solidsBuilt: w.solidsBuilt,
       stations: w.stations.map(s => ({ id: s.id, range: s.range, settle: s.settle }))
     };
   });
   console.log('boot:', JSON.stringify(boot, null, 1));
+  if (boot && boot.solidsBuilt !== boot.solidsWanted) {
+    problems.push(`only ${boot.solidsBuilt} of ${boot.solidsWanted} solids built --`
+      + ' the world is falling back to points, look for a shader that will not compile');
+  }
   if (!boot) {
     // Without a world there is nothing to walk, and the reason is always in
     // the console rather than in the absence itself.

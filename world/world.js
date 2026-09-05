@@ -197,14 +197,31 @@ export async function boot(mount, formationModules) {
          own geometry. */
       const spans = (st.spans && st.spans.length) ? st.spans
                     : [[st.settle[0], st.settle[1]]];
+      /* Two keys per state, at both ends of its reading window and identical.
+         One key at the middle of that window was the bug underneath every
+         framing complaint: a reader arriving at a state sits at the *start* of
+         it, and four of the seven states are short enough to have no inner
+         scroll at all, so their scroll position never leaves that start. The
+         composed shot sat half a window away and nobody ever saw it --
+         measured, Contact settled at fov 36.7 against a key that says 34, and
+         Work's eye settled a metre back from where its key puts it, which is
+         why a standoff solved against the key did not match the render.
+
+         Holding it at both ends is better than moving it to the start, and for
+         the reason the whole staged layout exists: a state is settled for as
+         long as it is being read and the camera has no business drifting
+         through it. With the pair the eye is parked on the composed shot from
+         arrival to the end of the reading, and every metre of travel is spent
+         in the crossing, which is the only place it means anything. */
       for (let j = 0; j < spans.length; j++) {
         const v = st.views[Math.min(j, st.views.length - 1)];
-        keys.push({
-          at: (spans[j][0] + spans[j][1]) * 0.5,
+        const key = {
           pos: [v.pos[0] + a.x, v.pos[1] + a.y, v.pos[2] + a.z],
           look: [v.look[0] + a.x, v.look[1] + a.y, v.look[2] + a.z],
           fov: v.fov
-        });
+        };
+        keys.push({ ...key, at: spans[j][0] });
+        keys.push({ ...key, at: spans[j][1] });
       }
     }
     if (keys.length < 2) return;
@@ -335,11 +352,29 @@ export async function boot(mount, formationModules) {
        on the thing
        you are meant to be looking at, and over the arm -- which is the one
        object on the page that is a real machine -- eighty thousand additive
-       points read as static on a photograph of it. It still comes all the way
-       up through the crossing, which is the only place it is the subject. */
-    substrate.uniforms.uFade.value = solidHere
-      ? 0.07 + 0.93 * Math.sin(Math.PI * state.mix)
-      : 0.84 + 0.16 * Math.sin(Math.PI * state.mix);
+       points read as static on a photograph of it.
+
+       It used to come all the way up through the crossing, on the grounds that
+       the crossing is the one place it is the subject. It is, and it still
+       does not want the full swing: 0.07 to 1.00 is fourteen times in a second
+       and a half, and measured across the journey it made every transition a
+       flash between two dark rooms -- the fraction of the frame above 140 went
+       0.000 settled to 0.174 mid-crossing on Path, 0.033 to 0.173 on About.
+       Strobing, not cinema, and it also destroyed the one thing the crossing
+       exists to show, because a cloud at full additive strength is a boil with
+       no shape in it. Peaking at 0.42 the swell is still six times the settled
+       haze and the intermediate form is legible while it happens. */
+    /* Per-station, and interpolated across the crossing rather than switched
+       at the midpoint, or a station that dims its cloud would pop into and out
+       of the two either side of it. */
+    const gainOf = k => {
+      const st = STATIONS[Math.max(0, Math.min(STATIONS.length - 1, k))];
+      return st && st.cloud != null ? st.cloud : 1;
+    };
+    const gain = gainOf(state.i) + (gainOf(state.i + 1) - gainOf(state.i)) * state.mix;
+    substrate.uniforms.uFade.value = gain * (solidHere
+      ? 0.07 + 0.35 * Math.sin(Math.PI * state.mix)
+      : 0.62 + 0.10 * Math.sin(Math.PI * state.mix));
     for (let k = 1; k < solids.length; k++) {
       const sol = solids[k];
       if (!sol) continue;
@@ -391,6 +426,13 @@ export async function boot(mount, formationModules) {
   // world is never driven from here.
   window.__world = {
     scene, camera, renderer, scroll, cap, substrate, stations: STATIONS, THREE,
+    /* Which stations actually got their solid built. A module that fails to
+       load is forgiven -- that is deliberate, a station with no solid is a
+       station drawn as points rather than a page that will not boot -- but it
+       is also invisible, so the count has to be readable from outside or the
+       only symptom is that the world quietly looks like it did three commits
+       ago. */
+    get solidsBuilt() { return solids.filter(Boolean).length; },
     get station() { return state.i; },
     get mix() { return state.mix; }
   };

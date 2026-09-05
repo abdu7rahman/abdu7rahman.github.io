@@ -42,7 +42,18 @@ export const STATIONS = [
   { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false },
   { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6],  solid: true  },
   { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2],  solid: true  },
-  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false },
+  /* `cloud` scales the substrate at this station and only here. Stack is a
+     bundle of rollouts, which means several thousand points sharing an origin
+     and fanning out from it, and additively that core is not a dense fan, it
+     is a white smear -- measured off a render, 8% of the frame above 140 and
+     a peak of 183 with no strand structure left in it at all. A third of that
+     brings the core back under the tonemap's shoulder while the sparse ends
+     of the trajectories stay above the grain, which is the whole reading: how
+     many were tried, and how far apart they ended up. It does not separate
+     the core into strands and no single scalar can -- that is a thousand
+     trajectories sharing an origin, and additively their first half-metre is
+     one object however dim each of them is. */
+  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false, cloud: 0.34 },
   { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8],  solid: true  },
   { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0],  solid: true  }
 ];

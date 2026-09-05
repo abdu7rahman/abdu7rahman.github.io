@@ -53,7 +53,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   const errs = [];
-  page.on('pageerror', e => errs.push(String(e)));
+  page.on('pageerror', e => errs.push('pageerror: ' + String(e)));
+  page.on('console', m => { if (m.type() === 'warning' || m.type() === 'error') errs.push(m.type() + ': ' + m.text()); });
   await page.goto(base + '/index.html?world=high', { waitUntil: 'load' });
   await page.waitForFunction(() => window.__world && window.__stage, null, { timeout: 30000 });
   await sleep(2500);
@@ -63,22 +64,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (let i = 0; i < n; i++) {
     await page.evaluate(k => window.__stage.go(k), i);
     /* The rig eases, so a reading taken straight after a jump is the previous
-       station's camera wearing this station's name. Waiting a fixed time is
-       the same mistake one step removed -- it passes whenever the ease
-       happens to be slower than the guess -- so this waits for the camera to
-       stop moving *and* for it to have arrived at the station that was asked
-       for, which are two different claims. */
-    await page.waitForFunction(k => {
-      const w = window.__world, c = w.camera;
-      const now = [c.position.x, c.position.y, c.position.z, c.fov];
-      const was = window.__fLast; window.__fLast = now;
-      if (window.__world.station !== k && window.__world.station !== k - 1) return false;
-      if (!was) return false;
-      const still = now.every((v, j) => Math.abs(v - was[j]) < 1e-3);
-      window.__fStill = still ? (window.__fStill || 0) + 1 : 0;
-      return window.__fStill >= 8;
-    }, i, { timeout: 20000, polling: 100 }).catch(() => {});
-    await page.evaluate(() => { window.__fStill = 0; window.__fLast = null; });
+       station's camera wearing this station's name. Two conditions, not one,
+       and the pair is the point: waiting only for the camera to stop moving
+       passes the instant before it starts, and waiting only for the state
+       index passes while the ease is still a third of the way there. So this
+       waits for the scroll target to be the one that was asked for -- the
+       stage has actually moved -- and then for the eased value to have caught
+       up to it, which is what "settled" means. The ease is asymptotic and
+       never exactly arrives, hence a tolerance rather than equality. */
+    await page.waitForFunction(({ k, n }) => {
+      const sc = window.__world.scroll;
+      if (Math.abs(sc.target - k / n) > 1e-3) return false;
+      return Math.abs(sc.p - sc.target) < 6e-4;
+    }, { k: i, n }, { timeout: 20000, polling: 60 }).catch(() => {});
+    // Two more frames, so the solids' visibility and cut have been written for
+    // the position the camera has arrived at rather than the one before it.
+    await sleep(120);
     rows.push(await page.evaluate(() => {
       const w = window.__world, THREE = w.THREE;
       const cam = w.camera;
@@ -129,13 +130,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         }
         groups.push({ name: top.name || ('group' + w.scene.children.indexOf(top)), meshes, world: box, ndc: nd });
       }
+      const roster = w.scene.children.map((c, k) =>
+        `${k}:${c.type}${c.visible ? '' : '(hidden)'}`).join(' ');
       const panel = window.__stage.panel();
       const pw = panel ? panel.getBoundingClientRect().width : 0;
       // The backing is opaque to 86% of the panel and gone by 100%.
       const opaque = pw * 0.86 / window.innerWidth;
       const look = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
       return {
-        id: panel ? panel.id : '?', groups,
+        id: panel ? panel.id : '?', groups, roster,
         cam: [cam.position.x, cam.position.y, cam.position.z].map(v => +v.toFixed(2)),
         dir: [look.x, look.y, look.z].map(v => +v.toFixed(3)),
         fov: +cam.fov.toFixed(1), aspect: +cam.aspect.toFixed(3),
@@ -151,8 +154,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   console.log(`viewport ${W}x${H}  aspect ${(W / H).toFixed(3)}`);
   for (const r of rows) {
     console.log(`${r.id.padEnd(9)} fov=${String(r.fov).padEnd(4)} panel<=${r.panelNdc.toFixed(2)}` +
-                `  p=${r.p} st=${r.station} mix=${r.mix}  eye=[${r.cam.join(',')}] dir=[${r.dir.join(',')}]`);
+                `  p=${r.p} st=${r.station} mix=${r.mix}\n    scene: ${r.roster}`);
     for (const g of r.groups) {
+      if (g.ndc.behind === 8) {
+        // Every corner behind the near plane. Printing the sentinel extents
+        // for this reads as a box a billion units wide, which is a lie about
+        // an object that is simply behind the camera.
+        console.log(`    ${g.name.padEnd(14)} entirely behind the camera, meshes=${g.meshes}`);
+        continue;
+      }
       const clipR = g.ndc.max[0] > 1, clipL = g.ndc.min[0] < -1;
       const hidden = g.ndc.max[0] < r.panelNdc;
       console.log(`    ${g.name.padEnd(14)} x=[${g.ndc.min[0].toFixed(2)}, ${g.ndc.max[0].toFixed(2)}]` +

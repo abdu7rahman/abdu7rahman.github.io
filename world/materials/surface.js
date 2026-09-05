@@ -106,7 +106,7 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
            nothing reaches the bloom threshold except the rim, which is the
            only thing that should.
 
-           Those figures are `uBase` in *linear*, which is not what the hex
+           Those figures are uBase in linear, which is not what the hex
            passed in looks like: THREE.Color converts sRGB on the way in, so
            #c9ccd4 arrives here as 0.584 rather than the 0.788 it reads as.
            Worth stating because it is a factor of 1.35 and it silently makes
@@ -162,9 +162,14 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         // Whichever one is being read is lit, the rest recede. -1 lights none.
         float on = uFocus < 0.0 ? 0.0 : 1.0 - clamp(abs(vIndex - uFocus), 0.0, 1.0);
         col = mix(col, mix(col, uTeal, 0.30) * 1.5, on);
-        // A burning rim while it erodes, so a dissolve looks like heat rather
-        // than like alpha.
-        col = mix(col, uAccent * 2.2, (1.0 - edge) * step(0.001, uCut));
+        /* A burning rim while it erodes, so a dissolve looks like heat rather
+           than like alpha. 0.9, not the 2.2 it was: the accent is (1.00, 0.25,
+           0.11) in linear, so 2.2 of it is four times over white in red and
+           blows through the tonemap and then the bloom threshold on top of
+           that. It was calibrated against a base that was itself two and a
+           half times too bright, and a crossing came out as an orange flare
+           over the shape it was meant to be revealing. */
+        col = mix(col, uAccent * 0.9, (1.0 - edge) * step(0.001, uCut));
         col += uAccent * uCharge * fres * 0.16;
 
         col = mix(col, uFog, fogT * 0.92);
