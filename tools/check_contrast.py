@@ -150,6 +150,20 @@ WORLD = [
     ("--landing-accent", 4.5, "links over the world"),
 ]
 
+# Over the radar. 404.html's background is a shader, so like the landing
+# page's world it has no token to be measured against -- what it has is a
+# brightest pixel, and that is a fact about the shader rather than about the
+# stylesheet. #523124 was read straight off its framebuffer over forty frames,
+# so the sweep had been at every bearing, at the gain radar.js ships. Move that
+# gain and this figure has to be re-measured; the comment in radar.js says so
+# and this is the check that fails if it is not.
+RADAR_PEAK = "#523124"
+RADAR = [
+    ("--landing-fg",     7.0, "prose over the radar"),
+    ("--landing-mut",    4.5, "muted labels over the radar"),
+    ("--landing-accent", 4.5, "links over the radar"),
+]
+
 # Hairlines are meant to be felt, not seen. Too low and they vanish; too high
 # and they become the dividers this design deliberately stopped using.
 HAIRLINES = [("--rule", "--paper", 1.05, 1.35),
@@ -201,6 +215,16 @@ def main():
                  "" if ok else "   <-- TOO LOW"))
     print("%-12s %-12s %7s %7s   panel at %.2f over a fully lit world"
           % ("", "", "", "", pa))
+
+    print()
+    for fg, floor, what in RADAR:
+        c = contrast(T[fg], RADAR_PEAK)
+        ok = c >= floor
+        bad += not ok
+        print("%-12s %-12s %7.2f:1 %7.1f   %s%s"
+              % (fg, RADAR_PEAK, c, floor, what, "" if ok else "   <-- TOO LOW"))
+    print("%-12s %-12s %7s %7s   the brightest pixel radar.js can draw"
+          % ("", "", "", ""))
 
     print("\n%s" % ("all gates pass" if not bad else "%d problems" % bad))
     return 1 if bad else 0
