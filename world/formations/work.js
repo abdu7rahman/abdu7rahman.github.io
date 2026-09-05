@@ -28,16 +28,17 @@ import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.j
    high the flight has to climb a storey to get here.
 
    Solved rather than nudged, but for the flight rather than for this shot
-   alone. 62 degrees framed 97% of the points and was the wrong answer: hero
-   is 42 and path is 47, so arriving here meant a twenty-degree zoom out and
-   leaving meant a fifteen-degree zoom back in, which reads as the lens
-   lurching rather than as the camera moving. 52 degrees from 2.7 up and 5.0
-   back holds 93.5% -- what falls outside is the two far corners of a costmap,
-   which is what a costmap's corners are for -- and sits between its
-   neighbours instead of between two lurches. The look point is pulled a
-   little short of the map's centre because the near half is the half with the
-   reader's own end of the route in it. */
-export const VIEW = { pos: [0, 2.70, 5.00], look: [0, 0.02, -0.85], fov: 52 };
+   alone. 62 degrees framed it and was the wrong answer: hero is 42 and path
+   is 47, so arriving here meant a twenty-degree zoom out and leaving meant a
+   fifteen-degree zoom back in, which reads as the lens lurching rather than
+   as the camera moving. At 52 the standoff has to do that work instead, and
+   it can -- 2.7 up and 5.6 back holds 98% of the written points inside the
+   frustum, with the map spanning the full width of it and straddling the
+   middle. The look point sits just short of the map's centre, which is enough
+   pitch to put the horizon at the very top of the frame rather than a fifth
+   of the way down it: above that line there is nothing to look at, and at 5.0
+   back the frame was giving a quarter of itself to it. */
+export const VIEW = { pos: [0, 2.70, 5.60], look: [0, 0.02, -0.20], fov: 52 };
 
 /* The costmap. 15 cm is about where a metre-scale base is planned: fine
    enough that a gap between two blocks is a gap rather than a rounding error,
