@@ -316,8 +316,13 @@ export async function boot(mount, formationModules) {
     const solidHere = dom === 0 ? !!(arm && arm.solid) : !!solids[dom];
     // A cloud-only station still holds back a little: at full strength the
     // densest of them saturates its own shape away.
+    /* 0.18 settled, not 0.40. Over a solid the cloud is a haze on the thing
+       you are meant to be looking at, and over the arm -- which is the one
+       object on the page that is a real machine -- eighty thousand additive
+       points read as static on a photograph of it. It still comes all the way
+       up through the crossing, which is the only place it is the subject. */
     substrate.uniforms.uFade.value = solidHere
-      ? 0.40 + 0.60 * Math.sin(Math.PI * state.mix)
+      ? 0.18 + 0.82 * Math.sin(Math.PI * state.mix)
       : 0.84 + 0.16 * Math.sin(Math.PI * state.mix);
     for (let k = 1; k < solids.length; k++) {
       const sol = solids[k];

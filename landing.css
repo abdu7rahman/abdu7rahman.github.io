@@ -639,7 +639,7 @@ body.home.is-staged #main > .hero {
      left is not margin, it is where the world is: the type has always sat left
      with the machine to the right of it, and staging makes that the layout
      rather than an arrangement inside one section. */
-  width: min(100%, max(560px, var(--panel-w, 54vw)));
+  width: min(100%, max(520px, var(--panel-w, 46vw)));
   /* Each state reads normally inside itself. A short one is a held frame; a
      long one -- Work, Measured -- is scrolled, and only when it has nothing
      left to show does the wheel move on. Nothing is cut. */
@@ -731,8 +731,8 @@ body.home.is-staged .carousel__viewport { height: auto !important; }
    gets less of it there -- the camera at those two stations is framed on
    matter that sits right of centre anyway. */
 body.home.is-staged #work,
-body.home.is-staged #measured { --panel-w: 68vw; }
-body.home.is-staged #path { --panel-w: 60vw; }
+body.home.is-staged #measured { --panel-w: 62vw; }
+body.home.is-staged #path { --panel-w: 52vw; }
 
 /* The hero's columns were chosen against the full window: the name takes 8 of
    12 and everything else 7, which left room for the robot to the right of the
