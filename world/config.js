@@ -21,15 +21,24 @@ import * as THREE from "three";
    knows. Each station names its sections and measures them at boot -- change
    a paragraph and the world follows.
 
-   6.6 metres apart, which is far enough that the morph between two of them
-   reads as the matter travelling with you and close enough that the camera
-   never crosses a gap with nothing in it. */
+   One per state, because a station covering two states leaves one of the six
+   crossings with nothing to reorganise -- the camera flies and the cloud
+   holds, which staged reads as travelling between two identical rooms.
+
+   Two of them share an anchor with the station before, and that is the point:
+   About forms the arm's own reachable workspace around the arm, and Stack
+   forms a bundle of rollouts where the benchmark rig was standing. Those two
+   crossings barely move the camera and completely replace the matter, which
+   is a different kind of event from the four that travel, and having both
+   kinds is what stops the journey reading as one long dolly. */
 export const STATIONS = [
-  { id: "hero",     owns: ["intro", "about"],     anchor: [0, 0.00,   0.0] },
-  { id: "work",     owns: ["work"],               anchor: [0, -0.55, -6.6] },
-  { id: "measured", owns: ["measured", "stack"],  anchor: [0, -0.55, -13.2] },
-  { id: "path",     owns: ["path"],               anchor: [0, -0.15, -19.8] },
-  { id: "contact",  owns: ["contact"],            anchor: [0,  0.00, -26.0] }
+  { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0] },
+  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0] },
+  { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6] },
+  { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2] },
+  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2] },
+  { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8] },
+  { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0] }
 ];
 
 /* How long a change takes, measured in screens of scrolling rather than in a
@@ -204,11 +213,16 @@ export const TRANSIT = { arc: 0.62, stagger: 0.42, heat: 1.25 };
    Chosen by world/capability.js, not by user agent sniffing. The substrate is
    one draw call whatever its size, so the counts are far higher than the old
    per-scene particle budgets could be: what costs here is fill rate and the
-   6 MB of baked formations, not draw calls. */
+   baked formations, not draw calls. Seven formations at 80k is about 11 MB of
+   Float32, which is less than one of the textures a site like this would
+   otherwise be carrying, and they are baked one per idle frame rather than
+   all at boot. What actually bounds the high tier is overdraw: additive
+   points up to seven pixels across at device pixel ratio 2 is a lot of blend,
+   which is why the tier is only chosen for eight cores and 8 GB. */
 export const TIERS = {
-  high:   { dpr: 2.0, substrate: 60000, post: true,  arm: true,  fogSteps: 5 },
-  medium: { dpr: 1.5, substrate: 26000, post: true,  arm: true,  fogSteps: 4 },
-  low:    { dpr: 1.0, substrate:  9000, post: false, arm: false, fogSteps: 3 }
+  high:   { dpr: 2.0, substrate: 80000, post: true,  arm: true,  fogSteps: 5 },
+  medium: { dpr: 1.5, substrate: 34000, post: true,  arm: true,  fogSteps: 4 },
+  low:    { dpr: 1.0, substrate: 12000, post: false, arm: false, fogSteps: 3 }
 };
 
 /* ── the palette, read from the stylesheet ──────────────────────────────

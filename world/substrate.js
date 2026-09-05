@@ -53,6 +53,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
     uArc:    { value: 0.55 },   // how far points bow off the straight line
     uDpr:    { value: 1 },
     uCharge: { value: 0 },      // pointer speed
+    uFade:   { value: 1 },      // how much of the cloud is wanted right now
     uPointer:{ value: new THREE.Vector3() },
     uAccent: { value: new THREE.Color(accent) },
     uTeal:   { value: new THREE.Color(teal) },
@@ -71,7 +72,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
     blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */`
       ${SIMPLEX3}
-      uniform float uTime, uMix, uArc, uDpr, uCharge;
+      uniform float uTime, uMix, uArc, uDpr, uCharge, uFade;
       uniform vec3 uPointer;
       attribute vec3 aA, aB;
       attribute float aSeed, aKA, aKB, aSA, aSB;
@@ -124,6 +125,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uAccent, uTeal, uFg;
+      uniform float uFade;
       varying float vKind, vHeat, vAlpha;
       void main(){
         vec2 d = gl_PointCoord - 0.5;
@@ -142,7 +144,11 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
         // what it would look like on its own. Under-exposing here and then
         // filtering it again is how a world ends up technically running and
         // visually absent.
-        gl_FragColor = vec4(col, a * vAlpha * 0.80);
+        // Down where a station has solid geometry standing and up through the
+        // crossing. The cloud is what a station becomes on the way to the next
+        // one; at full strength over a settled solid it is just haze over the
+        // thing you are meant to be looking at.
+        gl_FragColor = vec4(col, a * vAlpha * uFade * 0.80);
       }`
   });
 

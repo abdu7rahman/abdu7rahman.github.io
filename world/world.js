@@ -160,7 +160,12 @@ export async function boot(mount, formationModules) {
   }
   // Station 0's solid is the arm, which is the one object on the page that is
   // what it claims to be and so is built by hand rather than generated.
-  const FOCUS_OF = { work: 10, measured: 5 };
+  // How many things a station has that can be the one being read, so the
+  // surface material can light it and let the rest recede.
+  const FOCUS_OF = { work: 10, measured: 5, path: 6 };
+  // How many of the leading stations the solid arm is present for.
+  const ARM_STATIONS = STATIONS.findIndex(s => s.id === "work") > 0
+                     ? STATIONS.findIndex(s => s.id === "work") : 1;
 
   /* The camera's route is the formations' own views, placed at their stations
      and timed by the bands measured off the document. Re-stitched on resize,
@@ -268,7 +273,12 @@ export async function boot(mount, formationModules) {
       arm.links[0].matrix.identity();
       arm.links[0].matrixWorldNeedsUpdate = true;
 
-      const cut = state.i === 0 ? Math.pow(state.mix, 0.8) : 1;
+      // Solid through the first two states and eroding across the crossing out
+      // of the second. About forms the arm's own reachable workspace around
+      // it, so the machine has to still be standing there while that happens
+      // -- an envelope with nothing at its centre is a shape, not a claim.
+      const cut = state.i < ARM_STATIONS - 1 ? 0
+                : state.i === ARM_STATIONS - 1 ? Math.pow(state.mix, 0.8) : 1;
       arm.group.visible = cut < 0.999;
       for (const m of arm.mats) {
         const u = m.userData.uniforms;
@@ -283,6 +293,13 @@ export async function boot(mount, formationModules) {
        loaded, so a form dissolving and the matter arriving in its place are
        the same number read twice. */
     const charge = Math.min(1, pointer.speed * 2.2);
+    // Whichever station is the dominant one right now, and whether it has
+    // anything solid standing. If it does, the cloud steps back for it and
+    // comes forward again through the crossing.
+    const dom = state.mix < 0.5 ? state.i : state.i + 1;
+    const solidHere = dom === 0 ? !!(arm && arm.solid) : !!solids[dom];
+    substrate.uniforms.uFade.value = solidHere
+      ? 0.42 + 0.58 * Math.sin(Math.PI * state.mix) : 1;
     for (let k = 1; k < solids.length; k++) {
       const sol = solids[k];
       if (!sol) continue;

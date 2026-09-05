@@ -86,11 +86,23 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         if (grain < cut - 0.09) discard;
         float edge = smoothstep(cut - 0.09, cut + 0.02, grain);
 
-        float lam = max(0.0, dot(n, uKey));
-        float wrap = max(0.0, dot(n, uKey) * 0.5 + 0.5);   // soft fill from below
+        /* Three terms, because two was not enough to read a box by. A face
+           pointing away from the key got 0.16 of ambient and a little wrap,
+           which is a quarter of the base colour -- correct, and on near-black
+           indistinguishable from the room behind it. The kicker is a dim
+           second source from behind and to the other side, which is what
+           every product shot in the world uses to keep a dark side from going
+           to nothing, and it costs one dot product. */
+        float lam  = max(0.0, dot(n, uKey));
+        float wrap = max(0.0, dot(n, uKey) * 0.5 + 0.5);
+        float kick = max(0.0, dot(n, normalize(vec3(0.66, 0.30, -0.69))));
         vec3 h = normalize(uKey + v);
         float spec = pow(max(0.0, dot(n, h)), 42.0) * 0.34;
-        float fres = pow(1.0 - max(0.0, dot(n, v)), 3.0);
+        // Sharp, because a fresnel this soft is not a silhouette any more: a
+        // floor seen at a grazing angle has dot(n,v) near zero over its whole
+        // surface, so at an exponent of 3 the entire ground plane came out
+        // orange instead of the edge of it.
+        float fres = pow(1.0 - max(0.0, dot(n, v)), 4.5);
 
         // Ruled in world space so the lines belong to the object and not to
         // the screen, and thinned with distance so a far surface does not
@@ -100,12 +112,16 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         float rule = 1.0 - smoothstep(0.0, 0.06, min(min(g.x, g.y), g.z));
         rule *= 1.0 - smoothstep(4.0, 13.0, d);
 
-        vec3 col = uBase * (0.16 + 0.62 * lam + 0.30 * wrap);
+        float fogT = smoothstep(uFogNear, uFogFar, d);
+
+        vec3 col = uBase * (0.30 + 0.72 * lam + 0.34 * wrap + 0.26 * kick);
         col += vec3(spec);
         col -= rule * uGrid;
         // The silhouette is where one nearly-black form stops and the next
         // begins, so it is the one place the accent is spent unconditionally.
-        col = mix(col, uAccent, fres * 0.42);
+        // And only up close. Rim-lighting something the fog has already taken
+        // is drawing an edge on a thing that is not there.
+        col = mix(col, uAccent, fres * 0.30 * (1.0 - fogT));
 
         // Whichever one is being read is lit, the rest recede. -1 lights none.
         float on = uFocus < 0.0 ? 0.0 : 1.0 - clamp(abs(vIndex - uFocus), 0.0, 1.0);
@@ -115,10 +131,9 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         col = mix(col, uAccent * 2.2, (1.0 - edge) * step(0.001, uCut));
         col += uAccent * uCharge * fres * 0.16;
 
-        float fogT = smoothstep(uFogNear, uFogFar, d);
         col = mix(col, uFog, fogT * 0.92);
 
-        gl_FragColor = vec4(col, (0.90 - fogT * 0.42) * edge);
+        gl_FragColor = vec4(col, (0.96 - fogT * 0.46) * edge);
       }`
   });
 
