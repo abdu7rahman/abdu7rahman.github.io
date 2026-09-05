@@ -56,15 +56,22 @@ export const VIEW = { pos: [0.86, 1.05, 1.72], look: [-0.34, 0.02, 0.02], fov: 4
  * publishes at, which is the 10 Hz the cursor chase on that page runs the
  * whole stack at.
  *
- * The horizon is the one number here chosen for the drawing rather than taken
- * from the package, and it is chosen for a reason worth stating: at 1.6 s the
- * sharpest arc in the window turns through about 140 degrees, so the fan has
- * hooked edges and still reads as a fan. Much past two seconds those edges
- * close into loops, and a loop reads as a mistake rather than as a candidate
- * nobody was going to pick. */
+ * Two things about it are choices rather than quotations, and both are worth
+ * saying out loud. The first is that this draws the whole velocity window --
+ * every command the controller is able to issue -- rather than the sliver of
+ * it reachable within one tick of a standing start, which is a single line
+ * and says nothing about sampling. The second is the horizon: at 2.0 s the
+ * sharpest arc in the window turns through just under half a circle, so the
+ * fan has hooked edges and still reads as a fan. Much past that they close
+ * into loops, and a loop reads as a mistake rather than as a candidate nobody
+ * was ever going to pick. */
 const V_MAX = 0.5, W_MAX = 1.5;
-const TICK = 0.1, HORIZON = 1.6;
+const TICK = 0.1, HORIZON = 2.0;
 const STEPS = Math.round(HORIZON / TICK);
+/* How far the worst candidate in the window rides above the floor by the end
+   of its horizon. 0.55 over a fan about two metres across is enough spread to
+   read the surface from the side without the bundle becoming a wall. */
+const LIFT = 0.55;
 
 /* How the window is sampled: a regular grid, because a dynamic window is a
    rectangle in (v, omega) and the honest way to show a rectangle being
@@ -88,11 +95,14 @@ const NV = 20, NW = 17;
    only mark an obstacle needs to leave on a picture whose subject is the
    sampling rather than the map.
 
-   Both sit to the robot's left, which from this camera is the far side of
-   the frame from the panel: the winning strand should lead the eye across
-   open glass, not under the column of type. */
-const WAYPOINT = { x: -0.30, z: 0.74 };
-const BLOCK = { x: -0.09, z: 0.44, r: 0.20 };
+   Which side each is on is a composition decision and not a coincidence. The
+   waypoint is off to the robot's left, which from this camera is the open
+   half of the frame, so the strand that wins leads the eye across clear glass
+   rather than under the column of type; the disc is off to its right, so the
+   wedge it takes out of the bundle is taken out of the half the panel is
+   standing in. */
+const WAYPOINT = { x: -0.34, z: 0.92 };
+const BLOCK = { x: 0.26, z: 0.44, r: 0.22 };
 
 /* The three terms every dynamic-window cost has had since the paper: how
    close this candidate ends to where you are trying to go, how much of the
@@ -111,7 +121,7 @@ const POOL = 30000;
    and which way it is facing. Set back towards the reader and pointing away,
    so the fan opens into the room rather than across the frame: a bundle that
    opens sideways puts half of itself behind the panel. */
-const START_Z = 0.58;
+const START_Z = 0.52;
 
 export function build(ctx) {
   const anchor = ctx.anchor;
@@ -195,13 +205,24 @@ export function build(ctx) {
     const pts = traj[j];
     const share = j === traj.length - 1 ? POOL - n
                 : Math.min(POOL - n, Math.round(POOL * weight[j] / wsum));
-    const sz = 0.62 + 0.78 * (weight[j] - 0.28) / 0.72;
+    const wN = (weight[j] - 0.28) / 0.72;      // 1 is the cheapest candidate
+    const sz = 0.62 + 0.78 * wN;
     for (let k = 0; k < share; k++) {
       const t = share < 2 ? 0 : (k / (share - 1)) * (pts.length - 1);
       const i0 = Math.min(pts.length - 2, t | 0), f = t - i0;
       const a = pts[i0], b = pts[i0 + 1];
+      /* Cost spent as height as well as as density. A dynamic window is a
+         planar thing and drawing it planar is honest and unreadable: thirty
+         seven thousand additive points on one mathematical plane is a sheet of
+         light with no arcs left in it, which is what this rendered as. Lifting
+         each candidate by what it costs turns the same data into the surface
+         the scoring actually is -- every rollout leaves the floor together at
+         the body and separates by how bad it is getting, so the one that wins
+         is the one that stays down. Nothing here is a measurement; the height
+         is the cost function's shape, which is the point of drawing it. */
+      const lift = LIFT * (1 - wN) * (t / Math.max(1, pts.length - 1));
       P3[n * 3]     = a.x + (b.x - a.x) * f;
-      P3[n * 3 + 1] = a.y + (b.y - a.y) * f;
+      P3[n * 3 + 1] = a.y + (b.y - a.y) * f + lift;
       P3[n * 3 + 2] = a.z + (b.z - a.z) * f;
       PS[n] = sz;
       n++;

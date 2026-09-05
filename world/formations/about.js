@@ -233,7 +233,7 @@ export function build(ctx) {
      Thinning outwards for the reason it thinned there -- an even lattice
      reads as graph paper and one that falls off reads as a room. */
   const floor = [];
-  const STEP = 0.115, HALF = 12;
+  const STEP = 0.075, HALF = 18;
   for (let ix = -HALF; ix <= HALF; ix++) {
     for (let iz = -HALF; iz <= HALF; iz++) {
       const d = Math.hypot(ix, iz) / HALF;

@@ -812,7 +812,12 @@ body.has-cur.cur-on, body.has-cur.cur-on * { cursor: none !important; }
   position: fixed; inset: 0; width: 100%; height: 100%;
   z-index: 0; pointer-events: none;
 }
-body.home .shell, body.runner-page .runner { position: relative; z-index: 1; }
+/* Everything the field sits behind. `err` and `util` were left out when this
+   was written because the field only ran on `home`; now that it runs on the
+   three pages that are not `home`, their content has to be lifted over it too
+   or the shader paints across the page instead of behind it. */
+body.home .shell, body.runner-page .runner,
+body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; z-index: 1; }
 
 /* A card in the corner, not a bar across the middle. Centred at the foot of
    the page it sat over the reading column on every width -- a toast shaped

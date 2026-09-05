@@ -16,7 +16,12 @@
 (function () {
   "use strict";
 
-  if (!document.body || !document.body.classList.contains("home")) return;
+  // Refuses on the landing page rather than requiring it. This was written
+  // for `home` and then the world replaced it there; the gate outlived the
+  // reason for it and left the file loaded by nothing. The three pages that
+  // want weather include the script, and the one that has a world of its own
+  // is the one place it must not run.
+  if (!document.body || document.body.classList.contains("home")) return;
 
   var reduce = window.matchMedia &&
                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
