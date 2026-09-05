@@ -48,6 +48,10 @@ export function makeCameraRig(camera) {
   }
 
   const away = new THREE.Vector3();
+  // How far the eye is from the thing it is pointed at. The depth of field
+  // focuses on this, so the plane in focus is always whatever the camera was
+  // aimed at rather than a distance somebody typed.
+  let focus = 3;
 
   return {
     /* `back` and `lift` are the transformation's own contribution: the eye
@@ -71,11 +75,14 @@ export function makeCameraRig(camera) {
       }
       camera.position.copy(eye);
       camera.lookAt(at);
+      focus = eye.distanceTo(at);
       if (Math.abs(camera.fov - fov) > 0.01) {
         camera.fov += (fov - camera.fov) * Math.min(1, dt * 6);
         camera.updateProjectionMatrix();
       }
     },
+    get focus() { return focus; },
+
     /* Where the camera is heading, so scenes can place things in front of it
        rather than guessing. */
     at(p) { const f = sample(p); return { pos: pos.slice(), look: look.slice(), fov: f.fov }; }

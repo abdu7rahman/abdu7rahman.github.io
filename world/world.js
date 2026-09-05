@@ -76,12 +76,23 @@ export async function boot(mount, formationModules) {
   key.position.set(-3, 5, 4);
   scene.add(key);
 
-  let composer = null, finish = null;
+  let composer = null, finish = null, depth = null;
   if (q.post) {
-    composer = new EffectComposer(renderer);
+    /* The finish pass needs depth, and EffectComposer does not hand it any:
+       it ping-pongs two colour targets and throws the depth away between
+       them. One DepthTexture attached to both, so whichever buffer the finish
+       reads, the depth on it is the depth the render pass just wrote. */
+    depth = new THREE.DepthTexture(1, 1);
+    depth.type = THREE.UnsignedShortType;
+    const rt = new THREE.WebGLRenderTarget(1, 1, { depthTexture: depth, depthBuffer: true });
+    composer = new EffectComposer(renderer, rt);
+    composer.renderTarget2.depthTexture = depth;
     composer.addPass(new RenderPass(scene, camera));
     finish = new ShaderPass(FinishShader);
     finish.renderToScreen = true;
+    finish.uniforms.tDepth.value = depth;
+    finish.uniforms.uNear.value = camera.near;
+    finish.uniforms.uFar.value = camera.far;
     composer.addPass(finish);
   }
 
@@ -214,7 +225,11 @@ export async function boot(mount, formationModules) {
     stagedNow = null;
     remeasure();
     stitch();
-    if (composer) composer.setSize(w, h);
+    if (composer) {
+      composer.setSize(w, h);
+      // In UV, so the blur is the same fraction of the frame at every size.
+      finish.uniforms.uTexel.value.set(1 / w, 1 / h);
+    }
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
@@ -331,6 +346,9 @@ export async function boot(mount, formationModules) {
       finish.uniforms.uTime.value = t;
       // Velocity is in progress-per-second; a hard flick is around 1.
       finish.uniforms.uRush.value = rush;
+      // Focus follows the rig, so what is sharp is always what the camera was
+      // aimed at rather than a distance somebody typed once.
+      finish.uniforms.uFocus.value = rig.focus;
     }
     if (composer) composer.render(dt); else renderer.render(scene, camera);
 
