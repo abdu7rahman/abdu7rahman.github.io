@@ -316,13 +316,16 @@ export async function boot(mount, formationModules) {
     const solidHere = dom === 0 ? !!(arm && arm.solid) : !!solids[dom];
     // A cloud-only station still holds back a little: at full strength the
     // densest of them saturates its own shape away.
-    /* 0.18 settled, not 0.40. Over a solid the cloud is a haze on the thing
+    /* 0.07 settled. Measured rather than guessed: with the cloud switched off
+       entirely the arm was nearly black, which means every white shape in the
+       hero was the cloud and not the machine. Over a solid the cloud is a haze
+       on the thing
        you are meant to be looking at, and over the arm -- which is the one
        object on the page that is a real machine -- eighty thousand additive
        points read as static on a photograph of it. It still comes all the way
        up through the crossing, which is the only place it is the subject. */
     substrate.uniforms.uFade.value = solidHere
-      ? 0.18 + 0.82 * Math.sin(Math.PI * state.mix)
+      ? 0.07 + 0.93 * Math.sin(Math.PI * state.mix)
       : 0.84 + 0.16 * Math.sin(Math.PI * state.mix);
     for (let k = 1; k < solids.length; k++) {
       const sol = solids[k];
@@ -403,6 +406,69 @@ export async function boot(mount, formationModules) {
   };
 }
 
+
+/* Normals for a triangle soup, smoothed across a crease angle.
+ *
+ * computeVertexNormals on non-indexed geometry gives every triangle its own
+ * normal, because no two triangles share a vertex -- it is a flat-shade, and
+ * this mesh is a decimator's output with thousands of small facets. Under a
+ * lambert term that reads as faintly angular; under a specular one every
+ * facet catches the highlight separately and the arm comes out looking like
+ * static. That was the noise on it.
+ *
+ * So the vertices are welded by position and their face normals averaged, but
+ * only across faces meeting at less than the crease angle. Above it the edge
+ * is kept sharp, which is the difference between a machined chamfer and a
+ * balloon: 78 degrees keeps every real edge on this arm and rounds every
+ * artefact of the decimation. mergeVertices would do the welding and is in an
+ * addon this site does not vendor, and it has no crease angle anyway.
+ */
+function creaseNormals(pos, degrees) {
+  const n = pos.length / 3;
+  // Three floats per vertex, not one. Sized to `n` this silently dropped two
+  // thirds of every write -- a Float32Array store past the end is a no-op, not
+  // an error -- so most of the mesh kept a zero normal, took no light, and the
+  // arm rendered as a handful of lit fragments in the dark.
+  const faceN = new Float32Array(n * 3);
+  const ax = new THREE.Vector3(), bx = new THREE.Vector3(), cx = new THREE.Vector3();
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), fn = new THREE.Vector3();
+  for (let t = 0; t < n; t += 3) {
+    const o = t * 3;
+    ax.set(pos[o], pos[o+1], pos[o+2]);
+    bx.set(pos[o+3], pos[o+4], pos[o+5]);
+    cx.set(pos[o+6], pos[o+7], pos[o+8]);
+    fn.copy(e1.subVectors(bx, ax)).cross(e2.subVectors(cx, ax)).normalize();
+    for (let k = 0; k < 3; k++) { faceN[o+k*3] = fn.x; faceN[o+k*3+1] = fn.y; faceN[o+k*3+2] = fn.z; }
+  }
+  // Welded on a 0.1 mm grid: finer than any feature on this arm and coarser
+  // than the float error the decimator left between coincident corners.
+  const Q = 1e4, buckets = new Map();
+  for (let i = 0; i < n; i++) {
+    const o = i * 3;
+    const key = Math.round(pos[o]*Q) + "," + Math.round(pos[o+1]*Q) + "," + Math.round(pos[o+2]*Q);
+    const b = buckets.get(key);
+    if (b) b.push(i); else buckets.set(key, [i]);
+  }
+  const out = new Float32Array(n * 3);
+  const lim = Math.cos(degrees * Math.PI / 180);
+  const acc = new THREE.Vector3();
+  for (const group of buckets.values()) {
+    for (const i of group) {
+      const o = i * 3;
+      acc.set(0, 0, 0);
+      for (const j of group) {
+        const q = j * 3;
+        if (faceN[o]*faceN[q] + faceN[o+1]*faceN[q+1] + faceN[o+2]*faceN[q+2] < lim) continue;
+        acc.x += faceN[q]; acc.y += faceN[q+1]; acc.z += faceN[q+2];
+      }
+      if (acc.lengthSq() < 1e-12) acc.set(faceN[o], faceN[o+1], faceN[o+2]);
+      acc.normalize();
+      out[o] = acc.x; out[o+1] = acc.y; out[o+2] = acc.z;
+    }
+  }
+  return out;
+}
+
 /* Universal Robots' own triangles, placed by the kinematics they were
    designed around. One Group per link, so posing is six matrix writes rather
    than any vertex work; the meshes arrive in their own link frames already.
@@ -464,10 +530,7 @@ async function buildArm(scene, pal, q) {
       if (!solid) continue;
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      // The decimator left flat facets everywhere; this is the flat-to-smooth
-      // step by angle on the expanded geometry, mergeVertices not being
-      // available without the addon.
-      g.computeVertexNormals();
+      g.setAttribute("normal", new THREE.BufferAttribute(creaseNormals(pos, 78), 3));
       const c = part.c;
       const m = makeDissolveMaterial({
         color: new THREE.Color(c[0]/255, c[1]/255, c[2]/255),

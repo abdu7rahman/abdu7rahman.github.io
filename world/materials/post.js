@@ -38,6 +38,10 @@ export const FinishShader = {
     uMaxCoC:  { value: 0.011 },  // ceiling on the blur, in UV
     uBloom:   { value: 0.22 },
     uThresh:  { value: 0.78 },
+    // Under one, because the world is lit in radiance now and the shoulder
+    // has to have something to roll off. At 1.05 everything metal sat on the
+    // flat part of the curve.
+    uExposure:{ value: 0.62 },
     uTexel:   { value: new THREE.Vector2(1 / 1280, 1 / 720) }
   },
   vertexShader: /* glsl */`
@@ -46,11 +50,25 @@ export const FinishShader = {
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse, tDepth;
     uniform float uTime, uRush, uGrain, uVig;
-    uniform float uNear, uFar, uFocus, uAperture, uMaxCoC, uBloom, uThresh;
+    uniform float uNear, uFar, uFocus, uAperture, uMaxCoC, uBloom, uThresh, uExposure;
     uniform vec2 uTexel;
     varying vec2 vUv;
 
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+    /* Narkowicz's fit to the ACES curve.
+    
+       The world is lit with a real BRDF now, and a specular lobe on a smooth
+       surface peaks in the tens -- that is not a bug, it is what a highlight
+       is. Written straight into an eight-bit buffer it clips, and a clipped
+       highlight on a curved shaft is a flat white shape with no edge, which
+       is what the arm had become: correct radiance, photographed on a sensor
+       with no shoulder. Tone mapping is the shoulder. It is done here, once,
+       over the composited frame, rather than per material -- three only
+       applies its own to the materials it wrote, and none of these are. */
+    vec3 aces(vec3 x){
+      return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+    }
 
     /* The depth buffer is non-linear and the circle of confusion is a
        statement about metres, so it has to come back to view space before it
@@ -99,6 +117,8 @@ export const FinishShader = {
          at zero. Doing it correctly means blurring three times, which is
          three times the read for a lens defect nobody asked to see. The
          velocity is spent on grain instead.  */
+
+      col = aces(col * uExposure);
 
       // Per-channel, because film grain is three emulsions and one grey
       // wobble over the top of everything reads as video noise.
