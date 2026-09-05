@@ -289,8 +289,10 @@ async function walkStages(page, ctx) {
       await settle(page, i, ctx, tag + '-end');
       end = await read(page, id);
       await page.screenshot({ path: path.join(OUT, tag + '-end.png') });
-      console.log(`${(tag + ' (bottom)').padEnd(22)} station=${end.station} mix=${end.mix.toFixed(2)} ` +
-                  `cam=[${end.cam}] fov=${end.fov} after ${inner.events} wheel events`);
+      if (end)
+        console.log(`${(tag + ' (bottom)').padEnd(22)} station=${end.station} mix=${end.mix.toFixed(2)} ` +
+                    `cam=[${end.cam}] fov=${end.fov} after ${inner.events} wheel events`);
+      else ctx.problems.push('the world vanished at the bottom of ' + tag);
     }
     rows.push({ i, id, how, mid, on, end, inner, steps });
   }
@@ -496,7 +498,12 @@ async function walkScroll(page, boot, ctx) {
         `${r.on.mix.toFixed(2)} -> ${end.mix.toFixed(2)}`.padEnd(17) +
         `[${r.on.cam.join(', ')}]`.padEnd(26) +
         String(r.on.fov).padEnd(7) +
-        (r.on.slack > 4 ? r.on.slack + 'px' : '-'));
+        // How far the eye travelled while the state was being read, which is
+        // the only column that answers "does the world move inside a state or
+        // only between them".
+        (r.end ? `${r.on.slack}px, cam +${Math.hypot(r.end.cam[0] - r.on.cam[0],
+                                                     r.end.cam[1] - r.on.cam[1],
+                                                     r.end.cam[2] - r.on.cam[2]).toFixed(2)}` : '-'));
     }
   }
 
