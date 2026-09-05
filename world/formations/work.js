@@ -32,12 +32,12 @@ import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.j
    is 47, so arriving here meant a twenty-degree zoom out and leaving meant a
    fifteen-degree zoom back in, which reads as the lens lurching rather than
    as the camera moving. At 52 the standoff has to do that work instead, and
-   it can -- 2.7 up and 5.6 back holds 98% of the written points inside the
-   frustum, with the map spanning the full width of it and straddling the
-   middle. The look point sits just short of the map's centre, which is enough
-   pitch to put the horizon at the very top of the frame rather than a fifth
-   of the way down it: above that line there is nothing to look at, and at 5.0
-   back the frame was giving a quarter of itself to it. */
+   it can. From 5.0 back the near edge of the map fell off the bottom of the
+   frame, taking the reader's own end of the route with it and a fifteenth of
+   the cloud besides. Six tenths of a metre further out, with the look point
+   pulled the same distance nearer so the eye keeps its pitch, the whole map
+   is inside it: 98% of the written points, spanning the full width, its
+   weight within a tenth of the middle of the frame. */
 export const VIEW = { pos: [0, 2.70, 5.60], look: [0, 0.02, -0.20], fov: 52 };
 
 /* The costmap. 15 cm is about where a metre-scale base is planned: fine
@@ -49,7 +49,8 @@ const FREE = 0, OBSTACLE = 1, MARKER = 2;
 
 const PROJECTS = 10;      // one per <li class="proj"> in the Work section
 const POST = 0.55;        // how tall a project stands
-const BLOCKS = 9;         // rectangular obstacles, before the loose cells
+const WALLS = 5;          // obstacles that reach in from alternating sides
+const BLOCKS = 4;         // free-standing rectangles between them
 const SCATTER = 74;       // single occupied cells, none of them touching
 
 /* The inflation layer: how much a step costs at an obstacle's edge, and how
@@ -76,15 +77,42 @@ export function build(ctx) {
   const cell = new Uint8Array(NX * NZ);
   const r = rng(0x0CC4);
 
-  /* Nine rectangles, rejected if they come within two cells of one another.
-     Obstacles that touch are one obstacle, and a costmap whose blocks have
-     fused has no gaps left for the planner to find -- which is how a
-     formation like this ends up shipping an empty path band. The three rows
-     at either end are left alone so the start and the goal have clear floor
-     to stand on. */
+  function mark(x, z, w, h) {
+    for (let j = 0; j < h; j++)
+      for (let i = 0; i < w; i++) cell[(z + j) * NX + (x + i)] = OBSTACLE;
+  }
+
+  /* Five obstacles that reach in from alternating sides, spaced down the
+     corridor with room between them to cross.
+
+     Nine rectangles dropped at random over 8.4 x 6.6 m was the obvious way to
+     do this and it is wrong, for the reason the empty path band would have
+     been wrong: a map that sparse leaves a clear diagonal from one end to the
+     other, and A* handed a clear diagonal returns a clear diagonal. Correct,
+     and nothing to look at -- the shortcut collapsed a fifty-one cell plan to
+     four waypoints and every pose along it pointed the same way. Reaching
+     walls take the diagonal away. Getting from the near edge to the far one
+     now means going round the end of one thing and then round the next the
+     other way, which is the shape of a plan rather than the shape of an
+     empty room. */
+  for (let b = 0; b < WALLS; b++) {
+    const reach = 8 + ((r() * 11) | 0);       // cells past the centreline
+    const w = (NX >> 1) + reach - 1;
+    const h = 2 + ((r() * 2) | 0);
+    // Flush to the edge it grows from. A wall stood one cell short of the rim
+    // leaves a one-cell corridor running the whole length of the map, and A*
+    // will happily take it: the plan came out as a straight run down the very
+    // edge of the floor, past everything it was supposed to be avoiding.
+    mark((b & 1) ? NX - w : 0, 5 + Math.round(b * (NZ - 14) / (WALLS - 1)), w, h);
+  }
+
+  /* Four more standing free in the aisles those leave, rejected if they come
+     within a cell of anything already placed. Obstacles that touch are one
+     obstacle, and a costmap whose blocks have fused has no gaps left for the
+     planner to find. */
   for (let tries = 0, made = 0; tries < 600 && made < BLOCKS; tries++) {
     const w = 3 + ((r() * 9) | 0);
-    const h = 2 + ((r() * 7) | 0);
+    const h = 2 + ((r() * 5) | 0);
     const x = 2 + ((r() * (NX - 4 - w)) | 0);
     const z = 3 + ((r() * (NZ - 6 - h)) | 0);
     let clash = false;
@@ -92,8 +120,7 @@ export function build(ctx) {
       for (let i = x - 1; i <= x + w; i++)
         if (i >= 0 && i < NX && j >= 0 && j < NZ && cell[j * NX + i] !== FREE) { clash = true; break; }
     if (clash) continue;
-    for (let j = 0; j < h; j++)
-      for (let i = 0; i < w; i++) cell[(z + j) * NX + (x + i)] = OBSTACLE;
+    mark(x, z, w, h);
     made++;
   }
 
@@ -137,15 +164,12 @@ export function build(ctx) {
      They are blocked for the planner as well as drawn: a post is a thing in
      the room, and a route that goes through one is a route that has not
      noticed the project. */
-  const posts = [];
   for (let p = 0; p < PROJECTS; p++) {
     const side = (p & 1) ? 1 : -1;
     const cx = Math.round(NX * (0.5 + side * (0.13 + 0.22 * r())));
     const cz = NZ - 5 - Math.round(p * (NZ - 10) / (PROJECTS - 1));
     const at = nearestOpen(cx, cz);
-    if (at < 0) continue;
-    cell[at] = MARKER;
-    posts.push(at);
+    if (at >= 0) cell[at] = MARKER;
   }
 
   /* Cost to enter a cell, over and above the step itself. The map edge counts
@@ -265,18 +289,35 @@ export function build(ctx) {
   const goal = nearestOpen(Math.round(NX * 0.78), 1);
   const cells = plan(start, goal);
 
-  /* Line of sight between two cells, sampled at a third of a cell so nothing
-     thinner than an obstacle can be stepped over. */
-  function sight(a, b) {
-    const ax = a % NX, az = (a / NX) | 0, bx = b % NX, bz = (b / NX) | 0;
-    const n = Math.max(Math.abs(bx - ax), Math.abs(bz - az)) * 3;
-    for (let k = 1; k < n; k++) {
+  /* Whether a straight run between two points on the floor stays in free
+     space, sampled at a third of a cell so nothing as thin as one obstacle
+     can be stepped over. Both the shortcut and the smoothing ask this, which
+     is the point: the same test that decides a shortcut is legal decides
+     whether the corner it produces may be rounded.
+
+     Each sample is a disc rather than a point, because a point test lets a
+     line clip the corner of a cell between two samples -- the smoothed run
+     came out five millimetres inside a shelf, which is nothing to look at and
+     still a route through an obstacle. MARGIN stands in for the footprint the
+     thing driving this has; nothing with a footprint is planned to graze. */
+  const MARGIN = 0.02;
+  const REACH = 0.5 + MARGIN / CELL;
+  function clearRun(ax, az, bx, bz) {
+    const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(bz - az)) / (CELL / 3)));
+    for (let k = 0; k <= n; k++) {
       const t = k / n;
-      const x = Math.round(ax + (bx - ax) * t), z = Math.round(az + (bz - az) * t);
-      if (cell[z * NX + x] !== FREE) return false;
+      const gx = (ax + (bx - ax) * t - X0) / CELL;
+      const gz = (az + (bz - az) * t - Z0) / CELL;
+      for (let z = Math.ceil(gz - REACH); z <= gz + REACH; z++)
+        for (let x = Math.ceil(gx - REACH); x <= gx + REACH; x++) {
+          if (x < 0 || x >= NX || z < 0 || z >= NZ) return false;
+          if (cell[z * NX + x] !== FREE) return false;
+        }
     }
     return true;
   }
+  const sight = (a, b) =>
+    clearRun(wx(a % NX), wz((a / NX) | 0), wx(b % NX), wz((b / NX) | 0));
 
   /* The cell path kept only at its corners. Every cell in the middle of a
      straight run lies exactly on the chord between that run's ends, so
@@ -308,15 +349,23 @@ export function build(ctx) {
   }
   let curve = key.map(n => new THREE.Vector3(wx(n % NX), floorY + RUN_LIFT, wz((n / NX) | 0)));
 
-  /* Two rounds of Chaikin over those runs. A shortcut path is drivable but
-     its corners are instantaneous changes of heading, which no base executes;
-     rounding them is what makes the second strand read as something that was
-     driven rather than something that was computed. */
+  /* Two rounds of Chaikin over those runs, each corner replaced by the pair
+     of points a quarter in from it along its two segments. A shortcut path is
+     drivable but its corners are instantaneous changes of heading, which no
+     base executes; rounding them is what makes the second strand read as
+     something driven rather than something computed.
+
+     The rounding is checked, corner by corner, against the same map that
+     produced the plan. Cutting a corner moves the route off the segments the
+     shortcut proved clear, and a route that leaves the free space to look
+     smooth is a lie about both. A corner the base could not round is a corner
+     it does not round -- it takes it square. */
   for (let pass = 0; pass < 2 && curve.length > 2; pass++) {
     const out = [curve[0]];
-    for (let i = 0; i < curve.length - 1; i++) {
-      out.push(curve[i].clone().lerp(curve[i + 1], 0.25),
-               curve[i].clone().lerp(curve[i + 1], 0.75));
+    for (let i = 1; i < curve.length - 1; i++) {
+      const a = curve[i - 1].clone().lerp(curve[i], 0.75);
+      const b = curve[i].clone().lerp(curve[i + 1], 0.25);
+      if (clearRun(a.x, a.z, b.x, b.z)) out.push(a, b); else out.push(curve[i]);
     }
     out.push(curve[curve.length - 1]);
     curve = out;
@@ -325,7 +374,13 @@ export function build(ctx) {
   /* Then thinned again, for the same reason the staircase was: a vertex the
      line would pass within a centimetre of anyway is a vertex the sampler
      pays for on every point and the eye never sees, and a centimetre is
-     under the jitter the sampler adds. */
+     under the jitter the sampler adds.
+
+     Dropping a vertex replaces two segments with one, so it is a shortcut
+     like any other and it answers to the same test. Without that it is not a
+     thinning, it is a second round of corner-cutting with nothing checking
+     it, and it put the route back through the obstacles the guarded
+     smoothing had just kept it out of. */
   const run = [];
   if (curve.length) {
     run.push(curve[0]);
@@ -334,7 +389,7 @@ export function build(ctx) {
       const ax = c.x - a.x, az = c.z - a.z;
       const len = Math.hypot(ax, az);
       const off = len < 1e-6 ? 0 : Math.abs((b.x - a.x) * az - (b.z - a.z) * ax) / len;
-      if (off > 0.012) run.push(b);
+      if (off > 0.012 || !clearRun(a.x, a.z, c.x, c.z)) run.push(b);
     }
     run.push(curve[curve.length - 1]);
   }
@@ -363,15 +418,15 @@ export function build(ctx) {
      texture, and one that varies reads as a room with different things in
      it. */
   const heights = rng(0x5A1D);
-  const open = [], solid = [], stands = [];
+  const flat = [], solid = [], stands = [];
   for (let cz = 0; cz < NZ; cz++)
     for (let cx = 0; cx < NX; cx++) {
       const id = cz * NX + cx, x = wx(cx), z = wz(cz);
       if (cell[id] === OBSTACLE) solid.push(x, z, 0.10 + heights() * 0.24);
       else if (cell[id] === MARKER) stands.push(x, z);
-      else open.push(x, z);
+      else flat.push(x, z);
     }
-  const freeXZ = Float32Array.from(open);
+  const freeXZ = Float32Array.from(flat);
   const occXZH = Float32Array.from(solid);
   const postXZ = Float32Array.from(stands);
   const nFree = freeXZ.length >> 1, nOcc = occXZH.length / 3;
