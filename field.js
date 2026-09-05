@@ -175,9 +175,20 @@
 
   document.body.appendChild(canvas);
 
-  // Half resolution. Nothing in the image has an edge, so the only thing the
-  // extra pixels would buy is heat.
-  var SCALE = 0.5;
+  /* Half resolution -- nothing in the image has an edge, so the only thing
+     the extra pixels would buy is heat -- and a quarter of it on the demos
+     page, where seven live canvases own the frame.
+
+     Measured, not guessed: demo.html runs at 17 ms a frame on its own and
+     went to 78 ms median with this at half resolution and no cap, so the
+     weather was costing more than all seven demos put together. A background
+     that outweighs the thing it is a background to is not a background. At a
+     quarter it draws a sixteenth of the pixels, and the cap holds it to a
+     third of the frames it was asking for; fog has no edges and no motion
+     anybody times, so neither is visible. */
+  var busy = document.body.classList.contains("runner-page");
+  var SCALE = busy ? 0.25 : 0.5;
+  var MIN_DT = busy ? 1000 / 20 : 0;
   function resize() {
     var w = Math.max(1, Math.round(window.innerWidth * SCALE));
     var h = Math.max(1, Math.round(window.innerHeight * SCALE));
@@ -210,8 +221,13 @@
     scroll = window.scrollY / Math.max(1, window.innerHeight);
   }, { passive: true });
 
-  var raf = null, start = 0;
+  var raf = null, start = 0, drewAt = 0;
   function frame(now) {
+    // Capped rather than throttled by skipping work inside the draw: the
+    // uniforms and the clock still advance, so a capped field and an uncapped
+    // one are the same animation at different sample rates.
+    if (MIN_DT && now - drewAt < MIN_DT) { raf = requestAnimationFrame(frame); return; }
+    drewAt = now;
     if (!start) start = now;
     // Frame-rate independent chase: the same 1/e distance per unit time
     // whether this runs at 60Hz or 144.
