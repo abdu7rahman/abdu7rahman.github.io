@@ -131,6 +131,13 @@ export function measureStage(stations, ids) {
     // Settled for as long as its panels are being read. What is left of the
     // last one's span is the flight, and a flight is what a state change is.
     s.settle = [lo / n, (hi + STAGE_READ) / n];
+    // Where each of its panels sits, so the camera can be given a key per
+    // state rather than one per station. A station owning two states with a
+    // single key flies straight through whatever it is looking at on the way
+    // from the first to the second, which is what reading Measured into Stack
+    // did: four metres of travel, ending inside the rig.
+    s.spans = [];
+    for (let k = lo; k <= hi; k++) s.spans.push([k / n, (k + STAGE_READ) / n]);
   }
   const last = stations[stations.length - 1];
   if (last.settle) last.settle[1] = 1;
@@ -169,8 +176,15 @@ export const CAMERA = {
      the camera being dragged around by the mouse. */
   pointer: { reach: 0.26, lift: 0.15, stiffness: 3.1, damping: 0.82 },
   /* The scroll itself is smoothed before anything reads it, so a trackpad's
-     stair-step does not arrive as camera judder. */
-  ease: 0.085,
+     stair-step does not arrive as camera judder.
+     
+     0.085 reaches its target in about 54 frames, which is nine tenths of a
+     second, and staged that is the length of a state change: the panel had
+     finished crossfading in a third of that and you read the new copy over a
+     world still arriving at it. 0.12 lands in 33 frames, close enough to the
+     460ms the panel takes that the two read as one movement, and still slow
+     enough that reading inside a state is a glide. */
+  ease: 0.12,
   /* Where the eye is pushed while the cloud is mid-transformation: back and
      up a little, so a change is seen from slightly further out than the state
      either side of it. A camera that holds exactly still through a

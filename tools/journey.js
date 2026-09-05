@@ -135,8 +135,11 @@ async function midflight(page, id, ctx) {
     .catch(() => ctx.problems.push('the world never left the last state on the way into ' + id));
   const r = await read(page, id);
   if (r) {
-    const fl = await page.evaluate(() => window.__jFlight);
-    r.caught = fl && fl.span ? +(fl.at || 0).toFixed(2) : null;
+    const fl = MID_MS > 0 ? null : await page.evaluate(() => window.__jFlight);
+    // null means two different things and both are worth saying out loud: a
+    // fixed wait never measures the crossing, and an auto one that measures
+    // nothing watched a crossing the world never started.
+    r.caught = MID_MS > 0 ? undefined : (fl && fl.span ? +(fl.at || 0).toFixed(2) : null);
     r.waited = Date.now() - t0;
   }
   return r;
@@ -277,7 +280,9 @@ async function walkStages(page, ctx) {
     console.log(`${tag.padEnd(22)} station=${on.station} mix=${on.mix.toFixed(2)} ` +
                 `cam=[${on.cam}] fov=${on.fov} inner=${on.slack}px via ${how}` +
                 (mid ? `\n${''.padEnd(22)}arriving ` +
-                       `${mid.caught === null ? 'with the world still at rest' : ((mid.caught * 100) | 0) + '% in'}` +
+                       `${mid.caught === undefined ? 'on a fixed wait' :
+                          mid.caught === null ? 'with the world still at rest' :
+                          ((mid.caught * 100) | 0) + '% in'}` +
                        ` after ${mid.waited}ms: ` +
                        `station=${mid.station} mix=${mid.mix.toFixed(2)} cam=[${mid.cam}] fov=${mid.fov}` : ''));
 

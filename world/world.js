@@ -125,11 +125,42 @@ export async function boot(mount, formationModules) {
   for (const st of STATIONS) {
     const mod = formationModules[st.id];
     const anchor = anchorOf(st);
-    st.view = mod && mod.VIEW;
+    // A formation may declare a view per state it covers; one view is the
+    // common case and is treated as a list of one.
+    st.views = mod ? (mod.VIEWS || (mod.VIEW ? [mod.VIEW] : null)) : null;
     fills.push(mod ? mod.build({ anchor, pal, quality: q, arm }) : () => {});
   }
   substrate.bake(fills);
   substrate.span(0);              // the two the reader can already see
+
+  /* The solid half of every station.
+     
+     The cloud was the whole world and that was the ceiling: additive points
+     carry no surface, so nothing occludes anything, there is no shading and no
+     silhouette, and a settled station came out as dust and stray lines. The
+     cloud is what a station *becomes* on the way to the next one; this is what
+     it is while you are there. Each one erodes into the cloud on the same
+     noise field the cloud is released on, so the two are one event.
+     
+     Loaded one at a time and forgiven if missing: a station with no solid
+     module is a station drawn as points, which is what every one of them was
+     until now, rather than a page that fails to boot. */
+  const solids = new Array(STATIONS.length).fill(null);
+  for (let k = 1; k < STATIONS.length; k++) {
+    try {
+      const mod = await import(`./solids/${STATIONS[k].id}.js`);
+      if (!mod || !mod.build) continue;
+      const inst = mod.build({ anchor: anchorOf(STATIONS[k]), pal, quality: q });
+      inst.group.visible = false;
+      scene.add(inst.group);
+      solids[k] = inst;
+    } catch (e) {
+      if (window.console) console.warn("world: no solid for " + STATIONS[k].id, e && e.message);
+    }
+  }
+  // Station 0's solid is the arm, which is the one object on the page that is
+  // what it claims to be and so is built by hand rather than generated.
+  const FOCUS_OF = { work: 10, measured: 5 };
 
   /* The camera's route is the formations' own views, placed at their stations
      and timed by the bands measured off the document. Re-stitched on resize,
@@ -137,14 +168,25 @@ export async function boot(mount, formationModules) {
   function stitch() {
     const keys = [];
     for (const st of STATIONS) {
-      if (!st.view || !st.range) continue;
+      if (!st.views || !st.range) continue;
       const a = anchorOf(st);
-      keys.push({
-        at: (st.settle[0] + st.settle[1]) * 0.5,
-        pos: [st.view.pos[0] + a.x, st.view.pos[1] + a.y, st.view.pos[2] + a.z],
-        look: [st.view.look[0] + a.x, st.view.look[1] + a.y, st.view.look[2] + a.z],
-        fov: st.view.fov
-      });
+      /* One key per state the station owns, not one per station. A formation
+         that spans two states declares two views; one that spans one declares
+         one and gets it repeated. Without this the camera interpolates from a
+         station's single key straight to the next station's, and a station
+         holding two states spends the second of them travelling through its
+         own geometry. */
+      const spans = (st.spans && st.spans.length) ? st.spans
+                    : [[st.settle[0], st.settle[1]]];
+      for (let j = 0; j < spans.length; j++) {
+        const v = st.views[Math.min(j, st.views.length - 1)];
+        keys.push({
+          at: (spans[j][0] + spans[j][1]) * 0.5,
+          pos: [v.pos[0] + a.x, v.pos[1] + a.y, v.pos[2] + a.z],
+          look: [v.look[0] + a.x, v.look[1] + a.y, v.look[2] + a.z],
+          fov: v.fov
+        });
+      }
     }
     if (keys.length < 2) return;
     // Ends held rather than extrapolated: a Catmull-Rom asked for a point
@@ -236,6 +278,26 @@ export async function boot(mount, formationModules) {
       }
     }
 
+    /* Which solid is standing and how far through coming apart it is. The
+       pair either side of the crossing is exactly the pair the cloud has
+       loaded, so a form dissolving and the matter arriving in its place are
+       the same number read twice. */
+    const charge = Math.min(1, pointer.speed * 2.2);
+    for (let k = 1; k < solids.length; k++) {
+      const sol = solids[k];
+      if (!sol) continue;
+      const cut = k === state.i ? state.mix : k === state.i + 1 ? 1 - state.mix : 1;
+      const live = cut < 0.999;
+      if (sol.group.visible !== live) sol.group.visible = live;
+      if (!live) continue;
+      const st = STATIONS[k];
+      const span = Math.max(1e-6, st.range[1] - st.range[0]);
+      const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
+      const n = FOCUS_OF[st.id];
+      sol.update({ t, cut, local, pointer, charge,
+                   focus: n ? local * (n - 1) : -1 });
+    }
+
     const rush = Math.min(1, Math.abs(scroll.v) * 5.5);
     const su = sky.userData.uniforms;
     su.uTime.value = t;
@@ -279,6 +341,7 @@ export async function boot(mount, formationModules) {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", size);
       pointer.dispose();
+      for (const sol of solids) if (sol && sol.dispose) sol.dispose();
       substrate.dispose();
       sky.userData.dispose();
       scene.traverse(o => {

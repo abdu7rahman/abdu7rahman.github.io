@@ -24,6 +24,18 @@ import { linkFrames, toolPoint, poseAt, POSES } from "../kinematics.js";
    left of the frame to the type, which has always owned it. */
 export const VIEW = { pos: [0.24, 0.06, 2.30], look: [0.50, -0.12, 0.04], fov: 42 };
 
+/* This station covers two states, and each gets its own key. Intro is the
+   standoff the arm was framed at; About is a step in toward the wrist -- the
+   copy there is about writing the software that decides where a robot goes
+   next, and the place to be reading it from is close enough to see the joint
+   the decision comes out of. A single key for both would have interpolated
+   from Intro's framing straight to the next station's and spent the whole of
+   About drifting past. */
+export const VIEWS = [
+  VIEW,
+  { pos: [0.62, -0.08, 1.42], look: [1.02, -0.30, -0.16], fov: 47 }
+];
+
 /* How far off the trajectory the corridor is sampled, in radians per joint.
    Only the three joints that carry the arm out into the world are perturbed:
    swinging the wrist as well produces a cloud that is mostly the tool

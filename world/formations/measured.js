@@ -35,7 +35,23 @@ import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.j
    degrees round is enough to open a side face on every one of them. In a
    16:10 window all of that lands across 84% of the frame and 90% of the way
    down it, centred, with nothing outside it at all. */
-export const VIEW = { pos: [0.45, 0.74, 2.60], look: [0.06, 0.72, -0.24], fov: 44 };
+export const VIEW = { pos: [0.30, 0.74, 2.78], look: [-0.52, 0.72, -0.24], fov: 44 };
+
+/* Two states again, and the second is why the first had to move. Measured's
+   own key looks half a metre left of the rig, which puts the bars in the
+   right of the frame instead of behind the panel -- the panel is at its
+   widest here, because five benchmark tables need the measure, and centred
+   the whole instrument was hidden under it.
+
+   Stack is the same rig from further out and above: the section is a list of
+   what the numbers were taken with, and the reading is the instrument entire
+   rather than any one bar. Without a key of its own the camera spent Stack
+   flying four metres onward and finished inside the rig, which is the smear
+   of white that state was rendering. */
+export const VIEWS = [
+  VIEW,
+  { pos: [1.42, 1.48, 3.55], look: [-0.30, 0.52, -0.34], fov: 40 }
+];
 
 /* The measurements, exactly as the Measured tables report them: A* on three
    costmaps, DWA on the two windows the controller actually evaluates. The

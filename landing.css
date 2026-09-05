@@ -646,7 +646,9 @@ body.home.is-staged #main > .hero {
   overflow-y: auto; overscroll-behavior: contain;
   /* Bottom room for the pinned strip, plus enough over it that the last line
      of a state is not sitting against the rule. */
-  padding-block: clamp(20px, 4vh, 44px) clamp(84px, 11vh, 124px);
+  /* Top padding has to clear the 34px the mask fades over, or the first line
+     of a state arrives already half gone. */
+  padding-block: clamp(44px, 6vh, 68px) clamp(84px, 11vh, 124px);
   /* Not a card: a pool of the page's own background under the words that
      dissolves into the world before it reaches an edge. An edge here would be
      a panel floating on top of the render, which is the thing this is not. */
@@ -661,7 +663,10 @@ body.home.is-staged #main > .hero {
       rgba(10, 10, 10, 0) 100%);
   opacity: 0; pointer-events: none;
   transform: translate3d(0, 2.4vh, 0);
-  transition: opacity 320ms var(--ease), transform 460ms var(--ease);
+  /* Held back a beat so the words land as the world does rather than a
+     half-second ahead of it. The world's own flight is world/config.js's
+     CAMERA.ease and the two numbers answer to each other. */
+  transition: opacity 300ms 110ms var(--ease), transform 520ms var(--ease);
   will-change: opacity, transform;
 }
 /* Deliberately short and small. The state change is the world's event, not the
@@ -743,3 +748,45 @@ body.home.is-staged .hero__lede,
 body.home.is-staged .hero__meta,
 body.home.is-staged .hero__actions { grid-column: 1 / -1; }
 body.home.is-staged .hero__name { font-size: clamp(2.25rem, 4.6vw, 4rem); }
+
+
+/* The chrome, over a world rather than over a page.
+   
+   A bar with a flat fill and a rule under it, run edge to edge, is the shape
+   of an application window, and an application window laid over a render is
+   the thing this whole rebuild is trying to stop reading as. Staged, the bar
+   keeps its fill for as far as its own controls go and then stops, and the
+   rule under it stops with it -- so the top right of the frame is the world,
+   uninterrupted, from the first pixel down. */
+body.home.is-staged .rail {
+  background: linear-gradient(to right,
+    rgba(10, 10, 10, .82) 0%,
+    rgba(10, 10, 10, .82) 38%,
+    rgba(10, 10, 10, .60) 62%,
+    rgba(10, 10, 10, .82) 84%,
+    rgba(10, 10, 10, .82) 100%);
+  border-bottom: 0;
+}
+/* The rule, drawn as a gradient of its own so it can fade where the fill
+   does instead of ruling a line across the render. */
+body.home.is-staged .rail::after {
+  display: block; content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: linear-gradient(to right,
+    var(--landing-rule) 0%, var(--landing-rule) 42%,
+    rgba(39, 39, 39, .35) 66%, var(--landing-rule) 86%);
+  pointer-events: none;
+}
+
+/* Same reasoning for the panel: a full-height slab has a hard top and bottom
+   edge against the chrome, which is two more straight lines that belong to a
+   layout rather than to a room. The fill is taken off in the padding at both
+   ends -- 34px, well inside the 44px the panel already reserves -- so no word
+   ever sits on less than the .94 the gate measures. */
+body.home.is-staged #main > .sec,
+body.home.is-staged #main > .hero {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 34px,
+                                      #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 34px,
+                              #000 calc(100% - 34px), transparent 100%);
+}
