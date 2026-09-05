@@ -35,8 +35,25 @@ LINK = re.compile(
     r'''(?P<query>\?v=[0-9a-f]+)?(?P<tail>")''')
 
 
+# An entry point whose hash has to cover more than its own bytes. world/index.js
+# is four lines of imports; every file it pulls in is fetched by the module
+# loader at an unstamped URL, so a change deep in the graph used to leave the
+# entry's hash -- and therefore the entry's URL -- untouched. Hashing the whole
+# directory means a change anywhere moves the entry, which is what forces the
+# browser back to the server for the graph behind it.
+GRAPHS = {"world/index.js": "world"}
+
+
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    rel = path.relative_to(ROOT).as_posix()
+    root = GRAPHS.get(rel)
+    if root is None:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    h = hashlib.sha256()
+    for f in sorted((ROOT / root).rglob("*.js")):
+        h.update(f.relative_to(ROOT).as_posix().encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:8]
 
 
 def stamp(text, page, missing):

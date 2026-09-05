@@ -54,7 +54,13 @@
   --landing-bg-2:   #141414;   /* a band, one level up */
   --landing-card:   #1c1c1c;   /* a card surface */
   --landing-fg:     #fcf9f3;   /* warm cream, 18.8:1 on --landing-bg */
-  --landing-mut:    #86868b;   /* = --night-mut */
+  /* Was #86868b (= --night-mut), which cleared 5.09:1 on --landing-bg-2 --
+     enough on a solid band, not enough once the world shows through one. The
+     page's own worst case is the scrim's 21% of a fully-lit world over
+     --landing-bg, which composites to #3d3c3b; #86868b reads 3.14:1 there and
+     this reads 4.65:1. tools/check_contrast.py checks that composite now, so
+     the two cannot drift. */
+  --landing-mut:    #a8a8ad;
   --landing-rule:   #272727;   /* 1.33:1 on --landing-bg, inside the hairline band */
   /* Not --signal (#d70015): that reads at 3.68-3.90:1 on black, under the
      4.5:1 floor link text has to clear. #ff8a5c is already demo.js's own

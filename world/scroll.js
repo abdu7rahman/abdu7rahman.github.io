@@ -39,20 +39,3 @@ export function makeScroll() {
     get v() { return velocity; }
   };
 }
-
-/* Where a scene sits inside its own band, and how much of it should exist.
-   `local` runs 0..1 across the band; `weight` ramps up over the fade at the
-   start, holds at 1, and ramps down over the fade at the end. */
-export function bandOf(scene, p) {
-  const [a, b] = scene.range;
-  const f = scene.fade;
-  const local = Math.min(1, Math.max(0, (p - a) / Math.max(1e-6, b - a)));
-  let weight = 0;
-  if (p > a - f && p < b + f) {
-    const up = Math.min(1, Math.max(0, (p - (a - f)) / Math.max(1e-6, f * 2)));
-    const dn = Math.min(1, Math.max(0, ((b + f) - p) / Math.max(1e-6, f * 2)));
-    weight = Math.min(up, dn);
-    weight = weight * weight * (3 - 2 * weight);          // smoothstep
-  }
-  return { local, weight, live: weight > 0.001 };
-}

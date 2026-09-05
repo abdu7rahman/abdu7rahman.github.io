@@ -14,7 +14,7 @@ export function detect() {
                  window.matchMedia("(pointer: coarse)").matches;
   const narrow = window.innerWidth < 900;
 
-  let gl = null, renderer = "", tier = "low";
+  let gl = null, renderer = "", tier = "low", soft = false;
   try {
     const c = document.createElement("canvas");
     gl = c.getContext("webgl2") || c.getContext("webgl");
@@ -27,16 +27,32 @@ export function detect() {
   if (gl) {
     const cores = navigator.hardwareConcurrency || 4;
     const mem = navigator.deviceMemory || 4;
-    // A software rasteriser names itself. It will run this, slowly, and the
-    // honest response is the low tier rather than a stutter.
-    const soft = /swiftshader|llvmpipe|softwarepipe|microsoft basic/i.test(renderer);
+    // A software rasteriser names itself, and the honest response is not to
+    // run at all. The low tier was that response and it was the wrong one:
+    // measured in a headless browser falling back to SwiftShader, the world
+    // holds the main thread for 426 ms at a time -- about two frames a second
+    // -- and everything else on the page queues behind it, the analytics
+    // beacon included. A world nobody can watch is not worth a page nobody
+    // can use, and the document is whole without it.
+    soft = /swiftshader|llvmpipe|softwarepipe|microsoft basic/i.test(renderer);
     if (soft || narrow || coarse) tier = "low";
     else if (cores >= 8 && mem >= 8) tier = "high";
     else tier = "medium";
   }
 
+  // A tier can be asked for explicitly, and asking overrides the software
+  // check as well as the tier. Not a feature for visitors: it is the only way
+  // the world gets looked at at all, because the browser that can be driven
+  // from a script is exactly the one this would otherwise refuse to run in.
+  let forced = false;
+  try {
+    const want = new URLSearchParams(location.search).get("world");
+    if (want && TIERS[want]) { tier = want; forced = true; }
+  } catch (e) { /* no location, no override */ }
+
   return {
-    ok: !!gl && !reduced,
+    ok: !!gl && !reduced && (!soft || forced),
+    soft,
     webgl2: !!(gl && gl.getParameter && typeof WebGL2RenderingContext !== "undefined"
                && gl instanceof WebGL2RenderingContext),
     reduced, coarse, narrow, renderer, tier,

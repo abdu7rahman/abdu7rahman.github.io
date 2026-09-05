@@ -1,40 +1,68 @@
 /* Every number the world runs on, in one file.
  *
  * The point is not tidiness. Animation numbers are the design -- where a
- * camera sits, how long a dissolve takes, how hard the pointer pulls -- and
- * they only get tuned if they are somewhere you can see them next to each
- * other. Scattered through the scenes they become forty magic numbers nobody
- * dares touch.
+ * camera sits, how long a transformation takes, how hard the pointer pulls --
+ * and they only get tuned if they are somewhere you can see them next to each
+ * other. Scattered through the formations they become forty magic numbers
+ * nobody dares touch.
  */
+import * as THREE from "three";
 
-/* ── the journey ────────────────────────────────────────────────────────
-   Normalised scroll, 0 at the top of the document and 1 at the bottom.
-   
+/* ── the stations ───────────────────────────────────────────────────────
+   The page is not five scenes. It is one cloud of matter and five formations
+   of it, strung down a corridor the camera flies. A station is where one
+   formation sits in world space and which sections of the document it is the
+   formation *of*.
+
    The bands are not written here. They were, and they were wrong the moment
-   the copy changed length: the world was still showing the work scene while
-   the reader was a screen into Measured, because 0.15-0.40 was a guess about
+   the copy changed length: the world was still showing the projects while the
+   reader was a screen into the benchmarks, because 0.15-0.40 is a guess about
    where Measured starts and the document is the only thing that actually
-   knows. Each scene names the sections it belongs to and measures them at
-   boot -- change a paragraph and the world follows.
-   
-   `fade` is how much of a band on either side is spent arriving and leaving,
-   so neighbours overlap and the world is never empty between two scenes. */
-export const SCENES = [
-  { id: "hero",     owns: ["intro", "about"],   fade: 0.045 },
-  { id: "work",     owns: ["work"],             fade: 0.05  },
-  { id: "measured", owns: ["measured", "stack"], fade: 0.05 },
-  { id: "path",     owns: ["path"],             fade: 0.05  },
-  { id: "contact",  owns: ["contact"],          fade: 0.045 }
+   knows. Each station names its sections and measures them at boot -- change
+   a paragraph and the world follows.
+
+   6.6 metres apart, which is far enough that the morph between two of them
+   reads as the matter travelling with you and close enough that the camera
+   never crosses a gap with nothing in it. */
+export const STATIONS = [
+  { id: "hero",     owns: ["intro", "about"],     anchor: [0, 0.00,   0.0] },
+  { id: "work",     owns: ["work"],               anchor: [0, -0.55, -6.6] },
+  { id: "measured", owns: ["measured", "stack"],  anchor: [0, -0.55, -13.2] },
+  { id: "path",     owns: ["path"],               anchor: [0, -0.15, -19.8] },
+  { id: "contact",  owns: ["contact"],            anchor: [0,  0.00, -26.0] }
 ];
 
-/* Measured off the page. A section's band runs from where its top reaches the
-   middle of the window to where its bottom leaves it, which is the span over
-   which a reader would say they are "in" that section. */
-export function measureBands(scenes) {
+/* How long a change takes, measured in screens of scrolling rather than in a
+   fraction of a section.
+   
+   A fraction of the section was the obvious way to write this and it is
+   wrong, because the sections are wildly different lengths: Measured and
+   Stack together run nearly half the document while Work is a carousel one
+   card tall. At a fifth of each band, the handover into Work came out at 390
+   pixels -- under half a screen -- and the one out of Measured at nearly
+   three screens. The same change, one of them over before you noticed and the
+   other outstaying its welcome.
+   
+   A screen of scrolling is what the reader actually experiences, so that is
+   the unit. Clamped so a change can never eat more than this much of either
+   band it sits between, or a short section would spend its whole existence
+   mid-transformation and never be a shape at all. The share is per boundary
+   and a band has two of them, so 0.28 leaves at least 44% of every section
+   with its formation fully formed. 0.42 left 16%: Work's band is only 768
+   pixels -- one screen, because the carousel shows a single card -- and its
+   two handovers between them ate all but 124 of those pixels, so the
+   occupancy grid was never once a thing anybody could look at. */
+export const TRANSIT_SCREENS = 1.0;
+export const TRANSIT_MAX_SHARE = 0.28;
+
+/* Where the sections actually are. A band runs from where the section's top
+   reaches the middle of the window to where its bottom leaves it, which is
+   the span over which a reader would say they are "in" that section. */
+export function measureBands(stations) {
   const doc = document.documentElement;
   const span = Math.max(1, doc.scrollHeight - window.innerHeight);
   const mid = window.innerHeight * 0.5;
-  for (const s of scenes) {
+  for (const s of stations) {
     let top = Infinity, bot = -Infinity;
     for (const id of s.owns) {
       const el = document.getElementById(id);
@@ -43,31 +71,61 @@ export function measureBands(scenes) {
       const y0 = r.top + window.scrollY, y1 = y0 + r.height;
       top = Math.min(top, y0); bot = Math.max(bot, y1);
     }
-    if (!isFinite(top)) { s.range = [0, 0]; continue; }
-    s.range = [Math.max(0, Math.min(1, (top - mid) / span)),
-               Math.max(0, Math.min(1, (bot - mid) / span))];
+    if (!isFinite(top)) { s.range = [0, 0]; }
+    else s.range = [Math.max(0, Math.min(1, (top - mid) / span)),
+                    Math.max(0, Math.min(1, (bot - mid) / span))];
+    s.settle = s.range.slice();
   }
-  return scenes;
+
+  // Each boundary gets a window straddling it, then what is left over on
+  // either side is the settle window of the station it belongs to. Doing it
+  // boundary-first rather than band-first is what keeps every change the same
+  // length regardless of how long the two sections around it happen to be.
+  const half = 0.5 * TRANSIT_SCREENS * window.innerHeight / span;
+  for (let i = 0; i < stations.length - 1; i++) {
+    const a = stations[i], b = stations[i + 1];
+    const edge = a.range[1];
+    const h = Math.min(half,
+                       TRANSIT_MAX_SHARE * (a.range[1] - a.range[0]),
+                       TRANSIT_MAX_SHARE * (b.range[1] - b.range[0]));
+    a.settle[1] = edge - h;
+    b.settle[0] = edge + h;
+  }
+  stations[0].settle[0] = 0;
+  stations[stations.length - 1].settle[1] = 1;
+  // Document order, whatever the measurements said: a settle window that ends
+  // before it starts runs the mix backwards across the boundary.
+  for (const s of stations)
+    if (s.settle[1] < s.settle[0]) s.settle[1] = s.settle[0];
+  for (let i = 1; i < stations.length; i++)
+    if (stations[i].settle[0] < stations[i - 1].settle[1])
+      stations[i].settle[0] = stations[i - 1].settle[1] + 1e-4;
+  return stations;
+}
+
+/* Which two formations are loaded and how far between them the cloud is.
+   Settled inside a station's own window, transforming between them. Coming
+   back up is not a special case: the same pair is loaded and the mix runs the
+   other way, so the page reverses exactly instead of re-deciding what it is. */
+export function stationMix(stations, p) {
+  const N = stations.length;
+  if (p <= stations[0].settle[1]) return { i: 0, mix: 0 };
+  for (let i = 0; i < N - 1; i++) {
+    const from = stations[i].settle[1], to = stations[i + 1].settle[0];
+    if (p < to) {
+      const t = Math.min(1, Math.max(0, (p - from) / Math.max(1e-6, to - from)));
+      return { i, mix: t };
+    }
+    if (p <= stations[i + 1].settle[1]) return { i, mix: 1 };
+  }
+  return { i: N - 2, mix: 1 };
 }
 
 /* ── the camera ─────────────────────────────────────────────────────────
-   Keyframes in world space, interpolated along the same 0..1. The rig eases
-   between them; it does not cut. `fov` moves too, because a camera that only
-   translates reads as a slide and a camera that also breathes reads as one
-   that is being flown. */
+   Stitched at boot from each formation's own VIEW -- offsets from its
+   station's anchor -- and the bands measured off the document. Nothing here
+   is a hand-picked scroll fraction. */
 export const CAMERA = {
-  keys: [
-    /* Solved rather than nudged. The arm's bounding box is 0.81m tall and
-       centred at (0.71, -0.76, 0.40); at 40 degrees vertical a 1.92m standoff
-       makes it 58% of the frame, and shifting the look point 0.48m left of it
-       puts it in the right half where the type is not. */
-    { at: 0.00, pos: [ 0.36, -0.45, 2.78], look: [ 0.36, -0.62,  0.40], fov: 40 },
-    { at: 0.17, pos: [ 0.10, -0.20, 1.05], look: [ 0.55, -0.55, -0.35], fov: 48 },
-    { at: 0.30, pos: [-0.20, 1.35, -0.60], look: [0, 0.60, -3.2], fov: 52 },
-    { at: 0.50, pos: [ 1.90, 0.80, -4.60], look: [0, 0.55, -7.0], fov: 46 },
-    { at: 0.72, pos: [-0.60, 1.10, -9.20], look: [0, 0.70, -12.4], fov: 44 },
-    { at: 1.00, pos: [ 0.00, 0.60, -14.6], look: [0, 0.50, -18.0], fov: 36 }
-  ],
   /* How far the pointer is allowed to move the eye, in world units, and how
      stiff the spring that gets it there. Small: this is parallax, not a
      joystick. Past about 0.3 it stops reading as depth and starts reading as
@@ -75,32 +133,38 @@ export const CAMERA = {
   pointer: { reach: 0.26, lift: 0.15, stiffness: 3.1, damping: 0.82 },
   /* The scroll itself is smoothed before anything reads it, so a trackpad's
      stair-step does not arrive as camera judder. */
-  ease: 0.085
+  ease: 0.085,
+  /* Where the eye is pushed while the cloud is mid-transformation: back and
+     up a little, so a change is seen from slightly further out than the state
+     either side of it. A camera that holds exactly still through a
+     reorganisation makes it look like the world glitched. */
+  transit: { back: 0.55, lift: 0.22 }
 };
 
-/* ── transitions ────────────────────────────────────────────────────────
-   A handoff is a physical event, not a crossfade. `dissolve` is how far into
-   a scene's fade band the geometry starts coming apart; `scatter` is how far
-   the freed particles travel before they are pulled into the next scene. */
-export const TRANSITION = {
-  dissolve: 0.55,
-  scatter: 2.4,
-  swirl: 1.35,
-  settle: 0.7
-};
+/* ── the transformation ─────────────────────────────────────────────────
+   How the cloud crosses between two formations. `arc` is how far a point bows
+   off the straight line to its next home -- zero is a slide, and a slide is
+   what this whole rebuild exists to stop being. `stagger` is the fraction of
+   the crossing spent waiting for other points to go first, which is what
+   turns a wipe into a reorganisation. */
+export const TRANSIT = { arc: 0.62, stagger: 0.42, heat: 1.25 };
 
 /* ── quality tiers ──────────────────────────────────────────────────────
-   Chosen by world/capability.js, not by user agent sniffing. Desktop gets the
-   whole thing; a weak GPU gets fewer particles and no post chain but the same
-   choreography, because a simplified experience is still an experience and a
-   missing one is not. */
+   Chosen by world/capability.js, not by user agent sniffing. The substrate is
+   one draw call whatever its size, so the counts are far higher than the old
+   per-scene particle budgets could be: what costs here is fill rate and the
+   6 MB of baked formations, not draw calls. */
 export const TIERS = {
-  high:   { dpr: 2.0, particles: 24000, post: true,  shadow: true,  fogSteps: 5 },
-  medium: { dpr: 1.5, particles:  9000, post: true,  shadow: false, fogSteps: 4 },
-  low:    { dpr: 1.0, particles:  2600, post: false, shadow: false, fogSteps: 3 }
+  high:   { dpr: 2.0, substrate: 60000, post: true,  arm: true,  fogSteps: 5 },
+  medium: { dpr: 1.5, substrate: 26000, post: true,  arm: true,  fogSteps: 4 },
+  low:    { dpr: 1.0, substrate:  9000, post: false, arm: false, fogSteps: 3 }
 };
 
 /* ── the palette, read from the stylesheet ──────────────────────────────
    Not duplicated here. The page already defines these and the contrast gate
    already checks them; a second copy is a second thing to drift. */
 export const TOKENS = ["--landing-bg", "--landing-fg", "--landing-accent", "--landing-teal"];
+
+/* Convenience for the formations, which are all written in station-local
+   offsets and need the anchor as a vector. */
+export function anchorOf(station) { return new THREE.Vector3().fromArray(station.anchor); }

@@ -102,6 +102,29 @@ body.home .proj { transition: transform var(--dur-move) var(--ease),
 /* Once the world is up, the flat gradient it replaces steps aside. */
 body.home.has-world { background-image: none; }
 
+/* The exposure, and the contract the contrast gate is written against.
+   
+   Text has to stay readable over a world that is drawing bright points
+   wherever it likes, and the only way to make that a fact rather than a hope
+   is to bound how much of the world can ever reach a pixel. This is that
+   bound: one flat layer of the page's own background at a fixed opacity, over
+   the whole canvas, everywhere. The worst case is therefore exactly
+   0.79 x #0a0a0a + 0.21 x #fcf9f3 = #3d3c3b, which is the surface
+   tools/check_contrast.py measures every landing pair against. 0.79 is the
+   most world the gate allows: at 0.78 the accent lands at 4.54:1 and the
+   muted at 4.46, and 4.5 is the floor link text has to clear.
+   
+   21% sounds like nothing and is not: the world is bright points on black, so
+   what survives is the light and not the dark, and the substrate's own
+   exposure is turned up to spend that 21% rather than being dimmed to fit
+   inside it. */
+body.home.has-world #world-mount::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--landing-bg);
+  opacity: .79;
+}
+
 /* ── grain ─────────────────────────────────────────────────────────────
    A single inline SVG turbulence filter, painted once into a fixed layer
    at low opacity. Static, not animated: an animated grain reads as video
@@ -298,6 +321,23 @@ body.home .sec--band, body.home #work {
     radial-gradient(58% 40% at 20% 6%, rgba(255, 138, 92, .06), transparent 70%),
     radial-gradient(50% 36% at 86% 44%, rgba(255, 138, 92, .04), transparent 72%),
     var(--landing-bg-2);
+}
+/* With the world up, an opaque band is a lid on it -- and three of the five
+   sections are bands, which is why the world could be running perfectly and
+   still be invisible for most of the page. Translucent instead, so a band is
+   still a step down in tone (it is what separates one section from the next)
+   without being a floor over the room underneath. Strictly darker than the
+   scrim it sits on, so it can only ever raise contrast, never lower it.
+   
+   .26 rather than the .46 this started at: three of the five sections are
+   bands, so whatever a band lets through is what the world looks like for
+   most of the page, and .46 on top of the scrim left the occupancy grid
+   reading at eleven percent -- running perfectly and barely there. */
+body.home.has-world .sec--band, body.home.has-world #work {
+  background:
+    radial-gradient(58% 40% at 20% 6%, rgba(255, 138, 92, .05), transparent 70%),
+    radial-gradient(50% 36% at 86% 44%, rgba(255, 138, 92, .035), transparent 72%),
+    rgba(20, 20, 20, .26);
 }
 body.home .rule-row, body.home .stack > div, body.home .path > li,
 body.home .contact li, body.home .proj__stats > div, body.home .bench__table tbody tr,

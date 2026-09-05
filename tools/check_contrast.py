@@ -20,6 +20,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = [ROOT / "style.css", ROOT / "landing.css"]
+LANDING = ROOT / "landing.css"
 
 
 def tokens():
@@ -34,6 +35,33 @@ def tokens():
         for m in re.finditer(r"(--[\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;", block):
             out[m.group(1)] = m.group(2).strip()
     return out
+
+
+def scrim_alpha():
+    """How much of the page's own background the world's scrim lays down.
+
+    Read out of landing.css rather than written here, because it is the whole
+    contract: the world draws bright points wherever it likes, and the only
+    reason text stays readable over it is that no more than (1 - alpha) of any
+    world pixel can ever reach the eye. If someone lifts the scrim to let more
+    of the render through, this gate has to move with them.
+    """
+    css = LANDING.read_text()
+    m = re.search(r"#world-mount::after\s*\{(.*?)\}", css, re.S)
+    if not m:
+        raise SystemExit("check_contrast: no #world-mount::after scrim in landing.css")
+    o = re.search(r"opacity:\s*([0-9.]+)", m.group(1))
+    if not o:
+        raise SystemExit("check_contrast: the world scrim has no opacity")
+    return float(o.group(1))
+
+
+def over(a, b, alpha):
+    """`a` at `alpha` over `b`, as a hex string."""
+    a, b = a.lstrip("#"), b.lstrip("#")
+    ch = [round(alpha * int(a[i:i + 2], 16) + (1 - alpha) * int(b[i:i + 2], 16))
+          for i in (0, 2, 4)]
+    return "#%02x%02x%02x" % tuple(ch)
 
 
 def srgb_to_lin(c):
@@ -88,6 +116,19 @@ PAIRS = [
     ("--landing-accent", "--landing-card", 4.5, "links on a landing card"),
 ]
 
+# Over the world. The landing page's canvas is not a background image with a
+# known colour -- it is a live render, and the brightest thing it can put
+# behind a line of text is a saturated patch of --landing-fg. So the surface
+# these are measured against is not a token at all: it is that worst case seen
+# through the scrim, which is the one number bounding how much of the render
+# reaches the page. Every pair that carries text is checked there as well as on
+# the solid tokens above, because on this page both surfaces really occur.
+WORLD = [
+    ("--landing-fg",     7.0, "prose over the world"),
+    ("--landing-mut",    4.5, "muted labels over the world"),
+    ("--landing-accent", 4.5, "links over the world"),
+]
+
 # Hairlines are meant to be felt, not seen. Too low and they vanish; too high
 # and they become the dividers this design deliberately stopped using.
 HAIRLINES = [("--rule", "--paper", 1.05, 1.35),
@@ -115,6 +156,18 @@ def main():
         print("%-12s %-12s %7.2f:1  %.2f-%.2f   hairline%s"
               % (fg, bg, c, lo, hi, "" if ok else
                  ("   <-- TOO LOUD" if c > hi else "   <-- INVISIBLE")))
+    print()
+    a = scrim_alpha()
+    lit = over(T["--landing-bg"], T["--landing-fg"], a)
+    for fg, floor, what in WORLD:
+        c = contrast(T[fg], lit)
+        ok = c >= floor
+        bad += not ok
+        print("%-12s %-12s %7.2f:1 %7.1f   %s%s"
+              % (fg, lit, c, floor, what, "" if ok else "   <-- TOO LOW"))
+    print("%-12s %-12s %7s %7s   scrim at %.2f over a fully lit world"
+          % ("", "", "", "", a))
+
     print("\n%s" % ("all gates pass" if not bad else "%d problems" % bad))
     return 1 if bad else 0
 

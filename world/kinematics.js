@@ -21,6 +21,34 @@ const ORIGINS = [
 export const TCP_Z = 0.1565;
 export const REST = [0.52, -1.02, 1.3, -1.86, -1.57, 0];
 
+/* The model is Z-up, the way every URDF is; the world is Y-up, the way every
+   renderer is. Rotating -90 about X sends the model's +Z to world +Y, which
+   also puts the base plate exactly on y=0 -- measured, not assumed: the
+   bounding box over the whole pose sequence has min.y = -0.000. Without this
+   the arm lies on its side pointing at the camera, which is what it was
+   doing. */
+export const UPRIGHT = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+
+/* The move the hero plays. Four waypoints, interpolated with a smoothstep so
+   the arm eases in and out of each rather than arriving at constant velocity
+   and stopping dead. */
+export const POSES = [
+  [ 0.52, -1.02, 1.30, -1.86, -1.57,  0.00],
+  [ 0.16, -1.28, 1.62, -1.92, -1.57, -0.22],
+  [-0.31, -0.96, 1.21, -1.79, -1.57, -0.44],
+  [-0.05, -1.10, 1.42, -1.88, -1.57, -0.10]
+];
+
+export function poseAt(u, out) {
+  const q = out || new Array(6);
+  const f = Math.min(1, Math.max(0, u)) * (POSES.length - 1);
+  const i = Math.min(POSES.length - 2, Math.floor(f));
+  let t = f - i;
+  t = t * t * (3 - 2 * t);
+  for (let k = 0; k < 6; k++) q[k] = POSES[i][k] + (POSES[i + 1][k] - POSES[i][k]) * t;
+  return q;
+}
+
 /* URDF fixed-axis XYZ: R = Rz(yaw) Ry(pitch) Rx(roll). Three's default Euler
    order is XYZ *intrinsic*, which is not the same thing; ZYX intrinsic is. */
 function originMatrix([x, y, z, r, p, yw]) {

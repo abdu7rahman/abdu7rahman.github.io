@@ -1,9 +1,22 @@
 /* The persistent rendering layer.
  *
- * One renderer, one scene graph, one loop, for the whole page. Scenes are
- * modules that own a Group and are handed their own progress every frame;
- * they are added to the graph when they have any weight and taken out when
- * they do not, so what is drawn is only ever what is on screen.
+ * One renderer, one scene graph, one loop, one cloud of points, for the whole
+ * page. There is no scene manager here any more and that is the whole change:
+ * the old one added a Group when its band went live and removed it when it
+ * did not, which is a crossfade however it is dressed -- five things standing
+ * in a line that the camera drives past, none of which could become any of
+ * the others because none of them shared a single vertex.
+ *
+ * Now the page owns one substrate, and a section is a *formation* of it.
+ * Scrolling re-targets the same matter: the manipulator's swept trajectory is
+ * the same points as the planned route through the occupancy grid, which are
+ * the same points as the profile across the benchmark bars. Nothing appears
+ * and nothing disappears.
+ *
+ * The one real object is the arm, because it is the only thing on the page
+ * that is what it claims to be. It erodes into the substrate on the way out
+ * of the first station, so the machine does not cut to the map -- it becomes
+ * it.
  *
  * The DOM is not replaced by any of this. It sits above the canvas, keeps the
  * text selectable and the headings real, and this provides the room the text
@@ -14,14 +27,23 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { FinishShader } from "./materials/post.js";
-import { SCENES, TOKENS, measureBands } from "./config.js";
+import { STATIONS, TOKENS, CAMERA, TRANSIT, measureBands, stationMix, anchorOf } from "./config.js";
 import { detect, tokens } from "./capability.js";
-import { makeScroll, bandOf } from "./scroll.js";
+import { makeScroll } from "./scroll.js";
 import { makePointer } from "./pointer.js";
 import { makeCameraRig, setKeys } from "./camera-rig.js";
 import { makeAtmosphere } from "./materials/atmosphere.js";
+import { makeSubstrate } from "./substrate.js";
+import { makeDissolveMaterial } from "./materials/dissolve.js";
+import { linkFrames, poseAt, UPRIGHT } from "./kinematics.js";
 
-export async function boot(mount, sceneModules) {
+/* Where the arm stands, relative to the first station's anchor. Upright its
+   bounding box runs 1.08 behind its base plate and 0.19 in front, so a base
+   at x = 1.15 puts the whole machine in the right half of the frame and
+   leaves the left to the type, which has always owned it. */
+const ARM_BASE = new THREE.Vector3(1.15, -0.55, -0.15);
+
+export async function boot(mount, formationModules) {
   const cap = detect();
   if (!cap.ok) return null;                 // no WebGL, or motion turned down
   const q = cap.quality;
@@ -36,19 +58,20 @@ export async function boot(mount, sceneModules) {
     canvas, antialias: q.dpr <= 1.5, alpha: true, powerPreference: "high-performance"
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr));
+  const dpr = Math.min(window.devicePixelRatio || 1, q.dpr);
+  renderer.setPixelRatio(dpr);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 120);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
   const rig = makeCameraRig(camera);
   const scroll = makeScroll();
   const pointer = makePointer();
 
-  // Light enough to read shape by. The materials carry most of their own
-  // lighting, so this is a floor rather than a rig.
-  const hemi = new THREE.HemisphereLight(0xbfc6d8, 0x140f0d, 0.55);
-  scene.add(hemi);
+  // Light enough to read shape by. The arm's material carries most of its own
+  // lighting and the substrate carries all of its own, so this is a floor
+  // rather than a rig.
+  scene.add(new THREE.HemisphereLight(0xbfc6d8, 0x140f0d, 0.55));
   const key = new THREE.DirectionalLight(new THREE.Color(pal["--landing-accent"]), 0.9);
   key.position.set(-3, 5, 4);
   scene.add(key);
@@ -66,52 +89,74 @@ export async function boot(mount, sceneModules) {
   const sky = makeAtmosphere({ accent: pal["--landing-accent"], steps: q.fogSteps });
   scene.add(sky);
 
-  // Where the sections actually are, before anything is built from them.
-  measureBands(SCENES);
+  /* ── the one real object ─────────────────────────────────────────── */
+  const arm = await buildArm(scene, pal, q);
 
-  const ctx = { THREE, scene, camera, renderer, pal, cap, quality: q, pointer, rig };
-  // The camera's path is the scenes' own flights, stitched along the bands
-  // they were measured to occupy.
-  const flight = [];
-  for (const def of SCENES) {
-    const mod = sceneModules[def.id];
-    if (!mod || !mod.FLIGHT || !def.range) continue;
-    flight.push({ at: def.range[0], ...mod.FLIGHT.enter });
-    flight.push({ at: def.range[1], ...mod.FLIGHT.exit });
-  }
-  flight.sort((a, b) => a.at - b.at);
-  // Strictly increasing, or the spline divides by a zero span.
-  for (let i = 1; i < flight.length; i++)
-    if (flight[i].at <= flight[i-1].at) flight[i].at = flight[i-1].at + 1e-4;
-  setKeys(flight);
+  /* ── the substrate, and the formations of it ─────────────────────── */
+  const substrate = makeSubstrate(q.substrate, {
+    accent: pal["--landing-accent"], teal: pal["--landing-teal"], fg: pal["--landing-fg"],
+    stagger: TRANSIT.stagger, heat: TRANSIT.heat
+  });
+  substrate.uniforms.uArc.value = TRANSIT.arc;
+  substrate.uniforms.uDpr.value = dpr;
+  scene.add(substrate.points);
 
-  const built = [];
-  for (const def of SCENES) {
-    const mod = sceneModules[def.id];
-    if (!mod) continue;
-    // A scene is handed the flight it declared, so it can lay its content out
-    // along the route the camera will actually take through it rather than at
-    // absolute coordinates that stop matching the moment a band moves.
-    const inst = await mod.create({ ...ctx, flight: mod.FLIGHT, band: def.range });
-    inst.group.visible = false;
-    built.push({ def, inst, mounted: false });
+  measureBands(STATIONS);
+
+  const fills = [];
+  for (const st of STATIONS) {
+    const mod = formationModules[st.id];
+    const anchor = anchorOf(st);
+    st.view = mod && mod.VIEW;
+    fills.push(mod ? mod.build({ anchor, pal, quality: q, arm }) : () => {});
   }
+  substrate.bake(fills);
+  substrate.span(0);              // the two the reader can already see
+
+  /* The camera's route is the formations' own views, placed at their stations
+     and timed by the bands measured off the document. Re-stitched on resize,
+     because a reflow moves every one of those bands. */
+  function stitch() {
+    const keys = [];
+    for (const st of STATIONS) {
+      if (!st.view || !st.range) continue;
+      const a = anchorOf(st);
+      keys.push({
+        at: (st.settle[0] + st.settle[1]) * 0.5,
+        pos: [st.view.pos[0] + a.x, st.view.pos[1] + a.y, st.view.pos[2] + a.z],
+        look: [st.view.look[0] + a.x, st.view.look[1] + a.y, st.view.look[2] + a.z],
+        fov: st.view.fov
+      });
+    }
+    if (keys.length < 2) return;
+    // Ends held rather than extrapolated: a Catmull-Rom asked for a point
+    // past its last key will happily fly the camera out of the building.
+    keys.unshift({ ...keys[0], at: 0, pos: keys[0].pos.slice(), look: keys[0].look.slice() });
+    keys.push({ ...keys[keys.length - 1], at: 1 });
+    for (let i = 1; i < keys.length; i++)
+      if (keys[i].at <= keys[i - 1].at) keys[i].at = keys[i - 1].at + 1e-4;
+    setKeys(keys);
+  }
+  stitch();
 
   function size() {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h, false);
     sky.userData.uniforms.uRes.value.set(w, h);
-    // Reflow changes where every section sits, so the bands are re-read.
-    measureBands(SCENES);
+    measureBands(STATIONS);          // a reflow moves every band under us
+    stitch();
     if (composer) composer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    if (finish) finish.uniforms.uVig.value = 1.0;
   }
   size();
   window.addEventListener("resize", size, { passive: true });
 
-  let raf = 0, last = performance.now(), running = true, t = 0;
+  let raf = 0, last = performance.now(), running = true, t = 0, baking = false;
+  let state = { i: 0, mix: 0 };
+  const jointQ = new Array(6);
+  const armFrames = Array.from({ length: 6 }, () => new THREE.Matrix4());
+  const hit = new THREE.Vector3();
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
@@ -120,18 +165,50 @@ export async function boot(mount, sceneModules) {
 
     const p = scroll.update(dt);
     pointer.update(dt);
-    rig.update(p, pointer, dt);
 
-    // Only what is on screen is in the graph. A scene at zero weight costs a
-    // comparison, not a draw call.
-    let anyLive = false;
-    for (const s of built) {
-      const band = bandOf(s.def, p);
-      if (band.live && !s.mounted) { scene.add(s.inst.group); s.inst.group.visible = true; s.mounted = true; }
-      else if (!band.live && s.mounted) { scene.remove(s.inst.group); s.inst.group.visible = false; s.mounted = false; }
-      if (s.mounted) {
-        anyLive = true;
-        s.inst.update({ local: band.local, weight: band.weight, p, t, dt, pointer, scroll });
+    // Which pair of formations, and how far between them.
+    state = stationMix(STATIONS, p);
+    substrate.span(state.i);
+    substrate.uniforms.uMix.value = state.mix;
+    substrate.uniforms.uTime.value = t;
+    substrate.uniforms.uCharge.value = Math.min(1, pointer.speed * 2.2);
+
+    // The eye pulls back through a transformation, so a reorganisation is
+    // watched from slightly further out than the states either side of it.
+    const transit = Math.sin(Math.PI * state.mix);
+    rig.update(p, pointer, dt, transit * CAMERA.transit.back, transit * CAMERA.transit.lift);
+
+    // The pointer as a place in the world rather than a pair of screen
+    // coordinates: unprojected onto a plane a few metres ahead, which is
+    // where the matter the reader is looking at actually is.
+    hit.set(pointer.x, -pointer.y, 0.5).unproject(camera);
+    hit.sub(camera.position).normalize().multiplyScalar(3.4).add(camera.position);
+    substrate.uniforms.uPointer.value.copy(hit);
+
+    // The arm plays its move across the first station and erodes on the way
+    // out of it. Past that station there is nothing left of it to draw.
+    if (arm && arm.solid) {
+      const st = STATIONS[0];
+      const span = Math.max(1e-6, st.range[1] - st.range[0]);
+      const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
+      poseAt(local, jointQ);
+      linkFrames(jointQ, armFrames);
+      for (let i = 1; i < arm.links.length; i++) {
+        arm.links[i].matrix.copy(armFrames[Math.min(5, i - 1)]);
+        // Writing .matrix by hand is only half of it: without this the world
+        // matrix is never recomposed and every link stays where it was.
+        arm.links[i].matrixWorldNeedsUpdate = true;
+      }
+      arm.links[0].matrix.identity();
+      arm.links[0].matrixWorldNeedsUpdate = true;
+
+      const cut = state.i === 0 ? Math.pow(state.mix, 0.8) : 1;
+      arm.group.visible = cut < 0.999;
+      for (const m of arm.mats) {
+        const u = m.userData.uniforms;
+        u.uTime.value = t;
+        u.uCut.value = cut;
+        u.uCharge.value = Math.min(1, pointer.speed * 2.2);
       }
     }
 
@@ -149,7 +226,12 @@ export async function boot(mount, sceneModules) {
       finish.uniforms.uRush.value = rush;
     }
     if (composer) composer.render(dt); else renderer.render(scene, camera);
-    if (!anyLive) { /* still render: the page is between scenes and should be empty, not stale */ }
+
+    // A formation per frame the reader is not scrolling through. The test is
+    // only whether the page is still, not whether the machine is fast: a slow
+    // machine is exactly the one that cannot afford to bake a formation in
+    // the middle of a scroll, so a still frame is the best moment it will get.
+    if (!baking && Math.abs(scroll.v) < 0.02) baking = !substrate.bakeNext();
   }
   raf = requestAnimationFrame(frame);
 
@@ -161,7 +243,11 @@ export async function boot(mount, sceneModules) {
 
   // A handle for looking inside, in tests and in a console. Read-only; the
   // world is never driven from here.
-  window.__world = { scene, camera, renderer, built, scroll, cap };
+  window.__world = {
+    scene, camera, renderer, scroll, cap, substrate, stations: STATIONS,
+    get station() { return state.i; },
+    get mix() { return state.mix; }
+  };
 
   return {
     cap,
@@ -169,7 +255,7 @@ export async function boot(mount, sceneModules) {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", size);
       pointer.dispose();
-      for (const s of built) s.inst.dispose && s.inst.dispose();
+      substrate.dispose();
       sky.userData.dispose();
       scene.traverse(o => {
         if (o.geometry) o.geometry.dispose();
@@ -184,4 +270,82 @@ export async function boot(mount, sceneModules) {
       canvas.remove();
     }
   };
+}
+
+/* Universal Robots' own triangles, placed by the kinematics they were
+   designed around. One Group per link, so posing is six matrix writes rather
+   than any vertex work; the meshes arrive in their own link frames already.
+   Returns the soup as well, in world space, because the hero formation is
+   sampled off exactly these triangles -- the cloud the arm dissolves into has
+   to be the arm, not a cloud shaped roughly like one.
+
+   The soup is built on every tier, the solid meshes only where there is a GPU
+   to draw them: a machine too slow for 21,000 shaded triangles is not too slow
+   for the same shape as points, and dropping the cloud along with the mesh is
+   how the low tier ended up with a first station about nothing. */
+async function buildArm(scene, pal, q) {
+  let mesh;
+  try { mesh = await fetch("assets/ur12e-hero.json").then(r => r.json()); }
+  catch (e) { return null; }
+  const unit = mesh.unit;
+  const solid = !!q.arm;
+
+  const group = new THREE.Group();
+  group.position.copy(ARM_BASE);
+  group.setRotationFromMatrix(UPRIGHT);
+  if (solid) scene.add(group);
+
+  const links = mesh.links.map(() => {
+    const g = new THREE.Group();
+    g.matrixAutoUpdate = false;           // the kinematics writes these directly
+    return g;
+  });
+  links.forEach(g => group.add(g));
+
+  const mats = [], shapes = [];
+  let tris = 0;
+  for (let li = 0; li < mesh.links.length; li++)
+    for (const part of mesh.links[li].parts) tris += part.f.length / 3;
+  const soup = new Float32Array(tris * 9);
+
+  // The soup is baked at the pose the formation's frames are taken at, so the
+  // ghost and the solid agree on the first frame.
+  const rest = linkFrames(poseAt(0));
+  const world = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+  let so = 0;
+
+  for (let li = 0; li < mesh.links.length; li++) {
+    world.makeTranslation(ARM_BASE.x, ARM_BASE.y, ARM_BASE.z)
+         .multiply(UPRIGHT)
+         .multiply(li === 0 ? new THREE.Matrix4() : rest[Math.min(5, li - 1)]);
+    for (const part of mesh.links[li].parts) {
+      const n = part.f.length;
+      const pos = new Float32Array(n * 3);
+      for (let k = 0; k < n; k++) {
+        const s = part.f[k] * 3;
+        pos[k*3] = part.v[s] * unit;
+        pos[k*3+1] = part.v[s+1] * unit;
+        pos[k*3+2] = part.v[s+2] * unit;
+        v.set(pos[k*3], pos[k*3+1], pos[k*3+2]).applyMatrix4(world);
+        soup[so++] = v.x; soup[so++] = v.y; soup[so++] = v.z;
+      }
+      if (!solid) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      // The decimator left flat facets everywhere; this is the flat-to-smooth
+      // step by angle on the expanded geometry, mergeVertices not being
+      // available without the addon.
+      g.computeVertexNormals();
+      const c = part.c;
+      const m = makeDissolveMaterial({
+        color: new THREE.Color(c[0]/255, c[1]/255, c[2]/255),
+        accent: pal["--landing-accent"]
+      });
+      mats.push(m); shapes.push(g);
+      links[li].add(new THREE.Mesh(g, m));
+    }
+  }
+
+  return { group, links, mats, shapes, soup, solid, base: ARM_BASE, upright: UPRIGHT };
 }

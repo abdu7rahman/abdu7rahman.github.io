@@ -5,20 +5,20 @@
  * environment for the page, not a replacement for it.
  */
 import { boot } from "./world.js";
-import * as hero from "./scenes/hero.js";
-import * as work from "./scenes/work.js";
-import * as measured from "./scenes/measured.js";
-import * as path from "./scenes/path.js";
-import * as contact from "./scenes/contact.js";
+import * as hero from "./formations/hero.js";
+import * as work from "./formations/work.js";
+import * as measured from "./formations/measured.js";
+import * as path from "./formations/path.js";
+import * as contact from "./formations/contact.js";
 
-const scenes = { hero, work, measured, path, contact };
+const formations = { hero, work, measured, path, contact };
 
 (async function () {
   if (!document.body.classList.contains("home")) return;
   const mount = document.getElementById("world-mount");
   if (!mount) return;
   try {
-    const world = await boot(mount, scenes);
+    const world = await boot(mount, formations);
     if (world) {
       document.body.classList.add("has-world");
       document.body.dataset.tier = world.cap.tier;

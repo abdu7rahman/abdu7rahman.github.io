@@ -9,11 +9,14 @@
 import * as THREE from "three";
 import { CAMERA } from "./config.js";
 
-/* Built at boot from each scene's declared flight and the band it was measured
-   to occupy. The old fixed key list drifted the moment a paragraph changed
-   length: the camera was still arriving at the projects while the reader was
-   a screen into the benchmarks. */
-let keys = CAMERA.keys;
+/* Built at boot from each formation's declared view and the band its station
+   was measured to occupy. A fixed key list drifted the moment a paragraph
+   changed length: the camera was still arriving at the projects while the
+   reader was a screen into the benchmarks. Two keys standing on the origin
+   until then, so a rig asked to sample before it is stitched returns a
+   camera rather than a NaN. */
+let keys = [{ at: 0, pos: [0, 0, 3], look: [0, 0, 0], fov: 42 },
+            { at: 1, pos: [0, 0, 3], look: [0, 0, 0], fov: 42 }];
 export function setKeys(k) { if (k && k.length >= 2) keys = k; }
 
 function catmull(p0, p1, p2, p3, t, out) {
@@ -44,8 +47,15 @@ export function makeCameraRig(camera) {
     return { fov: b.fov + (c.fov - b.fov) * (t * t * (3 - 2 * t)) };
   }
 
+  const away = new THREE.Vector3();
+
   return {
-    update(p, pointer, dt) {
+    /* `back` and `lift` are the transformation's own contribution: the eye
+       withdrawn along its own view axis while the cloud is mid-change, so a
+       reorganisation is watched from further out than the state either side
+       of it. Along the view axis rather than along world Z, or the pull-back
+       would go sideways wherever the camera is not facing down the corridor. */
+    update(p, pointer, dt, back, lift) {
       const { fov } = sample(p);
       const R = CAMERA.pointer;
       // The pointer moves the eye, never the target: swinging both is how a
@@ -53,8 +63,13 @@ export function makeCameraRig(camera) {
       eye.set(pos[0] + pointer.x * R.reach,
               pos[1] - pointer.y * R.lift,
               pos[2]);
-      camera.position.copy(eye);
       at.set(look[0], look[1], look[2]);
+      if (back || lift) {
+        away.copy(eye).sub(at).normalize();
+        eye.addScaledVector(away, back || 0);
+        eye.y += lift || 0;
+      }
+      camera.position.copy(eye);
       camera.lookAt(at);
       if (Math.abs(camera.fov - fov) > 0.01) {
         camera.fov += (fov - camera.fov) * Math.min(1, dt * 6);
