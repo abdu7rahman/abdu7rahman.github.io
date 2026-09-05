@@ -24,7 +24,7 @@
  */
 import * as THREE from "three";
 import { bands, polyline, triad, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
-import { linkFrames, toolPoint, poseAt, POSES } from "../kinematics.js";
+import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
 
 /* Offsets from the station anchor; the caller adds it. A step in from the
    manipulator's 2.30 and a little round it, which is as far as this station
@@ -63,14 +63,58 @@ export const VIEW = { pos: [0.66, -0.22, 1.62], look: [0.05, -0.36, -0.10], fov:
  * it -- it turns the tool about its own approach axis, the tool point sits on
  * that axis, and so every sample of it lands exactly where some other sample
  * already wrote. */
-const WIDEN = [0.95, 1.05, 1.35, 1.60, 1.60, 0];
+const WIDEN = [0.45, 1.05, 1.30, 1.55, 1.55, 0];
 const LO = WIDEN.map((w, k) => Math.min(...POSES.map(p => p[k])) - w);
 const HI = WIDEN.map((w, k) => Math.max(...POSES.map(p => p[k])) + w);
 
 /* How far above the plate a tool position has to be to count. Exactly at it
-   is a solution that grazes the floor; below it is one that goes through the
-   floor, and the arm is standing on that floor. */
+   is a solution that grazes the floor; below it is one that reaches through
+   the floor, and the arm is standing on that floor. The same test is put to
+   every joint origin, because an elbow underground is no more available than
+   a gripper underground. */
 const CLEAR = 0.015;
+
+/* And how far the tool has to stay off the arm carrying it. This is where the
+   hole in the middle of the volume comes from, and it is worth being exact
+   about why, because the kinematics on its own does not produce one: on these
+   origins the shoulder and wrist offsets very nearly cancel, and a tool point
+   can be brought within about a centimetre of the base axis by a chain that
+   is folded straight through its own forearm. Those are solutions of the
+   equations and not places the arm can go.
+
+   The clearance is the tool's own length, which is the single dimension of
+   the gripper this repository actually carries -- the mesh is decimated
+   triangles and there is no collision model anywhere in it. Used this way it
+   makes one claim and only one: the gripper cannot be inside a link. */
+const SELF = TCP_Z;
+
+/* Distance from a point to a segment, which is all the collision geometry
+   above needs: an arm link is a rod, and a rod is a segment with a radius. */
+const ROOT = new THREE.Matrix4();         // the base plate, where the chain starts
+function toSeg(p, a, b) {
+  const dx = b.elements[12] - a.elements[12];
+  const dy = b.elements[13] - a.elements[13];
+  const dz = b.elements[14] - a.elements[14];
+  const L = dx * dx + dy * dy + dz * dz;
+  let t = L > 0 ? ((p.x - a.elements[12]) * dx + (p.y - a.elements[13]) * dy +
+                   (p.z - a.elements[14]) * dz) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(p.x - (a.elements[12] + dx * t),
+                    p.y - (a.elements[13] + dy * t),
+                    p.z - (a.elements[14] + dz * t));
+}
+
+/* Whether a solved chain is somewhere the arm could actually be. In the arm's
+   own frame, where the floor is z = 0 and the model is Z-up, so every one of
+   these is a comparison rather than a transform. The last two links are not
+   tested against the tool: the tool is bolted to them. */
+function reachable(p, frames) {
+  if (p.z < CLEAR) return false;
+  for (let k = 0; k < 6; k++) if (frames[k].elements[14] < 0) return false;
+  if (toSeg(p, ROOT, frames[0]) < SELF) return false;
+  for (let k = 0; k < 3; k++) if (toSeg(p, frames[k], frames[k + 1]) < SELF) return false;
+  return true;
+}
 
 /* Accepted tool positions held in the pool. More than the largest tier draws
    of them, so the walk in fill thins the envelope rather than writing the
@@ -107,21 +151,25 @@ export function build(ctx) {
   const v = new THREE.Vector3();
   const r = rng(0x1F0C7);
 
-  /* The envelope. Uniform in joint space rather than in the room, which is
-     why it is worth doing this way round: the density that comes out is the
-     density of solutions, so the cloud is thickest exactly where the arm has
-     the most ways to be, and that is a fact about the machine rather than a
-     shading decision. */
+  /* The envelope. Uniform in joint space rather than uniform in the room,
+     which is the whole reason to do it this way round: the density that comes
+     out is the density of solutions, so the cloud is thickest exactly where
+     the arm has the most ways to be. That is a fact about the machine and not
+     a shading decision.
+
+     Every test below is made in the arm's own frame, before the placement is
+     applied, so a rejected sample costs a comparison rather than a matrix. */
   const env = new Float32Array(POOL * 3);
   let n = 0;
   const cen = new THREE.Vector3();
-  // Bounded, because rejection sampling against a floor has no upper bound on
-  // its own and a boot is not allowed to be unlucky.
-  for (let tries = 0; n < POOL && tries < POOL * 8; tries++) {
+  // Bounded, because rejection sampling has no upper bound of its own and a
+  // boot is not allowed to be unlucky.
+  for (let tries = 0; n < POOL && tries < POOL * 12; tries++) {
     for (let k = 0; k < 6; k++) q[k] = LO[k] + r() * (HI[k] - LO[k]);
     linkFrames(q, frames);
-    toolPoint(frames, v).applyMatrix4(place);
-    if (v.y < floorY + CLEAR) continue;
+    toolPoint(frames, v);
+    if (!reachable(v, frames)) continue;
+    v.applyMatrix4(place);
     env[n * 3] = v.x; env[n * 3 + 1] = v.y; env[n * 3 + 2] = v.z;
     cen.add(v);
     n++;
@@ -132,10 +180,13 @@ export function build(ctx) {
   /* The routes. The first is the move the manipulator actually played, so the
      strand that arrives from the previous formation stays exactly where it
      was and the other six grow out of it; the rest run between the same two
-     poses through a via point pushed off the straight joint-space line. They
-     are candidates, so they are held to what a candidate has to satisfy: one
-     that puts the tool through the floor is not a route anybody would offer,
-     and it is redrawn rather than shown. */
+     poses through a via point pushed off the straight joint-space line.
+
+     They are candidates, so they are held to what a candidate has to satisfy.
+     A route that puts the tool through the floor or through the arm is not
+     something anybody would offer, and it is redrawn rather than shown -- the
+     same test the envelope is built out of, which is the point: the fan is
+     drawn through the volume, not over it. */
   const routes = [];
   for (let i = 0; i <= 96; i++) {
     poseAt(i / 96, q);
@@ -144,24 +195,24 @@ export function build(ctx) {
   }
   const fan = [routes];
   const off = new Array(6);
-  for (let a = 1; a < ROUTES && fan.length < ROUTES; a++) {
-    for (let attempt = 0; attempt < 24; attempt++) {
+  for (let a = 1; a < ROUTES; a++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
       for (let k = 0; k < 6; k++) off[k] = (r() * 2 - 1) * BOW[k];
       const alt = [];
       let ok = true;
-      for (let i = 0; i <= 64; i++) {
+      for (let i = 0; i <= 64 && ok; i++) {
         const u = i / 64;
         // A hump that is zero at both ends, so every route in the fan leaves
         // and arrives at the two poses the move was actually between. A fan
         // whose members start in different places is a set of unrelated
-        // trajectories, not a set of options.
+        // trajectories rather than a set of options.
         const bow = Math.sin(Math.PI * u);
         for (let k = 0; k < 6; k++)
           q[k] = POSES[0][k] + (POSES[POSES.length - 1][k] - POSES[0][k]) * u + off[k] * bow;
         linkFrames(q, frames);
-        const p = toolPoint(frames, new THREE.Vector3()).applyMatrix4(place);
-        if (p.y < floorY + CLEAR) { ok = false; break; }
-        alt.push(p);
+        const p = toolPoint(frames, new THREE.Vector3());
+        if (!reachable(p, frames)) ok = false;
+        else alt.push(p.applyMatrix4(place));
       }
       if (ok) { fan.push(alt); break; }
     }
@@ -182,7 +233,7 @@ export function build(ctx) {
      Thinning outwards for the reason it thinned there -- an even lattice
      reads as graph paper and one that falls off reads as a room. */
   const floor = [];
-  const STEP = 0.115, HALF = 17;
+  const STEP = 0.115, HALF = 12;
   for (let ix = -HALF; ix <= HALF; ix++) {
     for (let iz = -HALF; iz <= HALF; iz++) {
       const d = Math.hypot(ix, iz) / HALF;

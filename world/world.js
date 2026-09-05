@@ -147,6 +147,7 @@ export async function boot(mount, formationModules) {
      until now, rather than a page that fails to boot. */
   const solids = new Array(STATIONS.length).fill(null);
   for (let k = 1; k < STATIONS.length; k++) {
+    if (!STATIONS[k].solid) continue;
     try {
       const mod = await import(`./solids/${STATIONS[k].id}.js`);
       if (!mod || !mod.build) continue;
@@ -298,8 +299,11 @@ export async function boot(mount, formationModules) {
     // comes forward again through the crossing.
     const dom = state.mix < 0.5 ? state.i : state.i + 1;
     const solidHere = dom === 0 ? !!(arm && arm.solid) : !!solids[dom];
+    // A cloud-only station still holds back a little: at full strength the
+    // densest of them saturates its own shape away.
     substrate.uniforms.uFade.value = solidHere
-      ? 0.42 + 0.58 * Math.sin(Math.PI * state.mix) : 1;
+      ? 0.40 + 0.60 * Math.sin(Math.PI * state.mix)
+      : 0.84 + 0.16 * Math.sin(Math.PI * state.mix);
     for (let k = 1; k < solids.length; k++) {
       const sol = solids[k];
       if (!sol) continue;

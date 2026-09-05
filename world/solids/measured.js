@@ -71,9 +71,15 @@ export function build(ctx) {
   const anchor = ctx.anchor;
   const y0 = anchor.y;
   const pal = ctx.pal || {};
-  const budget = (ctx.quality && ctx.quality.substrate) || 0;
 
-  /* Two materials, and the split is structural rather than decorative:
+  /* Nothing on this station answers to the quality tier, which is worth
+     saying rather than leaving as an omission: fifteen boxes is 180 triangles
+     at every tier, and there is no segment count on a box to spend. What a
+     slow machine pays for here is fill -- two large transparent slabs with
+     five volumes standing on them -- and that is bought by having a plate and
+     a plane at all. Neither can go without the instrument going with it.
+
+     Two materials, and that split is structural rather than decorative:
      uFocus lights an instance by index, seedSurface numbers instances from
      zero, and the caller sweeps focus across the five runs -- so anything
      that is not one of the five has to sit in a mesh whose focus is never
@@ -83,18 +89,21 @@ export function build(ctx) {
                             teal: pal["--landing-teal"], fog: pal["--landing-bg"] });
     const u = m.userData.uniforms;
     // Finer than the default, because a ruling has to be smaller than the
-    // thing it rules: at 9 per metre a 0.30 bar face carries three lines and
-    // reads as machined, at 6.5 it carries two and they read as stripes.
+    // thing it rules: at 9 per metre a 0.30 bar face is crossed by between
+    // two lines and three and reads as machined, at 6.5 it gets two and they
+    // read as a stripe down either side of it.
     u.uPitch.value = 9.0;
-    // The whole rig lies between 2.1 and 3.5 metres of the eye, so the
-    // default window of 3 to 26 leaves every part of it equally unfogged and
-    // the plate and the plane come out at the same depth as the bar in front
-    // of them. Starting just ahead of the plate's front edge and ending just
-    // past the plane spends the fog where the depth actually is: the back
-    // plane a fifth of the way to the page's background, the bar faces
-    // untouched.
-    u.uFogNear.value = 2.2;
-    u.uFogFar.value = 6.0;
+    // The rig lies 2.6 to 3.9 metres from the eye Measured reads it with and
+    // 3.4 to 5.2 from the one Stack stands off and looks down with, so the
+    // material's default window of 3 to 26 leaves every part of it at the
+    // depth of every other part and the plane comes out flush with the bar in
+    // front of it. Starting on the plate's front edge and ending past the far
+    // corner of the plane spends the fog where the depth is: a sixth of the
+    // way to the page's background on the back of the rig from close to,
+    // getting on for half of it from the state that stands off and reads the
+    // whole instrument, and the bar faces all but untouched from either.
+    u.uFogNear.value = 2.4;
+    u.uFogFar.value = 8.0;
     return m;
   };
   const barMat = skin(BASE);
@@ -116,8 +125,9 @@ export function build(ctx) {
 
   /* One box per run, indexed in the order the runs are read, so the caller's
      sweep across uFocus walks the bars left to right the way the eye does.
-     Each one stands on the plate rather than being centred on it, which is
-     the whole difference between a volume with a foot and a rectangle. */
+     Each is placed by its foot and not by its middle, which is the whole
+     difference between a volume standing on a plate and a rectangle lying
+     across one. */
   const barGeo = seedSurface(new THREE.BoxGeometry(1, 1, 1), RUNS.length);
   const barMesh = new THREE.InstancedMesh(barGeo, barMat, RUNS.length);
   for (let i = 0; i < bars.length; i++)
@@ -144,17 +154,15 @@ export function build(ctx) {
      machined into the instrument rather than drawn on it. The top rule and
      the cap of the 192x bar arrive at the same height, which is the rig
      agreeing with itself. */
-  const spurs = budget >= 26000;
   for (const v of TICKS) {
     const y = y0 + height(v);
     parts.push([anchor.x, y, anchor.z + BACK_Z + RULE / 2, 2 * HALF_W, RULE, RULE]);
     // The step off the plane at the left end, which is what makes a rule a
-    // tick. Dropped on the tier that draws at one device pixel per CSS pixel:
-    // pointing at the camera it foreshortens 13 cm into about two of them,
-    // and two pixels of spur is noise rather than a scale.
-    if (spurs)
-      parts.push([anchor.x - HALF_W, y, anchor.z + BACK_Z + TICK_OUT / 2,
-                  RULE, RULE, TICK_OUT]);
+    // tick: twenty pixels of it against the nine hundred the rule runs, at
+    // the end the cloud draws its own stroke out from. Four lines that stop
+    // at the edge of a plane are a texture; four with an origin are a scale.
+    parts.push([anchor.x - HALF_W, y, anchor.z + BACK_Z + TICK_OUT / 2,
+                RULE, RULE, TICK_OUT]);
   }
   const rigGeo = seedSurface(new THREE.BoxGeometry(1, 1, 1), parts.length);
   const rigMesh = new THREE.InstancedMesh(rigGeo, rigMat, parts.length);
@@ -169,20 +177,25 @@ export function build(ctx) {
 
   return {
     group,
-    update({ t, cut, focus, charge }) {
+    update({ t, cut, focus, pointer, charge }) {
+      // Ready-made when the caller has other stations to spend it on, off the
+      // pointer when this is the only one it has.
+      const c = charge === undefined
+        ? Math.min(1, (pointer ? pointer.speed : 0) * 2.2) : charge;
       bu.uTime.value = t;
       bu.uCut.value = cut;
       // Below zero lights none of them, which is what a rig nobody is
       // currently reading wants.
       bu.uFocus.value = typeof focus === "number" ? focus : -1;
-      bu.uCharge.value = charge || 0;
+      bu.uCharge.value = c;
       ru.uTime.value = t;
       // The mount comes apart ahead of the measurement: at 1.15 the plate and
-      // the plane are gone about a seventh of the crossing before the last
-      // bar is, so the thing left standing longest on the way out is the five
-      // numbers, and on the way back in they are the first thing to arrive.
+      // the plane have finished eroding eight tenths of the way through the
+      // crossing where the bars last to nine, so the thing standing longest
+      // on the way out is the five numbers, and on the way back in they are
+      // the first thing to arrive.
       ru.uCut.value = cut * 1.15;
-      ru.uCharge.value = charge || 0;
+      ru.uCharge.value = c;
     },
     dispose() {
       barGeo.dispose();

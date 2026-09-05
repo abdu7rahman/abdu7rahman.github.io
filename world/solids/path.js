@@ -41,9 +41,11 @@ const DOORS = [
 ];
 
 /* The route, only so the plinths land where the sweeps were taken from. The
-   stations are spaced by metres driven, and the drive has a slight rise and
-   fall in it, so the height terms stay in: drop them and the arc length is
-   short and all six markers slide back down the corridor. */
+   stations are spaced by metres driven rather than by Z, so the arc length
+   has to come out the same to the millimetre -- which is why the drive's
+   slight rise and fall is carried here too. It is worth 5 mm of route and
+   moves the last stop by half a centimetre, and half a centimetre invented by
+   hand is exactly the kind of difference this file exists not to have. */
 const SAMPLES = 384, RUN = 3.4, RIDE = 0.40;
 
 const STOPS = 6;                       // entries in the Path list, which has six
@@ -75,9 +77,9 @@ export function build(ctx) {
 
   /* How finely the walls follow the field. The wall is a chain of chords
      across a curve, so what this buys is sagitta: at the field's sharpest the
-     error is about five millimetres at the top tier and two centimetres at
-     the bottom, against returns that carry a centimetre of range noise
-     anyway. Below that it is only triangles. */
+     face departs from it by 4 mm at the top tier, 8 mm in the middle and
+     21 mm at the bottom, against returns carrying a centimetre of range noise
+     of their own. Finer than that is only triangles. */
   const STEP = budget >= 40000 ? 0.10 : budget >= 16000 ? 0.15 : 0.24;
 
   const Z0 = anchor.z - SPAN;
@@ -139,7 +141,11 @@ export function build(ctx) {
   const zStart = anchor.z - REACH, zEnd = anchor.z + REACH;
   for (const side of [-1, 1]) {
     // Cut at the door edges rather than near them: a segment boundary landing
-    // half a step inside an opening leaves a stub across the gap.
+    // half a step inside an opening leaves a stub across the gap. The last box
+    // before an edge still overruns it by its own thickness across the slope,
+    // five centimetres at the steepest of the four. Trimming it back instead
+    // leaves a notch, and a notch lets a beam through a wall, where a nub only
+    // stops one a few centimetres early.
     const cuts = [];
     for (const d of DOORS) if (d.side === side) cuts.push(d);
     cuts.sort((a, b) => a.dz - b.dz);
@@ -151,9 +157,10 @@ export function build(ctx) {
       // The two jambs, each one face of the gap, carried out to the back so
       // an alcove is a box with a mouth and not two walls with a hole between.
       // A jamb is square to Z while the wall it lands on is not, so it starts
-      // from the widest the corridor gets under its own thickness: from the
-      // edge's own value it stands five centimetres proud of the wall, in the
-      // corridor, at the one place the reader is looking.
+      // from the widest the corridor gets under its own thickness. Taken from
+      // the edge's own value it stood eight centimetres proud of the wall at
+      // the steepest door -- inside the corridor, across the mouth, which is
+      // the one place at this station anybody is looking.
       for (const e of [a, b]) {
         const out = e === a ? -1 : 1;
         const inner = Math.max(halfAt(e), halfAt(e + out * THICK * 0.5),
@@ -193,7 +200,7 @@ export function build(ctx) {
   });
   /* The material's defaults are for a machine part held at arm's length. This
      is a room: the ruling wants to fall at the scale of floor panels rather
-     than millwork, and the far end has to be gone by the time it is eleven
+     than millwork, and the far end has to be gone by the time it is twelve
      metres off or the corridor ends in a visible edge instead of in air. */
   shellMat.userData.uniforms.uPitch.value = 3.0;
   shellMat.userData.uniforms.uGrid.value = 0.065;

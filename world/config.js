@@ -32,13 +32,19 @@ import * as THREE from "three";
    is a different kind of event from the four that travel, and having both
    kinds is what stops the journey reading as one long dolly. */
 export const STATIONS = [
-  { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0] },
-  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0] },
-  { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6] },
-  { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2] },
-  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2] },
-  { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8] },
-  { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0] }
+  // `solid` says a station has geometry under world/solids/. Declared rather
+  // than discovered: probing for a module that is not there is a 404 in the
+  // console on every load, and About and Stack are deliberately cloud-only --
+  // a reachable workspace and a bundle of rollouts are both sets of sampled
+  // points, and a surface drawn through either would be inventing a boundary
+  // neither of them has. About still has the solid arm standing in it.
+  { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0],  solid: false },
+  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false },
+  { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6],  solid: true  },
+  { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2],  solid: true  },
+  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false },
+  { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8],  solid: true  },
+  { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0],  solid: true  }
 ];
 
 /* How long a change takes, measured in screens of scrolling rather than in a

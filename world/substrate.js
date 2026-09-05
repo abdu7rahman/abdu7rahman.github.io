@@ -144,11 +144,17 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
         // what it would look like on its own. Under-exposing here and then
         // filtering it again is how a world ends up technically running and
         // visually absent.
+        // 0.62 rather than the 0.80 this was exposed at when the cloud was the
+        // whole world. It is not any more -- the solids carry the settled
+        // states -- and at 0.80 a dense formation like the rollout bundle,
+        // fifty thousand additive points across two square metres of floor,
+        // saturated to a sheet of white with no arcs left in it.
+        //
         // Down where a station has solid geometry standing and up through the
         // crossing. The cloud is what a station becomes on the way to the next
         // one; at full strength over a settled solid it is just haze over the
         // thing you are meant to be looking at.
-        gl_FragColor = vec4(col, a * vAlpha * uFade * 0.80);
+        gl_FragColor = vec4(col, a * vAlpha * uFade * 0.62);
       }`
   });
 

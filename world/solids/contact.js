@@ -61,11 +61,11 @@ export function build(ctx) {
   const pal = ctx.pal || {};
   const budget = (ctx.quality && ctx.quality.substrate) || 0;
 
-  /* The one thing on this station with a curve in it, so it is the one thing
-     with a segment count worth spending. Fourteen sides on a shaft 28 pixels
-     across puts a facet every two pixels, which is round; six is visibly a
-     prism at that size, and the tier that gets six is the tier drawing at one
-     device pixel per CSS pixel where two of them are a facet anyway. */
+  /* The one thing on this station with a curve in it, so it is the only
+     segment count there is to spend. A shaft 28 pixels across is held within
+     a third of a pixel of a true circle by fourteen sides and two thirds of
+     one by ten; six leaves it two pixels out of round, and six goes to the
+     tier already drawing at one device pixel per CSS pixel. */
   const SIDES = budget >= 60000 ? 14 : budget >= 26000 ? 10 : 6;
 
   const group = new THREE.Group();
@@ -83,10 +83,11 @@ export function build(ctx) {
 
   const mat = makeSurface({ base: BASE, accent: pal["--landing-accent"],
                             teal: pal["--landing-teal"], fog: pal["--landing-bg"] });
-  /* The frame is left on the material's own fog window on purpose. Nothing in
-     it is more than 3.7 metres from the eye, so all of it sits inside
-     uFogNear: the last thing the page shows is the one thing the atmosphere
-     does not get to eat. */
+  /* The frame is left on the material's own fog window on purpose. It stands
+     2.9 to 3.8 metres from the eye, where that window has barely opened --
+     four parts in a thousand at the furthest corner of it -- so the last
+     thing the page shows is the one thing the atmosphere does not get to
+     eat. The floor below gets a window of its own instead. */
 
   const UP = new THREE.Vector3(0, 1, 0);
   const m4 = new THREE.Matrix4();
@@ -138,9 +139,10 @@ export function build(ctx) {
     fog: pal["--landing-bg"], instanced: false
   });
   const gu = groundMat.userData.uniforms;
-  // No ruling. A world-space grid on a plane seen at three degrees is a moire
-  // pattern rather than machining, and it would be the busiest thing on the
-  // quietest screen of the page.
+  // No ruling. At the angle a floor is seen from -- twenty degrees where it
+  // enters the bottom of the frame, falling to nothing at the horizon -- a
+  // world-space grid is a moire pattern rather than machining, and it would
+  // be the busiest thing on the quietest screen of the page.
   gu.uGrid.value = 0;
   // Faded across exactly the band the cloud's horizon occupies: untouched
   // where the ring starts, half gone where it ends, the page's own background
@@ -157,17 +159,22 @@ export function build(ctx) {
 
   return {
     group,
-    update({ t, cut, focus, charge }) {
+    update({ t, cut, focus, pointer, charge }) {
+      // Ready-made when the caller has other stations to spend it on, off the
+      // pointer when this is the only one it has.
+      const c = charge === undefined
+        ? Math.min(1, (pointer ? pointer.speed : 0) * 2.2) : charge;
       u.uTime.value = t;
       u.uCut.value = cut;
       u.uFocus.value = typeof focus === "number" ? focus : -1;
-      u.uCharge.value = charge || 0;
+      u.uCharge.value = c;
       gu.uTime.value = t;
-      // The floor goes first and it goes faster: at 1.3 it is off the screen
-      // a third of the way into the crossing, which leaves the frame alone
-      // above a horizon that is already the cloud's again.
+      // The floor goes first and it goes faster: at 1.3 it has finished
+      // eroding seven tenths of the way through the crossing where the frame
+      // lasts to nine, so the last thing standing over a horizon that is
+      // already the cloud's again is the frame.
       gu.uCut.value = cut * 1.3;
-      gu.uCharge.value = charge || 0;
+      gu.uCharge.value = c;
     },
     dispose() {
       shaftGeo.dispose();
