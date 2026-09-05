@@ -56,6 +56,27 @@ def scrim_alpha():
     return float(o.group(1))
 
 
+def panel_alpha():
+    """The least backing a word can sit on once the page is staged.
+
+    Staged, the canvas scrim comes off entirely -- the world runs at full
+    strength across the frame -- and what protects the text is the panel it is
+    set in. So the bound moves with it, and it is read out of the stylesheet
+    for the same reason the scrim's is: a gate that keeps its own copy of the
+    number stops being a gate the first time someone changes the other one.
+    """
+    css = LANDING.read_text()
+    m = re.search(r"is-staged #main > \.sec,\s*\n[^{]*\{(.*?)\n\}", css, re.S)
+    if not m:
+        raise SystemExit("check_contrast: no staged panel rule in landing.css")
+    stops = re.findall(r"rgba\(\s*10,\s*10,\s*10,\s*(\.\d+|[01](?:\.\d+)?)\s*\)", m.group(1))
+    if not stops:
+        raise SystemExit("check_contrast: the staged panel has no backing")
+    # The fade to nothing at the outer edge is margin the grid's padding keeps
+    # empty, so the floor that matters is the strongest stop, not the weakest.
+    return max(float(v) for v in stops)
+
+
 def over(a, b, alpha):
     """`a` at `alpha` over `b`, as a hex string."""
     a, b = a.lstrip("#"), b.lstrip("#")
@@ -167,6 +188,19 @@ def main():
               % (fg, lit, c, floor, what, "" if ok else "   <-- TOO LOW"))
     print("%-12s %-12s %7s %7s   scrim at %.2f over a fully lit world"
           % ("", "", "", "", a))
+
+    print()
+    pa = panel_alpha()
+    lit2 = over(T["--landing-bg"], T["--landing-fg"], pa)
+    for fg, floor, what in WORLD:
+        c = contrast(T[fg], lit2)
+        ok = c >= floor
+        bad += not ok
+        print("%-12s %-12s %7.2f:1 %7.1f   %s, staged%s"
+              % (fg, lit2, c, floor, what.replace(" over the world", ""),
+                 "" if ok else "   <-- TOO LOW"))
+    print("%-12s %-12s %7s %7s   panel at %.2f over a fully lit world"
+          % ("", "", "", "", pa))
 
     print("\n%s" % ("all gates pass" if not bad else "%d problems" % bad))
     return 1 if bad else 0

@@ -193,9 +193,21 @@
   else if (mq.addListener) mq.addListener(function () { mq.matches ? enter() : leave(); });
   if (still.addEventListener) still.addEventListener("change", function () { if (still.matches) leave(); });
 
-  // Anything the page needs to know about where it is.
-  window.__stage = { at: function () { return i; }, of: panels.length,
-                     go: function (n) { show(n); }, on: function () { return staged; } };
+  // Anything the page needs to know about where it is. The world reads this
+  // every frame: with the document pinned at scrollY 0 there is no scroll left
+  // to drive a camera with, so which state you are in and how far you have read
+  // inside it *is* the scroll now.
+  window.__stage = {
+    at: function () { return i; },
+    of: panels.length,
+    ids: function () { return ids.slice(); },
+    /* The live panel, so a reader can be located inside a state and not only
+       between states. A long state read top to bottom has to move the world,
+       or the world holds still through the longest part of the page. */
+    panel: function () { return i >= 0 ? panels[i] : null; },
+    go: function (n) { show(n); },
+    on: function () { return staged; }
+  };
 
   if (mq.matches) enter();
 })();

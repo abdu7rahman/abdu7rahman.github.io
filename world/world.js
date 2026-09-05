@@ -27,7 +27,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { FinishShader } from "./materials/post.js";
-import { STATIONS, TOKENS, CAMERA, TRANSIT, measureBands, stationMix, anchorOf } from "./config.js";
+import { STATIONS, TOKENS, CAMERA, TRANSIT, measureBands, measureStage, stationMix, anchorOf } from "./config.js";
 import { detect, tokens } from "./capability.js";
 import { makeScroll } from "./scroll.js";
 import { makePointer } from "./pointer.js";
@@ -101,7 +101,25 @@ export async function boot(mount, formationModules) {
   substrate.uniforms.uDpr.value = dpr;
   scene.add(substrate.points);
 
-  measureBands(STATIONS);
+  /* Where the stations sit along the journey, measured from whichever thing
+     is actually carrying the reader. A staged page has no document scroll to
+     measure and all seven of its states occupy the same pixels, so the panel
+     order is the only honest source; a scrolling one still measures off the
+     DOM. Which of the two is in force can change after boot -- states.js is a
+     deferred classic script and this module runs before it, and the stage
+     comes and goes with the viewport -- so it is re-asked rather than decided
+     once. */
+  let stagedNow = null;
+  function remeasure() {
+    const st = window.__stage;
+    const on = !!(st && st.on && st.on());
+    if (on === stagedNow) return false;
+    stagedNow = on;
+    if (on) measureStage(STATIONS, st.ids());
+    else measureBands(STATIONS);
+    return true;
+  }
+  remeasure();
 
   const fills = [];
   for (const st of STATIONS) {
@@ -143,7 +161,10 @@ export async function boot(mount, formationModules) {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h, false);
     sky.userData.uniforms.uRes.value.set(w, h);
-    measureBands(STATIONS);          // a reflow moves every band under us
+    // A reflow moves every band under us, and crossing 900px moves the page
+    // between staged and not.
+    stagedNow = null;
+    remeasure();
     stitch();
     if (composer) composer.setSize(w, h);
     camera.aspect = w / h;
@@ -162,6 +183,9 @@ export async function boot(mount, formationModules) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now; t += dt;
+
+    // Two property reads; the stage can arrive or leave at any time.
+    if (remeasure()) stitch();
 
     const p = scroll.update(dt);
     pointer.update(dt);

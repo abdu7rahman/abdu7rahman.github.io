@@ -103,6 +103,43 @@ export function measureBands(stations) {
   return stations;
 }
 
+/* How much of a state's span is spent reading it, in staged mode, the rest
+   being the flight to the next state. scroll.js produces the coordinate and
+   this consumes it, so the number lives here and is imported there rather than
+   written twice. */
+export const STAGE_READ = 0.55;
+
+/* Bands when the page is a set of states rather than a document.
+   
+   Nothing can be measured off the DOM here: every state is exactly one
+   viewport and they are all stacked on the same pixels, so a section's
+   position on the page has stopped being a fact about where the reader is. A
+   station's span comes from which panels it owns and where those sit in the
+   order instead -- which is a better source than the old one was even in the
+   scrolling case, because it cannot drift when a paragraph changes length. */
+export function measureStage(stations, ids) {
+  const n = ids.length;
+  if (!n) return stations;
+  for (const s of stations) {
+    let lo = Infinity, hi = -Infinity;
+    for (const id of s.owns) {
+      const k = ids.indexOf(id);
+      if (k >= 0) { lo = Math.min(lo, k); hi = Math.max(hi, k); }
+    }
+    if (!isFinite(lo)) { s.range = [0, 0]; s.settle = [0, 0]; continue; }
+    s.range = [lo / n, (hi + 1) / n];
+    // Settled for as long as its panels are being read. What is left of the
+    // last one's span is the flight, and a flight is what a state change is.
+    s.settle = [lo / n, (hi + STAGE_READ) / n];
+  }
+  const last = stations[stations.length - 1];
+  if (last.settle) last.settle[1] = 1;
+  for (let i = 1; i < stations.length; i++)
+    if (stations[i].settle[0] < stations[i - 1].settle[1])
+      stations[i].settle[0] = stations[i - 1].settle[1] + 1e-4;
+  return stations;
+}
+
 /* Which two formations are loaded and how far between them the cloud is.
    Settled inside a station's own window, transforming between them. Coming
    back up is not a special case: the same pair is loaded and the mix runs the

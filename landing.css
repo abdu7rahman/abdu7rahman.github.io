@@ -117,8 +117,14 @@ body.home.has-world { background-image: none; }
    21% sounds like nothing and is not: the world is bright points on black, so
    what survives is the light and not the dark, and the substrate's own
    exposure is turned up to spend that 21% rather than being dimmed to fit
-   inside it. */
-body.home.has-world #world-mount::after {
+   inside it.
+
+   It only applies to the scrolling document. Once the page is staged the text
+   is inside a panel that carries its own backing, so there is nothing left
+   over the rest of the frame to protect and the world runs there at full
+   strength -- which is the difference between a world you can see and the one
+   this was hiding. */
+body.home.has-world:not(.is-staged) #world-mount::after {
   content: "";
   position: absolute; inset: 0;
   background: var(--landing-bg);
@@ -593,3 +599,147 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   /* the inline height carousel.js set would clip nine cards off the page */
   .carousel__viewport { height: auto !important; overflow: visible !important; }
 }
+
+
+/* ── the page as states ─────────────────────────────────────────────────
+   
+   This is the shape of the thing, and it is the half that was missing. A
+   scrolling document puts its sections one after another: section two is
+   *after* section one, and no amount of choreography behind them changes
+   that reading. Staged, all seven exist at once on the same pixels and the
+   wheel moves between them, so section two is somewhere you *go* -- and the
+   world underneath, which is one continuous space, is finally the thing that
+   carries you there instead of a texture sliding past behind a list.
+
+   states.js owns the behaviour and adds `is-staged`; everything below hangs
+   off that class and off nothing else. No JS, an old browser, reduced motion,
+   a phone: none of them get this, and all of them get the same scrolling
+   document as before. */
+
+body.home.is-staged { height: 100vh; overflow: hidden; }
+body.home.is-staged .shell {
+  height: 100vh;
+  display: flex; flex-direction: column;
+  /* The states are painted into this, so it cannot be the thing that scrolls. */
+  overflow: hidden;
+}
+body.home.is-staged .rail { flex: none; position: static; }
+body.home.is-staged #main {
+  position: relative;
+  flex: 1 1 auto; min-height: 0;
+}
+
+/* Every state, stacked on the same pixels. Only the live one is in the
+   accessibility tree -- states.js sets `inert` -- and only the live one takes
+   the pointer. */
+body.home.is-staged #main > .sec,
+body.home.is-staged #main > .hero {
+  position: absolute; inset: 0 auto 0 0;
+  /* Left of the frame, and only as much of it as the measure needs. What is
+     left is not margin, it is where the world is: the type has always sat left
+     with the machine to the right of it, and staging makes that the layout
+     rather than an arrangement inside one section. */
+  width: min(100%, max(560px, var(--panel-w, 54vw)));
+  /* Each state reads normally inside itself. A short one is a held frame; a
+     long one -- Work, Measured -- is scrolled, and only when it has nothing
+     left to show does the wheel move on. Nothing is cut. */
+  overflow-y: auto; overscroll-behavior: contain;
+  /* Bottom room for the pinned strip, plus enough over it that the last line
+     of a state is not sitting against the rule. */
+  padding-block: clamp(20px, 4vh, 44px) clamp(84px, 11vh, 124px);
+  /* Not a card: a pool of the page's own background under the words that
+     dissolves into the world before it reaches an edge. An edge here would be
+     a panel floating on top of the render, which is the thing this is not. */
+  /* Solid for every pixel a word can land on and fading only past that. The
+     grid below stops at 84% of the panel, so the falloff happens entirely in
+     margin: text is always on the .94, which is the figure the contrast gate
+     reads out of this declaration. */
+  background:
+    linear-gradient(to right,
+      rgba(10, 10, 10, .94) 0%,
+      rgba(10, 10, 10, .94) 86%,
+      rgba(10, 10, 10, 0) 100%);
+  opacity: 0; pointer-events: none;
+  transform: translate3d(0, 2.4vh, 0);
+  transition: opacity 320ms var(--ease), transform 460ms var(--ease);
+  will-change: opacity, transform;
+}
+/* Deliberately short and small. The state change is the world's event, not the
+   text's -- the DOM only has to get out of the way and come back, and anything
+   longer here competes with the transformation it is supposed to be reporting. */
+body.home.is-staged #main > .is-live { opacity: 1; pointer-events: auto; transform: none; }
+body.home.is-staged #main > .is-back { transform: translate3d(0, -2.4vh, 0); }
+
+/* The bands stop being bands. Section tone was how a document separated one
+   part from the next; here the world does that, and a second opaque fill over
+   the panel's own would only take more of the render away. */
+body.home.is-staged .sec--band,
+body.home.is-staged #work { background: none; }
+body.home.is-staged .sec { padding-block: 0; }
+body.home.is-staged .hero { padding-block: 0; min-height: 0; }
+/* The measure, and the room the falloff needs. 16% of a 60vw panel is about
+   140px at 1440 -- wider than the gutter, which is the point: it is where the
+   backing stops being solid, and nothing may be set in it. */
+body.home.is-staged .grid { margin-inline: 0; max-width: none; padding-right: 16%; }
+
+/* The footer is not a state, so it would otherwise lie in the flow underneath
+   all of them. Pinned instead, as a strip that stays put while everything else
+   changes -- which is what a footer carrying a live visit count should have
+   been doing anyway. */
+body.home.is-staged .foot {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  margin: 0; padding: 12px clamp(22px, 5vw, 40px);
+  border-top: 1px solid var(--landing-rule);
+  /* Solid for as far as the strip's own text runs, then gone. A footer that
+     fades where content is still passing under it does not occlude, it
+     smears -- the last line of a long state was legible through it. */
+  background: linear-gradient(to right,
+    rgba(10, 10, 10, .96) 0%, rgba(10, 10, 10, .96) 86%, rgba(10, 10, 10, 0) 100%);
+  pointer-events: none;
+}
+body.home.is-staged .foot a { pointer-events: auto; }
+
+/* Where you are, in the vocabulary the rest of the page already uses for
+   exact readouts. Bottom right, in the part of the frame the panel does not
+   reach, so it sits in the world rather than on the text. */
+.stage-count {
+  position: fixed; right: clamp(22px, 5vw, 40px); bottom: 18px; z-index: 41;
+  margin: 0; pointer-events: none;
+  font: 400 12px/1 var(--mono, ui-monospace, monospace);
+  letter-spacing: .06em;
+  color: var(--landing-mut);
+}
+.stage-count b { font-weight: 400; color: var(--landing-fg); }
+body:not(.is-staged) .stage-count { display: none; }
+
+/* The carousel sizes its viewport from an element it measured while the page
+   was a document. Inside a state it has a height of its own to answer to. */
+body.home.is-staged .carousel__viewport { height: auto !important; }
+
+
+/* How much frame a state needs, which is not the same for all of them. Prose
+   states want a measure and nothing more, so they leave most of the width to
+   the world. Work and Measured carry a card with a stats column and five
+   benchmark tables; squeezed into a measure the project title wrapped to four
+   lines and the numbers stacked under their own labels, which is the content
+   being damaged to make room for a view. They get the width and the world
+   gets less of it there -- the camera at those two stations is framed on
+   matter that sits right of centre anyway. */
+body.home.is-staged #work,
+body.home.is-staged #measured { --panel-w: 68vw; }
+body.home.is-staged #path { --panel-w: 60vw; }
+
+/* The hero's columns were chosen against the full window: the name takes 8 of
+   12 and everything else 7, which left room for the robot to the right of the
+   type. The panel *is* that arrangement now, so the same fractions applied
+   inside it cut the measure twice -- and because the line reveal puts an
+   overflow:hidden box around each line of the name, the second one lost its
+   last glyph to a hard clip rather than merely overflowing. Inside a panel
+   every one of them gets the full width, and the name is sized off the panel
+   rather than off the window. */
+body.home.is-staged .hero__name,
+body.home.is-staged .hero__eyebrow,
+body.home.is-staged .hero__lede,
+body.home.is-staged .hero__meta,
+body.home.is-staged .hero__actions { grid-column: 1 / -1; }
+body.home.is-staged .hero__name { font-size: clamp(2.25rem, 4.6vw, 4rem); }
