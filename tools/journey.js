@@ -52,6 +52,12 @@ const W = +opt('width', UNSTAGED ? 800 : 1440), H = +opt('height', 900);
    points when the machine it was being judged for draws it out of 80000, and
    nothing in the output said so. It says so now. */
 const TIER = opt('tier', 'high');
+/* How long to hold still at each stop before taking the second frame, and
+   which part of the frame to compare. The render half only -- comparing the
+   panel as well would count the caret blinking in a textarea as the world
+   moving. 0 disables the check. */
+const MOVE_MS = +opt('move', 900);
+const MOVE_CLIP = () => ({ x: Math.round(W * 0.54), y: 60, width: Math.round(W * 0.44), height: Math.max(64, H - 220) });
 // Where in a crossing the mid-flight frame is taken. Measured as a share of
 // the world's own travel rather than in milliseconds, because the easing
 // converges per *frame*: the 280 ms that is halfway through a crossing on a
@@ -275,6 +281,27 @@ async function walkStages(page, ctx) {
     const on = await read(page, id);
     if (!on) { ctx.problems.push('the world vanished at ' + tag); break; }
     await page.screenshot({ path: path.join(OUT, tag + '.png') });
+    /* Does anything actually move while nobody is touching it?
+     
+       This is the only question that separates the world from a gallery of
+       renders, and for a long time the answer was no: every station's update()
+       pushed the clock into a uniform the dissolve reads and changed nothing
+       else. A screenshot cannot tell you that -- a still of a running machine
+       and a still of a stopped one are the same picture -- so the frame is
+       taken twice, a second apart, at a stop the reader is settled on and not
+       scrolling, and what is reported is how much of it differs.
+     
+       Grain is the floor. The finish pass lays animated film grain over
+       everything, so even a completely dead frame comes back with a nonzero
+       difference; the threshold is set above what grain alone produces and the
+       raw median is printed next to it so the floor stays visible rather than
+       being something this tool asserts. */
+    if (MOVE_MS > 0) {
+      const before = await page.screenshot({ clip: MOVE_CLIP(page) });
+      await page.waitForTimeout(MOVE_MS);
+      const after = await page.screenshot({ clip: MOVE_CLIP(page) });
+      ctx.moved.push({ tag, a: before, b: after });
+    }
     steps = await page.evaluate(() => window.__jSteps.slice());
     if (steps.length > 1)
       ctx.say(`state ${i} (${id}): one push moved the stage ${steps.length} times (${steps.join(' -> ')})`);
@@ -398,7 +425,7 @@ async function walkScroll(page, boot, ctx) {
   // Loud where it happens as well as collected at the end: half of these are
   // found forty screenshots before the summary is printed.
   const say = m => { suspect.push(m); console.log('SUSPECT: ' + m); };
-  const ctx = { problems, say };
+  const ctx = { problems, say, moved: [] };
   page.on('console', m => {
     const t = m.type();
     if (t !== 'error' && t !== 'warning') return;
@@ -531,6 +558,21 @@ async function walkScroll(page, boot, ctx) {
     }
   }
 
+
+  /* The movement report. Written as pairs of PNGs and compared by an external
+     reader rather than decoded here, because this file has no image library
+     and adding one to a repository whose whole point is that it has no build
+     step is the wrong trade for a diagnostic. */
+  if (ctx.moved.length) {
+    const dir = path.join(OUT, 'motion');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const m of ctx.moved) {
+      fs.writeFileSync(path.join(dir, m.tag + '-a.png'), m.a);
+      fs.writeFileSync(path.join(dir, m.tag + '-b.png'), m.b);
+    }
+    console.log(`\nmotion: ${ctx.moved.length} pairs ${MOVE_MS}ms apart written to ${dir}`);
+    console.log('        compare them to see whether anything in the world runs while the reader is still');
+  }
   if (problems.length) {
     console.log('\nconsole:');
     for (const p of [...new Set(problems)]) console.log('  ' + p);
