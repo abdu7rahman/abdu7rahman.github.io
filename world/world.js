@@ -267,6 +267,14 @@ export async function boot(mount, formationModules) {
 
   let raf = 0, last = performance.now(), running = true, t = 0, baking = false;
   let state = { i: 0, mix: 0 };
+  /* Feature-lengths a second. One pass of a route in five seconds: fast enough
+     that a reader who stops sees it happen, slow enough that it is a machine
+     working rather than a loading bar. */
+  const RUN_RATE = 0.2;
+  let run = 0;
+  // Seconds for the arm to play its four waypoints out and back once.
+  const ARM_CYCLE = 14;
+  let armPhase = 0;
   let framedPanel;
   const jointQ = new Array(6);
   const armFrames = Array.from({ length: 6 }, () => new THREE.Matrix4());
@@ -311,12 +319,27 @@ export async function boot(mount, formationModules) {
     hit.sub(camera.position).normalize().multiplyScalar(3.4).add(camera.position);
     substrate.uniforms.uPointer.value.copy(hit);
 
-    // The arm plays its move across the first station and erodes on the way
-    // out of it. Past that station there is nothing left of it to draw.
+    /* The arm plays its move across the first station and erodes on the way
+       out of it. Past that station there is nothing left of it to draw.
+
+       It used to be posed off the scroll position, which meant the one real
+       machine on the page stood perfectly still for anybody who was not
+       actively scrolling -- and the hero is the state a reader spends longest
+       in without moving. A robot that only moves while you drag it is a
+       diagram of a robot. So it runs on its own clock now, and the scroll is
+       spent on the camera, which is what the scroll is for everywhere else on
+       this page.
+
+       Ping-pong rather than a loop, because the four waypoints do not close:
+       shoulder pan is +0.52 at the first and -0.05 at the last, so wrapping
+       from the end back to the start is a 33-degree snap in one frame. Played
+       out and back it is continuous at both ends and it is also what the move
+       actually is -- a cycle a machine repeats, not a clip. 14 seconds for the
+       round trip: the four poses are a reach, and a reach that takes two
+       seconds reads as a demo running at 2x. */
     if (arm && arm.solid) {
-      const st = STATIONS[0];
-      const span = Math.max(1e-6, st.range[1] - st.range[0]);
-      const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
+      armPhase = (armPhase + dt / ARM_CYCLE) % 2;
+      const local = armPhase < 1 ? armPhase : 2 - armPhase;
       poseAt(local, jointQ);
       linkFrames(jointQ, armFrames);
       for (let i = 1; i < arm.links.length; i++) {
@@ -348,6 +371,19 @@ export async function boot(mount, formationModules) {
        loaded, so a form dissolving and the matter arriving in its place are
        the same number read twice. */
     const charge = Math.min(1, pointer.speed * 2.2);
+
+    /* The world runs. Every station is a system that is executing -- a plan
+       being driven, a window being re-searched, a sweep going round -- and
+       until now not one of them moved: every update() pushed the clock into a
+       uniform the dissolve reads and changed nothing else, so the seven
+       stations were dioramas that crossfaded. `run` is the one number they
+       all share: how far the travelling band has got, in feature-lengths,
+       advanced here rather than derived from the clock in the shader so that
+       a station mid-dissolve slows to a stop instead of running on inside a
+       shape that is coming apart. */
+    const settleT = 1 - Math.sin(Math.PI * state.mix);
+    run = (run + dt * RUN_RATE * (0.25 + 0.75 * settleT)) % 1;
+    substrate.uniforms.uRun.value = run;
     // Whichever station is the dominant one right now, and whether it has
     // anything solid standing. If it does, the cloud steps back for it and
     // comes forward again through the crossing.
@@ -395,7 +431,7 @@ export async function boot(mount, formationModules) {
       const span = Math.max(1e-6, st.range[1] - st.range[0]);
       const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
       const n = FOCUS_OF[st.id];
-      sol.update({ t, cut, local, pointer, charge,
+      sol.update({ t, dt, run, settle: settleT, cut, local, pointer, charge,
                    focus: n ? local * (n - 1) : -1 });
     }
 

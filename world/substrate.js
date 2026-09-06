@@ -29,6 +29,15 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
   const aKB   = new Float32Array(count);
   const aSA   = new Float32Array(count);   // size in A
   const aSB   = new Float32Array(count);
+  /* Flow: where along its own feature a point sits, 0 at the start and 1 at
+     the end, or -1 for a point that is not part of anything that runs. It is
+     the one channel that makes the world a machine rather than a photograph
+     of one -- a route with a flow is a route something is driving, a rollout
+     with a flow is a rollout being swept, a workspace with a flow is a
+     workspace being reached into. Everything else here describes where matter
+     is; this describes what it is doing. */
+  const aFA   = new Float32Array(count).fill(-1);
+  const aFB   = new Float32Array(count).fill(-1);
 
   // Each point's own beat in the morph. Seeded rather than random: the
   // stagger is part of how a transition looks, and it should look the same
@@ -45,6 +54,8 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
   geo.setAttribute("aKB", new THREE.BufferAttribute(aKB, 1));
   geo.setAttribute("aSA", new THREE.BufferAttribute(aSA, 1));
   geo.setAttribute("aSB", new THREE.BufferAttribute(aSB, 1));
+  geo.setAttribute("aFA", new THREE.BufferAttribute(aFA, 1));
+  geo.setAttribute("aFB", new THREE.BufferAttribute(aFB, 1));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, -8), 60);
 
   const uniforms = {
@@ -62,6 +73,13 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
        constant across tiers instead of point count. Square root because
        coverage goes as the square of the radius. */
     uDensity:{ value: 1 },
+    /* How far the travelling band has got, in feature-lengths. Advanced by the
+       loop rather than derived from uTime here, so a station can run its own
+       system at its own rate and stop while it is being dissolved. */
+    uRun:    { value: 0 },
+    // Width of that band as a share of the feature, and how much it brightens.
+    uRunWidth:{ value: 0.16 },
+    uRunLift:{ value: 1.5 },
     uCharge: { value: 0 },      // pointer speed
     uFade:   { value: 1 },      // how much of the cloud is wanted right now
     uPointer:{ value: new THREE.Vector3() },
@@ -82,11 +100,11 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
     blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */`
       ${SIMPLEX3}
-      uniform float uTime, uMix, uArc, uDpr, uDensity, uCharge, uFade;
+      uniform float uTime, uMix, uArc, uDpr, uDensity, uCharge, uFade, uRun, uRunWidth, uRunLift;
       uniform vec3 uPointer;
       attribute vec3 aA, aB;
-      attribute float aSeed, aKA, aKB, aSA, aSB;
-      varying float vKind, vHeat, vAlpha;
+      attribute float aSeed, aKA, aKB, aSA, aSB, aFA, aFB;
+      varying float vKind, vHeat, vAlpha, vRun;
       void main(){
         // Every point crosses on its own beat. A uniform mix slides the whole
         // cloud from one shape to the other like a slide transition; staggering
@@ -117,7 +135,25 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
 
         vKind = mix(aKA, aKB, m);
         vHeat = bow;
+
+        /* The travelling band. Both endpoints carry a flow or the point is
+           not running, because a feature that exists in one formation and not
+           the other would otherwise pulse on the way in and stop dead on the
+           way out. Wrapped on the near side only -- fract of a negative is
+           still positive in GLSL, but the distance has to be measured the
+           short way round or the band tears every time it laps. */
+        float fl = mix(aFA, aFB, m);
+        vRun = 0.0;
+        if (aFA >= 0.0 && aFB >= 0.0) {
+          float d = fract(fl - uRun);
+          d = min(d, 1.0 - d);
+          vRun = smoothstep(uRunWidth, 0.0, d);
+        }
         float sz = mix(aSA, aSB, m);
+        // A point the band is over is drawn a little larger as well as a
+        // little brighter, which is what keeps it reading as something moving
+        // through the matter rather than as the matter changing colour.
+        sz *= 1.0 + vRun * 0.55;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         float depth = -mv.z;
 
@@ -135,8 +171,8 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uAccent, uTeal, uFg;
-      uniform float uFade;
-      varying float vKind, vHeat, vAlpha;
+      uniform float uFade, uRunLift;
+      varying float vKind, vHeat, vAlpha, vRun;
       void main(){
         vec2 d = gl_PointCoord - 0.5;
         float r2 = dot(d, d);
@@ -150,6 +186,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
         col = mix(col, uTeal, clamp(vKind - 1.0, 0.0, 1.0));
         // Hotter while it is in transit, so a change reads as energetic.
         col *= 0.55 + vHeat * ${HEAT};
+        col *= 1.0 + vRun * uRunLift;
         // Exposed for the 21% of it that survives the page's scrim, not for
         // what it would look like on its own. Under-exposing here and then
         // filtering it again is how a world ends up technically running and
@@ -187,15 +224,16 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
   let baked = [];
   let spanAt = -1;
 
-  const dirty = ["aA", "aB", "aKA", "aKB", "aSA", "aSB"];
+  const dirty = ["aA", "aB", "aKA", "aKB", "aSA", "aSB", "aFA", "aFB"];
 
   function ensure(i) {
     if (i < 0 || i >= source.length || baked[i]) return false;
     const p = new Float32Array(count * 3);
     const k = new Float32Array(count);
     const z = new Float32Array(count);
-    source[i](p, k, z, count);
-    baked[i] = { p, k, s: z };
+    const f = new Float32Array(count).fill(-1);
+    source[i](p, k, z, count, f);
+    baked[i] = { p, k, s: z, f };
     return true;
   }
 
@@ -221,8 +259,8 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
       const ib = Math.max(0, Math.min(source.length - 1, i + 1));
       ensure(ia); ensure(ib);
       const a = baked[ia], b = baked[ib];
-      aA.set(a.p); aKA.set(a.k); aSA.set(a.s);
-      aB.set(b.p); aKB.set(b.k); aSB.set(b.s);
+      aA.set(a.p); aKA.set(a.k); aSA.set(a.s); aFA.set(a.f);
+      aB.set(b.p); aKB.set(b.k); aSB.set(b.s); aFB.set(b.f);
       for (const k of dirty) geo.getAttribute(k).needsUpdate = true;
       spanAt = i;
     },

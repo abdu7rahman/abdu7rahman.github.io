@@ -34,7 +34,7 @@ export function rng(seed) {
   };
 }
 
-function writer(pos, kind, size, from, to) {
+function writer(pos, kind, size, flow, from, to) {
   let i = from;
   return {
     get room() { return to - i; },
@@ -42,14 +42,20 @@ function writer(pos, kind, size, from, to) {
     /* Takes a share of what is left, so a formation says "a third of the
        structure is the floor grid" instead of counting points by hand. */
     share(f) { return Math.max(0, Math.floor((to - i) * f)); },
-    put(x, y, z, k, s) {
+    /* `f` is where along its own feature this point sits, 0 to 1, and it is
+       what the travelling band in the substrate reads. Left off, the point is
+       structure that does not run -- a wall, a plinth, a block -- and -1 says
+       so explicitly rather than by accident, because 0 is a legitimate place
+       to be at the start of a route. */
+    put(x, y, z, k, s, f) {
       if (i >= to) return false;
       pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
       kind[i] = k; size[i] = s;
+      flow[i] = f === undefined ? -1 : f;
       i++;
       return true;
     },
-    v(p, k, s) { return this.put(p.x, p.y, p.z, k, s); },
+    v(p, k, s, f) { return this.put(p.x, p.y, p.z, k, s, f); },
     /* Nothing may be left unwritten: an untouched slot is a point sitting at
        the world origin, and a few thousand of them stack into a bright clot
        nobody asked for. Leftovers are scattered back over what was written,
@@ -58,7 +64,7 @@ function writer(pos, kind, size, from, to) {
     pad(jitter) {
       const j = jitter === undefined ? 0.02 : jitter;
       const n = i - from;
-      if (n <= 0) { while (i < to) { pos[i*3] = 0; pos[i*3+1] = -400; pos[i*3+2] = 0; kind[i] = 0; size[i] = 0; i++; } return; }
+      if (n <= 0) { while (i < to) { pos[i*3] = 0; pos[i*3+1] = -400; pos[i*3+2] = 0; kind[i] = 0; size[i] = 0; flow[i] = -1; i++; } return; }
       const r = rng(from * 2654435761 + 17);
       while (i < to) {
         const src = from + Math.floor(r() * n);
@@ -67,6 +73,9 @@ function writer(pos, kind, size, from, to) {
         pos[i*3 + 2] = pos[src*3 + 2] + (r() - 0.5) * j;
         kind[i] = kind[src];
         size[i] = size[src] * 0.85;
+        // Padding inherits what it was scattered from, flow included: a point
+        // copied off a route is still on that route.
+        flow[i] = flow[src];
         i++;
       }
     }
@@ -75,13 +84,17 @@ function writer(pos, kind, size, from, to) {
 
 /* The three writers for one formation, at the index ranges every formation
    shares. */
-export function bands(pos, kind, size, count) {
+export function bands(pos, kind, size, count, flow) {
   const nS = Math.floor(count * SPLIT.structure);
   const nP = Math.floor(count * SPLIT.path);
+  // Formations written before the flow channel existed call this with four
+  // arguments; they get a scratch buffer and write nothing into it, which is
+  // exactly what "this formation does not run" means.
+  const fl = flow || new Float32Array(count).fill(-1);
   return {
-    S: writer(pos, kind, size, 0, nS),
-    P: writer(pos, kind, size, nS, nS + nP),
-    F: writer(pos, kind, size, nS + nP, count)
+    S: writer(pos, kind, size, fl, 0, nS),
+    P: writer(pos, kind, size, fl, nS, nS + nP),
+    F: writer(pos, kind, size, fl, nS + nP, count)
   };
 }
 
@@ -123,7 +136,14 @@ export function sampleSoup(soup, n, w, kind, sz, seed) {
 
 /* A polyline, sampled by arc length so a slow stretch is not denser than a
    fast one -- the trajectory should read as a route, not as a speed graph. */
-export function polyline(pts, n, w, kind, sz, jitter, seed) {
+/* `flow` says whether the points written carry a travelling parameter, and
+   over what range. Left off, they do not run. `true` maps this line's own arc
+   length onto 0..1. A pair maps it onto that slice instead, which is how
+   several separate strokes -- five bars of a profile, six sweeps of a LiDAR --
+   are made into one thing that runs end to end rather than six things that
+   each run privately and at once. The parameter is already computed here to
+   sample by arc length, so this costs a store. */
+export function polyline(pts, n, w, kind, sz, jitter, seed, flow) {
   if (pts.length < 2) return;
   const seg = [], cum = [0];
   let total = 0;
@@ -140,8 +160,12 @@ export function polyline(pts, n, w, kind, sz, jitter, seed) {
     while (i < cum.length - 1 && cum[i] < x) i++;
     const t = (x - cum[i - 1]) / Math.max(1e-6, seg[i - 1]);
     p.copy(pts[i - 1]).lerp(pts[i], t);
+    const u = x / total;
+    const f = flow === undefined || flow === false ? undefined
+            : flow === true ? u
+            : flow[0] + (flow[1] - flow[0]) * u;
     w.put(p.x + (r() - 0.5) * jitter, p.y + (r() - 0.5) * jitter, p.z + (r() - 0.5) * jitter,
-          kind, sz);
+          kind, sz, f);
   }
 }
 

@@ -104,8 +104,8 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = r() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
     /* Half the band placed and the other half left to pad. Scattering the
        remainder over what is already there keeps the horizon a horizon: a
@@ -122,13 +122,26 @@ export function build(ctx) {
     }
     S.pad(0.35);
 
+    /* The stub runs, and only the stub. Everything else at this station is
+       deliberately still -- the frame does not turn and the horizon does not
+       drift, because the last thing anybody reads here is an email address and
+       the world's remaining duty is to stop competing with it. But the accent
+       arriving from the corridor has been a swept trajectory, a planned route,
+       a benchmark profile and a driven corridor at the four stations before
+       this one, and in every one of them it is something being travelled. If
+       it stopped travelling on arrival it would not read as the same strand
+       coming to rest, it would read as a different strand that happens to be
+       the same colour. So it keeps its parameter, mapped the way it is stored
+       -- 0 where the track is oldest, 1 where it stops -- and the band runs
+       out along it to the origin and ends. */
     const nTr = P.room, perTr = TRAIL / Math.max(1, nTr);
     for (let k = 0; k < nTr; k++) {
-      const o = ((k * perTr) | 0) * 5, j = (k * 3) & JM;
+      const i = (k * perTr) | 0, o = i * 5, j = (k * 3) & JM;
       const w = trail[o + 4];
       P.put(trail[o]     + jit[j]     * w,
             trail[o + 1] + jit[j + 1] * w * 0.55,
-            trail[o + 2] + jit[j + 2] * w, PATH, trail[o + 3]);
+            trail[o + 2] + jit[j + 2] * w, PATH, trail[o + 3],
+            i / Math.max(1, TRAIL - 1));
     }
     P.pad(0.02);
 
