@@ -472,12 +472,24 @@ export async function boot(mount, formationModules) {
       ndcNow.copy(focusPt).applyMatrix4(viewProj);
       if (haveLast) {
         ndcWas.copy(focusPt).applyMatrix4(viewProjLast);
-        // Per second, not per frame: a smear that is a fixed number of pixels
-        // per frame is twice as long on a 30 Hz panel as on a 60 Hz one, which
-        // is the wrong way round from how a shutter actually behaves.
+        /* In UV, and normalised to a 60Hz step, because that is the quantity
+           the finish pass is calibrated in: its gate opens between 3e-4 and
+           2e-3 of it and its shutter constant assumes it. NDC spans two where
+           UV spans one, hence the half; the reciprocal of 60*dt turns this
+           frame's actual travel into the travel a sixtieth of a second would
+           have carried, so a 144Hz panel is not handed a quarter of the streak
+           and a 30Hz one is not handed twice it.
+        
+           Frame-rate normalised rather than per-second on purpose. A shutter
+           angle is a fraction of a frame, not a fixed exposure, and the pass
+           spends its sixteen taps over the streak it is given -- handed a
+           per-second figure it would draw a smear sixty times too long and
+           land the taps eight pixels apart, which is a row of dots rather than
+           a line. */
+        const k = 0.5 / Math.max(1e-4, 60 * dt);
         finish.uniforms.uMotion.value.set(
-          (ndcNow.x - ndcWas.x) / Math.max(1e-4, dt),
-          (ndcNow.y - ndcWas.y) / Math.max(1e-4, dt));
+          (ndcNow.x - ndcWas.x) * k,
+          (ndcNow.y - ndcWas.y) * k);
       } else {
         finish.uniforms.uMotion.value.set(0, 0);
       }

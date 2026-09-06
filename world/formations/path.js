@@ -11,6 +11,11 @@
  * station, so the six sweeps agree about where the corridor is and their
  * union is a map instead of six rings. That agreement is the entire reason
  * the accumulated cloud reads as a map being built.
+ *
+ * And it runs. Six sweeps baked at once and all lit at once is a photograph
+ * of a survey; what a survey looks like is one sensor going round, at one
+ * place at a time, in the order it drove. The flow channel is what says so,
+ * and every decision about it is below under "what runs".
  */
 import * as THREE from "three";
 import { bands, polyline, triad, rng, STRUCTURE, PATH } from "./lib.js";
@@ -34,6 +39,44 @@ const RANGE = 3.9;       // how far a beam travels before it comes back empty
 const RUN = 3.4;         // half the travelled stretch, either side of the anchor
 const RIDE = 0.40;       // where the sweep plane sits above the floor
 const SAMPLES = 384;     // route samples: fine enough that the tangent is smooth
+
+/* ── what runs ──────────────────────────────────────────────────────────
+   `uRun` walks 0..1 in five seconds and the substrate lights every point
+   whose flow lands within uRunWidth -- 0.16 -- of it. So flow is not a
+   decoration, it is a schedule: whatever is happening now carries a value
+   near uRun, whatever is not carries one far from it, and -1 means the point
+   is not part of anything that happens at all. The corridor's accumulated
+   map is written with -1 for exactly that reason. A wall is not moving.
+
+   The schedule is the drive, and the drive runs from the far end of the
+   corridor back toward the eye. That direction is chosen by where the loop's
+   seam can be hidden, because a seam is the one thing a five-second loop
+   cannot have in the open: the route's far end is 7.29 m from the camera and
+   32% into the fog, and its near end is 0.46 m from the lens, 36 degrees
+   wide and only two and a half degrees clear of the bottom of the frame.
+   Whatever appears has to appear at the far end. So flow 0 is the far end of
+   the route and flow 1 is the near end -- the reverse of the route's own arc
+   length -- and the six stops are swept last-to-first, 5 through 0.
+
+   Each stop gets a slice of that schedule rather than an instant, and inside
+   its slice a return's flow is its own azimuth. That is the whole difference
+   between six sweeps flashing in turn and one sensor going round: of the 675
+   or so returns a stop gets back from the 900 beams it fires, the ones lit at
+   any moment are a single vertical fan, and it travels round the room once
+   per slice -- pinching to nothing fore and aft, where a roll about the
+   heading leaves the beam where it was, and opening to full height on both
+   walls, which is the shape a nodding planar scanner actually paints.
+
+   Half-width 0.082, so the six slices tile the 0.82 of the route the stops
+   are spread over without gapping or overlapping. Against a band that
+   reaches 0.16 either side that means two stops are in the light at once and
+   one ring runs 1.00 at its middle to 0.48 at its ends: a gradient crossing
+   a ring, rather than a ring switching on. At the wrap those two stops are
+   the two ends of the corridor rather than neighbours -- the last sweep
+   handing over to the first -- which is the one place in the lap the
+   schedule is not local, and the place the machine on the solid layer is
+   deliberately not standing. */
+const SLICE = 0.82 / (STATIONS - 1) * 0.5;
 
 export function build(ctx) {
   const anchor = ctx.anchor;
@@ -138,6 +181,7 @@ export function build(ctx) {
   const SIG_R = 0.016;      // spread along the beam, revolution to revolution
   const SIG_A = 0.006;      // and across it, since the scanner's phase is free
   const hit = [];           // hx hy hz | radial | in-plane transverse
+  const hf = [];            // and where each of them falls in the schedule
   const map = [];           // the same returns, each sweep registered a little wrong
   const first = new Int32Array(STATIONS), last = new Int32Array(STATIONS);
   const poses = [], origins = [];
@@ -148,7 +192,14 @@ export function build(ctx) {
   for (let k = 0; k < STATIONS; k++) {
     // Held off both ends: the camera keyframe sits behind the first sweep and
     // the corridor has to keep running past the last one.
-    const s = (0.09 + (k / (STATIONS - 1)) * 0.82) * span;
+    const at = 0.09 + (k / (STATIONS - 1)) * 0.82;
+    const s = at * span;
+    /* This stop's slice, centred on where the stop actually stands in the
+       drive rather than on an even sixth of the clock: spaced by metres
+       driven, the stops are 1.145 m and 0.820 s apart, and a schedule that
+       ignored that would light a sweep before or after the machine got to
+       it. `1 - at` because the flow runs against the arc length. */
+    const c0 = 1 - at - SLICE, cw = SLICE * 2;
     let i = 1;
     while (i < SAMPLES - 1 && cum[i] < s) i++;
     const f = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
@@ -194,6 +245,12 @@ export function build(ctx) {
                  (-e1.x * sn + e2.x * c) * r * SIG_A,
                  (-e1.y * sn + e2.y * c) * r * SIG_A,
                  (-e1.z * sn + e2.z * c) * r * SIG_A);
+        // Azimuth, not revolution: all five nods of one stop share a beam's
+        // bearing, so what lights up together is the fan the servo swept
+        // through at that bearing. Keying it on `d` instead would have put
+        // five whole rings inside the band at once, which is a stop
+        // brightening and dimming -- the thing this is here to stop being.
+        hf.push(c0 + (b / RAYS) * cw);
         map.push(o.x + (hx - o.x) * ce - (hz - o.z) * se + ex,
                  hy + eh,
                  o.z + (hx - o.x) * se + (hz - o.z) * ce + ez);
@@ -202,6 +259,7 @@ export function build(ctx) {
     last[k] = hit.length / 9;
   }
   const H = Float32Array.from(hit), M = Float32Array.from(map);
+  const HF = Float32Array.from(hf);
   const HITS = H.length / 9;
 
   /* A few beams drawn all the way out at each station. A return with no ray
@@ -209,19 +267,25 @@ export function build(ctx) {
      somewhere. Stopped short of the hit so the beam and its own return stay
      legible as two things. */
   const PER_STATION = 5, ALONG = 26;
-  const beam = [];
+  const beam = [], bf = [];
   for (let k = 0; k < STATIONS; k++) {
     const o = origins[k], n = last[k] - first[k];
     if (n <= 0) continue;
     for (let j = 0; j < PER_STATION; j++) {
-      const h = (first[k] + ((((j * n / PER_STATION) | 0) + k * 37) % n)) * 9;
+      const g = first[k] + ((((j * n / PER_STATION) | 0) + k * 37) % n), h = g * 9;
       for (let s = 0; s < ALONG; s++) {
         const t = 0.03 + (s / (ALONG - 1)) * 0.59;
         beam.push(o.x + (H[h] - o.x) * t, o.y + (H[h + 1] - o.y) * t, o.z + (H[h + 2] - o.z) * t);
+        // The whole ray carries its own return's place in the schedule, not a
+        // ramp along its length: a beam is emitted at one bearing at one
+        // instant, so it lights with the return it made and goes out with it.
+        // Ramping it would have drawn the ray as though the light took a
+        // fifth of a second to travel two metres.
+        bf.push(HF[g]);
       }
     }
   }
-  const B = Float32Array.from(beam), BEAMS = B.length / 3;
+  const B = Float32Array.from(beam), BF = Float32Array.from(bf), BEAMS = B.length / 3;
 
   /* One table of noise, read three at a time from a stride coprime with its
      length so the triples never repeat inside a band. Two entries of overrun
@@ -233,8 +297,8 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = jr() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
     /* The returns. A stop is not one revolution: the scanner keeps turning
        while the base stands still, and each turn puts the return in a
@@ -247,16 +311,25 @@ export function build(ctx) {
     const nRet = S.share(0.78);
     const perRet = HITS / Math.max(1, nRet);
     for (let k = 0; k < nRet; k++) {
-      const o = ((k * perRet) | 0) * 9, j = (k * 3) & JM;
+      const g = (k * perRet) | 0, o = g * 9, j = (k * 3) & JM;
       const a = jit[j], b = jit[j + 1], c = jit[j + 2];
+      // Every copy of a return carries the same schedule value as the return
+      // it was drawn from, so the range noise spreads the fan in space and
+      // not in time: a fan 16 mm thick, which is what SIG_R says, rather than
+      // a fan smeared across the slice it was fired in.
       S.put(H[o]     + H[o + 3] * a + H[o + 6] * b,
             H[o + 1] + H[o + 4] * a + H[o + 7] * b + c * 0.010,
             H[o + 2] + H[o + 5] * a + H[o + 8] * b,
-            STRUCTURE, 1.0);
+            STRUCTURE, 1.0, HF[g]);
     }
     /* The map: all six sweeps in one frame at once, each one off by its own
        registration error, so the walls come out as a band rather than a line.
-       Faint, because it is the accumulation and not the reading. */
+       Faint, because it is the accumulation and not the reading.
+
+       And no flow, deliberately. This is the corridor -- what has already
+       been measured and is not being measured again -- and a wall that
+       brightens as something passes it is a wall that is doing something.
+       Only the live returns run; the room they land on stands still. */
     const nMap = S.room, perMap = HITS / Math.max(1, nMap);
     for (let k = 0; k < nMap; k++) {
       const o = ((k * perMap) | 0) * 3, j = (k * 3 + 977) & JM;
@@ -269,20 +342,30 @@ export function build(ctx) {
 
     /* One strand, unbroken, for the same reason it was unbroken when it was a
        planned route and a result profile: the accent has to arrive here as
-       the same thing it left as, or the morph reads as a cut. */
+       the same thing it left as, or the morph reads as a cut.
+
+       [1, 0] rather than `true`: the strand is stored from the near end
+       outward, and the drive runs the other way. Handed `true` the band would
+       travel away down the corridor while the machine on the solid layer came
+       up it, which is two systems disagreeing about which way the robot went
+       -- worse than neither of them moving. */
     const nBeam = P.share(0.25), perBeam = BEAMS / Math.max(1, nBeam);
-    polyline(strand, P.room - nBeam, P, PATH, 1.5, 0.012, 0x51c7);
+    polyline(strand, P.room - nBeam, P, PATH, 1.5, 0.012, 0x51c7, [1, 0]);
     for (let k = 0; k < nBeam; k++) {
-      const o = ((k * perBeam) | 0) * 3, j = (k * 3 + 2311) & JM;
+      const g = (k * perBeam) | 0, o = g * 3, j = (k * 3 + 2311) & JM;
       P.put(B[o]     + jit[j]     * 0.006,
             B[o + 1] + jit[j + 1] * 0.006,
             B[o + 2] + jit[j + 2] * 0.006,
-            PATH, 0.85);
+            PATH, 0.85, BF[g]);
     }
     P.pad();
 
     /* Six poses, in the order the timeline lists them. Short arms: a frame is
-       punctuation, and at half a metre it would be a windmill. */
+       punctuation, and at half a metre it would be a windmill.
+
+       No flow either. A pose is a number that was written down, and the six
+       of them are the output of the drive rather than part of it; running
+       them would say the frames were being re-measured. */
     const per = Math.floor(F.room / STATIONS);
     for (let k = 0; k < STATIONS; k++) triad(poses[k], per, F, 0.20, 1.15);
     F.pad();

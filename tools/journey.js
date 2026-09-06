@@ -56,7 +56,16 @@ const TIER = opt('tier', 'high');
    which part of the frame to compare. The render half only -- comparing the
    panel as well would count the caret blinking in a textarea as the world
    moving. 0 disables the check. */
-const MOVE_MS = +opt('move', 900);
+/* Off by default, and that is not timidity. Each stop already costs a
+   screenshot, and on the software rasteriser a headless run is stuck with, a
+   single frame at 1916x953 takes three to five seconds -- measured, median
+   3380 ms at the hero and 4746 ms in the corridor, and the same on the commit
+   before any of the motion work, so it is the rasteriser and not the world.
+   Two more screenshots per stop pushed the run past Playwright's 30 s
+   screenshot timeout and took the whole journey down with it. Asked for
+   explicitly (--move 900) it is the check that matters most; left on by
+   default it breaks the check that runs every time. */
+const MOVE_MS = +opt('move', 0);
 const MOVE_CLIP = () => ({ x: Math.round(W * 0.54), y: 60, width: Math.round(W * 0.44), height: Math.max(64, H - 220) });
 // Where in a crossing the mid-flight frame is taken. Measured as a share of
 // the world's own travel rather than in milliseconds, because the easing
@@ -419,6 +428,9 @@ async function walkScroll(page, boot, ctx) {
   const page = await browser.newPage({ viewport: { width: W, height: H },
                                        deviceScaleFactor: 1,
                                        reducedMotion: REDUCED ? 'reduce' : 'no-preference' });
+  /* The default 30 s is a browser timeout on a browser that renders at 60 Hz.
+     This one renders at a fifth of a hertz. */
+  page.setDefaultTimeout(120000);
 
   const problems = [];
   const suspect = [];

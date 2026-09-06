@@ -15,15 +15,22 @@
  * where it would have to reach through the plate it is bolted to, and hollow,
  * because a six-axis arm cannot fold its own tool back into its own shoulder.
  *
+ * And it is reached into rather than displayed. A shell of points standing
+ * still states a fact about the hardware; the same shell with the base joint
+ * mapped onto the substrate's travelling band is the machine finding that
+ * fact out. A plane of solutions sweeps the volume once every lap, the way
+ * the arm would cover it: by slewing.
+ *
  * The accent arrives from the manipulator as one executed trajectory. Here it
  * becomes the fan that trajectory was chosen out of: that same move and six
  * others between the same two poses, every one of them something the arm
- * could have been told to do instead. The copy in this section is about
- * deciding where a robot goes next, and a decision drawn as a single line is
- * not a decision.
+ * could have been told to do instead, and all seven rolled out at once rather
+ * than one at a time. The copy in this section is about deciding where a
+ * robot goes next, and a decision drawn as a single line is not a decision.
  */
 import * as THREE from "three";
-import { bands, polyline, triad, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
+import { bands, polyline, rng, STRUCTURE, PATH } from "./lib.js";
+import { RUN_SHARE, runTriad } from "./hero.js";
 import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
 
 /* Offsets from the station anchor; the caller adds it. A step in from the
@@ -32,10 +39,17 @@ import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
    travels while the matter reorganises steals the reorganisation.
 
    Solved rather than nudged, against the envelope this file actually writes.
-   The reachable volume runs 1.75 wide, 1.36 tall and 1.68 deep and its centre
-   of mass sits 0.19 above and 0.10 in front of the base plate, which is a
-   much bigger object than the arm that generated it: at the manipulator's own
-   standoff it overflows the frame on three sides.
+   Re-measured off the buffer rather than off this paragraph, because this
+   paragraph had drifted: it read 1.75 wide, 1.36 tall and 1.68 deep with a
+   centre of mass 0.19 above the base plate, and boxing the 41921 envelope
+   points the fill hands the substrate at the high tier gives 2.604 wide,
+   1.653 tall and 2.275 deep, centred 0.740 above the plate, 0.209 in front of
+   it and 0.448 to its left. The 0.19 was the centroid's world y read as a
+   height, and the plate is at -0.55. Either way the conclusion it was drawn
+   for stands harder than it did: this is a much bigger object than the arm
+   that generated it, and at the manipulator's own standoff it overflows the
+   frame on three sides. The NDC readings below are framing.js's and were
+   never in doubt; the dimensions were.
 
    1.62 of standoff did not solve that, it only moved where the overflow
    landed, and the 0.6 of leftward aim that went with it was not about the
@@ -129,7 +143,8 @@ function reachable(p, frames) {
    of them, so the walk in fill thins the envelope rather than writing the
    same solution twice, and enough that the shell's thin regions are still
    populated once the volume has been divided by them. Solving for it costs
-   the boot a few tens of milliseconds, once. */
+   the boot a few tens of milliseconds, once: 17000 accepted out of 24349
+   draws, a 69.8% acceptance rate. */
 const POOL = 17000;
 
 /* The fan, and how far off the executed move its alternates are allowed to
@@ -169,8 +184,47 @@ export function build(ctx) {
      Every test below is made in the arm's own frame, before the placement is
      applied, so a rejected sample costs a comparison rather than a matrix. */
   const env = new Float32Array(POOL * 3);
+  /* And where in the sweep each accepted solution belongs: its base joint,
+     normalised over the base's own range in the box.
+   *
+   * This is the parameter the volume is reached into on, and the choice is
+   * forced rather than picked. Of the six joints the base is the only one the
+   * acceptance test above cannot see: every line of `reachable` is either a
+   * height in the arm's frame or a distance between two things in it, and
+   * rotating the whole chain about the base axis changes neither. Nothing is
+   * ever rejected for the value of q[0]. So the accepted pool is uniform in
+   * it -- measured, the deciles of this array come out 1713 1643 1672 1645
+   * 1716 1691 1721 1738 1723 1738 of 17000, flat to within the 2.4% that one
+   * standard deviation of 1700 draws is worth -- and a band advancing at a
+   * constant rate through it covers the volume at a constant rate. Map any
+   * other joint and the sweep stalls wherever that joint's solutions were
+   * being thrown away.
+   *
+   * It is also the joint that means something to look at. q[0] is what
+   * carries the whole arm round the room; the other five decide the shape of
+   * the cross-section it carries. Mapped this way the lit matter is a plane
+   * of solutions slewing about the base axis, which is the motion the machine
+   * would actually make to cover its own envelope. Ordered on reach, or on
+   * height, or on nothing at all, the same points arrive as a bubble or as a
+   * dissolve, and a dissolve is what this was trying to stop being.
+   *
+   * The base range is 1.7300 wide -- -0.76 to 0.97 -- and the substrate's
+   * 0.16 is where the band falls to nothing, so it is at half strength 0.08
+   * either side of its centre. That half-strength window is 0.16 of the base
+   * range: 0.277 of rotation, 15.9 degrees. What it holds, measured on the
+   * pool, is 16.0% of it, and the shape of that 16% is the whole argument --
+   * a slab 2.517 wide and 1.643 tall against a volume that is 2.594 and
+   * 1.643, and 0.935 deep against 2.269. Full width, full height, 41% of the
+   * depth. It reads as a plane because it is one.
+   *
+   * The lap does not close, and is not pretended to: the band leaves at 0.97
+   * and comes back at -0.76, a 99 degree jump. That is the same jump the
+   * tool's route makes when it runs off the end of the move and starts again,
+   * and it is what it looks like -- a program repeating, not a wheel turning. */
+  const envF = new Float32Array(POOL);
   let n = 0;
   const cen = new THREE.Vector3();
+  let fSum = 0;
   // Bounded, because rejection sampling has no upper bound of its own and a
   // boot is not allowed to be unlucky.
   for (let tries = 0; n < POOL && tries < POOL * 12; tries++) {
@@ -180,11 +234,18 @@ export function build(ctx) {
     if (!reachable(v, frames)) continue;
     v.applyMatrix4(place);
     env[n * 3] = v.x; env[n * 3 + 1] = v.y; env[n * 3 + 2] = v.z;
+    envF[n] = (q[0] - LO[0]) / (HI[0] - LO[0]);
+    fSum += envF[n];
     cen.add(v);
     n++;
   }
   const NENV = n;
   cen.multiplyScalar(1 / Math.max(1, NENV));
+  // Where in the lap the sweeping plane is passing through the middle of the
+  // range that made the volume. 0.504 at this seed, which is 0.5 plus the
+  // noise on 17000 uniform draws, and it is the tick the volume's own frame
+  // is given below.
+  const meanF = fSum / Math.max(1, NENV);
 
   /* The routes. The first is the move the manipulator actually played, so the
      strand that arrives from the previous formation stays exactly where it
@@ -231,7 +292,9 @@ export function build(ctx) {
      so the teal does not move at all across the crossing. It is the one thing
      in the frame that does not: the skin flies out into the envelope and the
      accent opens into a fan around six coordinate frames that stay nailed
-     exactly where they were, which is what "in place" is supposed to mean. */
+     exactly where they were, which is what "in place" is supposed to mean.
+     They keep the manipulator's phases too, k/6 down the chain, so the pulse
+     that was running base to wrist over there is the same pulse over here. */
   poseAt(0, q);
   linkFrames(q, frames);
   const joints = frames.map(f => new THREE.Matrix4().copy(place).multiply(f));
@@ -240,7 +303,8 @@ export function build(ctx) {
      finer: it is the one part of the previous formation that has no business
      moving, and a volume with nothing underneath it hangs rather than stands.
      Thinning outwards for the reason it thinned there -- an even lattice
-     reads as graph paper and one that falls off reads as a room. */
+     reads as graph paper and one that falls off reads as a room. It carries
+     no flow for the same reason it carries none there. */
   const floor = [];
   const STEP = 0.075, HALF = 18;
   for (let ix = -HALF; ix <= HALF; ix++) {
@@ -259,12 +323,72 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = r() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
-    const nEnv = S.share(0.82), perEnv = NENV / Math.max(1, nEnv);
+    /* The envelope, in two passes over one pool: the share that runs first,
+       at exactly the count the manipulator gave its body sweep, then the rest.
+       Same solutions, same volume, same jitter -- the only difference between
+       the two passes is that the first carries its sample's base angle and
+       the second carries nothing. First because the manipulator's running
+       matter is first: RUN_SHARE is imported rather than repeated, and taken
+       off a full band in both files, so the two counts are the same integer
+       and the sweep is written onto the indices the body sweep was written
+       onto. What crosses is then one band handing over to another band rather
+       than one lighting up while the other goes out.
+
+       The two passes take disjoint parts of the pool, the head and the tail,
+       rather than both walking all of it. Drawn from the same entries, every
+       swept point would have had two or three unswept twins written 6mm off
+       it -- four device pixels, inside a splat this shader draws twelve
+       across at this standoff -- and each twin would have sat dark while it
+       lit, which is most of the contrast the sweep has to spend. Head and
+       tail are both uniform samples of the volume, because the pool is in the
+       order it was solved and that is the order the joint vectors were drawn:
+       splitting it anywhere splits the volume nowhere. */
+    const nRun = S.share(RUN_SHARE);
+    const nEnv = Math.floor((S.room - nRun) * 0.82);
+    const cut = Math.max(1, Math.min(NENV - 1, nRun));
+
+    /* 0.62 against the 0.85 the rest of the shell is drawn at, and that is
+       the whole exposure argument. The crossing into this station is the
+       brightest moment on the page -- two clouds centred on the same machine,
+       passing through each other -- so a sweep is only allowed here if it
+       pays for itself rather than being added on top.
+
+       It does, by construction. Under the band the shader multiplies a point
+       by 1.55 in size and 2.5 in colour, so a 0.62 point at the peak is 0.96
+       across and 3.2 times the light of a settled 0.85 one; off the band it
+       is 0.53 of one, and the band's support is 0.32 of the lap. Integrated
+       over a lap a swept point averages 0.90 of a settled one, and the shell
+       as a whole comes out 1.7% under a shell with no sweep in it.
+
+       Measured, at 1916x953 on the high tier, over the right-hand render half
+       that tools/exposure.js crops to: settled About was 0.0295 of the frame
+       above 140 before the sweep existed and 0.0298 after, p99 164 against
+       166, each the mean of five consecutive settled frames. Level, not 1.7%
+       down, and the gap is the point -- the threshold counts concentration,
+       and what the band does is gather light rather than add it. Intro went
+       0.0227 to 0.0228. The frame caught on arrival, still in the tail of the
+       crossing, is the one that moved, and it moved down: 0.042, 0.086 and
+       0.099 on three runs of the old build against 0.030, 0.031 and 0.030 on
+       three of this one. The old spread is too wide to put a single figure
+       on, which is itself the finding.
+
+       What moves is not the total but where it is: the slab under the band
+       carries about a third more light than the shell around it, and it is
+       the only thing in the frame that is moving, which is worth several
+       times its brightness. */
+    const perRun = cut / Math.max(1, nRun);
+    for (let k = 0; k < nRun; k++) {
+      const e = (k * perRun) | 0, o = e * 3, j = (k * 3 + 2417) & JM;
+      S.put(env[o]     + jit[j]     * 0.006,
+            env[o + 1] + jit[j + 1] * 0.006,
+            env[o + 2] + jit[j + 2] * 0.006, STRUCTURE, 0.62, envF[e]);
+    }
+    const perEnv = (NENV - cut) / Math.max(1, nEnv);
     for (let k = 0; k < nEnv; k++) {
-      const o = ((k * perEnv) | 0) * 3, j = (k * 3) & JM;
+      const e = cut + ((k * perEnv) | 0), o = e * 3, j = (k * 3) & JM;
       S.put(env[o]     + jit[j]     * 0.006,
             env[o + 1] + jit[j + 1] * 0.006,
             env[o + 2] + jit[j + 2] * 0.006, STRUCTURE, 0.85);
@@ -281,22 +405,52 @@ export function build(ctx) {
     }
     S.pad(0.02);
 
-    // The executed move keeps the front of the band and a little more size,
-    // because it is the strand that arrived and the one that leaves for the
-    // occupancy grid. The six it was chosen over share the rest evenly: they
-    // were alternatives to each other as much as to it.
-    polyline(fan[0], P.share(0.30), P, PATH, 1.55, 0.005, 0x77);
+    /* The executed move keeps the front of the band and a little more size,
+       because it is the strand that arrived and the one that leaves for the
+       occupancy grid. The six it was chosen over share the rest evenly: they
+       were alternatives to each other as much as to it.
+     *
+     * All seven run, and they run together. Every route in the fan leaves the
+     * first pose and arrives at the last -- that is what the sin hump is for
+     * -- so seven bands at one phase leave the start as a single point,
+     * separate across the middle where the routes differ, and converge again
+     * at the end. That is a batch of rollouts being scored, which is what a
+     * planner does with a fan, and it is the sentence the crossing wants: the
+     * one tool point that was travelling the manipulator's trajectory becomes
+     * seven, on seven routes, between the same two poses.
+     *
+     * In turn was the other option and it does not survive arithmetic. Slice
+     * the lap seven ways and each route owns 0.143 of it, against a band
+     * whose support is 0.32 of a lap -- more than twice a route's whole share
+     * of it. Every route would light whole and hand over to the next rather
+     * than be travelled, which loses the one property a trajectory has. It
+     * costs nothing in exposure either way: the support is the same 0.32 of
+     * whatever carries a flow, whether that is one curve or seven.
+     *
+     * Both formations parameterise the executed move the same way, by its own
+     * arc length from 0 to 1, so the band sits at the same distance along the
+     * same curve either side of the crossing. Only the number of points the
+     * curve is drawn with changes. */
+    polyline(fan[0], P.share(0.30), P, PATH, 1.55, 0.005, 0x77, true);
     const per = Math.floor(P.share(0.94) / Math.max(1, fan.length - 1));
     for (let i = 1; i < fan.length; i++)
-      polyline(fan[i], per, P, PATH, 1.10, 0.008, 0x4100 + i * 31);
+      polyline(fan[i], per, P, PATH, 1.10, 0.008, 0x4100 + i * 31, true);
     P.pad(0.02);
 
     const each = Math.floor(F.room / (joints.length + 2));
-    for (const m of joints) triad(m, each, F, 0.11, 1.1);
-    // The volume's own frame, at its centre of mass, on the world axes: a
-    // reachable set is a region rather than a body and has no orientation to
-    // borrow. Longer than the joint triads because it measures all of them.
-    axisTriad(cen.x, cen.y, cen.z, 0, F.share(0.92), F, 0.30, 1.2);
+    for (let k = 0; k < joints.length; k++)
+      runTriad(joints[k], each, F, 0.11, 1.1, k / joints.length);
+    /* The volume's own frame, at its centre of mass, on the world axes: a
+       reachable set is a region rather than a body and has no orientation to
+       borrow. Longer than the joint triads because it measures all of them.
+
+       It ticks once a lap, whole, at the phase the sweeping plane is passing
+       through the middle of the base range that generated the volume --
+       measured at 0.504, which is 0.5 and the noise on 17000 draws. A frame
+       is a claim about one place, so it does not get a band crawling through
+       it; it gets the beat the sweep passes its own centre on. */
+    runTriad(new THREE.Matrix4().makeTranslation(cen.x, cen.y, cen.z),
+             F.share(0.92), F, 0.30, 1.2, meanF);
     F.pad(0.01);
   };
 }

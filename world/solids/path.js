@@ -48,6 +48,14 @@ const DOORS = [
    hand is exactly the kind of difference this file exists not to have. */
 const SAMPLES = 384, RUN = 3.4, RIDE = 0.40;
 
+/* How far off level the nod carries the scan plane, either way, in radians.
+   It belongs in this block for the same reason the route does: the formation
+   rolls its plane by exactly this much about the heading and bakes 4048
+   returns where that puts them, so the head modelled here has to rock through
+   the same angle or the machine is doing something the cloud around it did
+   not record. */
+const NOD = 0.24;
+
 const STOPS = 6;                       // entries in the Path list, which has six
 
 /* ── what the solid adds ────────────────────────────────────────────────
@@ -69,6 +77,71 @@ const PLINTH_H = 0.30;     // under where the sweep plane rides, so a marker
 const PLINTH_W = 0.26;     // never stands up into its own scan
 const BATTER = 0.78;       // narrower at the top, so six markers do not read as
                            // six more pieces of wall
+
+/* ── the machine that drove it ──────────────────────────────────────────
+   A base the size of the ones that do this work: 0.46 long, 0.34 across,
+   0.44 to the top of its head. Everything above the floor is stacked rather
+   than positioned, so a change to one course carries the ones over it --
+   rails, then deck, then a mast that reaches whatever height the route says
+   the scanner is riding at this instant, then the drum.
+
+   The width is the one figure with an outside constraint. The route wanders
+   0.59 m off the centreline and the field it is driving inside narrows to
+   1.227 m half-width, so a body 0.17 m from its own axis still clears the
+   wall by 0.78 m at the worst place it is ever drawn. A wider base would
+   have had to be checked against the field every frame. */
+const RAIL_W = 0.055, RAIL_H = 0.075, RAIL_L = 0.40;
+const BODY_W = 0.34, BODY_L = 0.46, BODY_H = 0.115;
+const DECK_TOP = RAIL_H + BODY_H;      // 0.19 -- where the mast starts
+const MAST_W = 0.075;
+/* The drum. 0.17 across, which is half the deck's width and twice the mast's,
+   so it reads as the instrument rather than as another block: it is the only
+   round thing at the station. Radius is also what makes the nod visible at
+   all -- +/-0.24 rad swings the rim by 20.2 mm, and that is 25.4 px of a
+   953 px frame at the 1.85 m the drive gets closest, 13.9 px at 3.37 m,
+   6.8 px at 6.88 m. Small, but a rocking edge is read as motion long before
+   it is read as distance. */
+const HEAD_R = 0.085, HEAD_H = 0.075;
+
+/* One lap of the travelling band, in seconds: the loop advances it at 0.2
+   feature-lengths a second. Only the fallback path uses it -- the drive is
+   normally handed `run` directly -- but a number this load-bearing should not
+   be spelled 1/0.2 at the point of use. Not LAP, which is already the six
+   millimetres one wall segment overlaps the next by. */
+const DRIVE_LAP = 5.0;
+/* Nod cycles per lap. The formation puts one monotonic traverse of the servo,
+   -NOD to +NOD, at each stop, and the stops are 0.820 s apart at this rate;
+   three cycles a lap is a half-nod every 0.833 s, so the modelled servo and
+   the baked one agree to 1.6%. Integer, because a nod that does not close by
+   the end of the lap has a kink in it once every five seconds.
+
+   The mirror inside the drum is not turned. By the formation's own numbers it
+   makes five revolutions per half-nod, which is 6.00 Hz here, and 6 Hz on a
+   twelve-sided drum is 72 facet crossings a second against a 60 Hz frame --
+   aliasing, drawn as a shimmer, on the one part of the station that is meant
+   to read as an instrument working. The real thing hides that rotation inside
+   the housing too. */
+const NODS_PER_LAP = 3;
+
+/* Where the drive is solid and where it comes apart, as fractions of the lap.
+   A five-second loop cannot have a visible seam in it, and the route hands us
+   an asymmetric problem: its far end is 7.29 m from the eye and 32% into the
+   fog, where a 0.30 m body subtends 2.4 deg, and its near end is 0.46 m from
+   the lens, 36 deg wide and 25.9 deg below the view axis against a bottom
+   edge at 23.5 -- clear of the frame by two and a half degrees at rest, and
+   inside it the moment the reader's pointer drops the eye.
+
+   So the machine arrives at the far end, where a dissolve is invisible, and
+   leaves by coming apart into the substrate at the near one, which is the
+   same event every crossing on this page already uses. It re-forms between
+   7.29 m and 6.88 m and erodes between 1.85 m and 1.02 m, which is seven
+   centimetres past the first of the six stops -- so the last thing it does is
+   come apart at the marker where the record it has been building takes over
+   from it. It is never drawn inside a metre of the lens. */
+const ARRIVE = 0.06;
+const LEAVE0 = 0.80, LEAVE1 = 0.92;
+
+const ease = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
 export function build(ctx) {
   const anchor = ctx.anchor;
@@ -272,11 +345,143 @@ export function build(ctx) {
   markMesh.computeBoundingSphere();
   group.add(markMesh);
 
-  const mats = [shellMat, markMat];
+  /* ── the drive ────────────────────────────────────────────────────────
+     Everything above this line is where the survey happened. None of it can
+     move: the reader's own camera is flying down this corridor, and a room
+     that slides while the eye slides is a treadmill, not a corridor. What was
+     missing is the thing the room is evidence of, so it is added here and it
+     is the only part of the station that moves.
+
+     Five instances over two geometries. Rewritten every frame, which for five
+     matrices is nothing next to the 4048 returns the formation bakes once --
+     the reason nothing here moved before was never cost. */
+  const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
+  seedSurface(bodyGeo, 4, () => jr());
+  // Same as the shell: a rail is not one of the six entries being read, so
+  // -1 keeps the focus channel from ever lighting a piece of the machine.
+  bodyGeo.getAttribute("aIndex").array.fill(-1);
+  const headGeo = new THREE.CylinderGeometry(HEAD_R, HEAD_R, HEAD_H, 12);
+  seedSurface(headGeo, 1, () => jr());
+  headGeo.getAttribute("aIndex").array.fill(-1);
+
+  /* Lighter than the walls it drives between and lighter than the markers,
+     because it is the only thing here that is not the building. Still the
+     same grey family -- the accent and the teal are the page's and are spent
+     on the rim and the focus, not on painting a robot a different colour. */
+  const driveMat = makeSurface({
+    base: "#ccd0d8", accent: pal["--landing-accent"], teal: pal["--landing-teal"],
+    fog: pal["--landing-bg"]
+  });
+  // Finer than the marker's, which is finer than the wall's, for the same
+  // reason each time: the ruling is in world space, so the smaller the object
+  // the fewer lines land on it. At the wall's 3.0 the whole machine gets one.
+  driveMat.userData.uniforms.uPitch.value = 14.0;
+  driveMat.userData.uniforms.uFogNear.value = 2.2;
+  driveMat.userData.uniforms.uFogFar.value = 15.0;
+
+  const bodyMesh = new THREE.InstancedMesh(bodyGeo, driveMat, 4);
+  const headMesh = new THREE.InstancedMesh(headGeo, driveMat, 1);
+  /* Not culled. An InstancedMesh takes its bounding sphere from the matrices
+     it held when it was asked, and these are different every frame, so the
+     sphere would be a claim about where the machine was five seconds ago --
+     which for an object drawn over 6.42 m of route is how it ends up
+     vanishing while it is still on screen. Two objects, so the frustum test
+     it skips is not worth recomputing a sphere for. */
+  bodyMesh.frustumCulled = false;
+  headMesh.frustumCulled = false;
+  group.add(bodyMesh);
+  group.add(headMesh);
+
+  /* Scratch. A Matrix4 allocated inside the frame loop is a collection every
+     few seconds, and a collection is a frame the reader can see. */
+  const dPos = new THREE.Vector3(), dFwd = new THREE.Vector3();
+  const dAt = new THREE.Vector3(), dScale = new THREE.Vector3();
+  const dYaw = new THREE.Quaternion(), dNod = new THREE.Quaternion();
+  const dHead = new THREE.Quaternion(), dMat = new THREE.Matrix4();
+
+  /* Where the machine is at `u` of the way along the route, by arc length --
+     the same walk the six stops were placed with, so the drive passes a
+     marker at the moment the formation's schedule sweeps it. One sample a
+     frame, so the linear walk the formation could not afford per point costs
+     nothing here. */
+  function driveAt(u) {
+    const s = u * total;
+    let i = 1;
+    while (i < SAMPLES - 1 && cum[i] < s) i++;
+    const f = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
+    dPos.copy(route[i - 1]).lerp(route[i], f);
+    /* The tangent the poses were built from, reversed, because this runs the
+       route from its far end back toward the eye. Flattened to the floor
+       plane: the route's rise and fall is the scanner's ride height and not a
+       ramp -- it swings 126 mm over the drive and pitches by up to 4.49 deg
+       at its steepest -- and carrying that into the body would tip a base
+       standing on a slab that is dead flat. The mast absorbs it instead. */
+    dFwd.copy(route[Math.max(0, i - 2)]).sub(route[Math.min(SAMPLES - 1, i + 1)]);
+    dFwd.y = 0;
+    dFwd.normalize();
+  }
+
+  /* Rails, deck, mast, drum, from one position and one heading. Split out of
+     update so the machine is standing somewhere real before the first frame:
+     an InstancedMesh starts on identity matrices, and four unit cubes at the
+     world origin is a metre of white block in the middle of the page. */
+  function place(phase) {
+    driveAt(1 - phase);
+    dYaw.setFromAxisAngle(AXIS, Math.atan2(dFwd.x, dFwd.z));
+    // Across the heading, for the two rails.
+    const off = (BODY_W - RAIL_W) * 0.5;
+    const ax = dFwd.z * off, az = -dFwd.x * off;
+    dMat.compose(dAt.set(dPos.x + ax, floor + RAIL_H * 0.5, dPos.z + az),
+                 dYaw, dScale.set(RAIL_W, RAIL_H, RAIL_L));
+    bodyMesh.setMatrixAt(0, dMat);
+    dMat.compose(dAt.set(dPos.x - ax, floor + RAIL_H * 0.5, dPos.z - az),
+                 dYaw, dScale.set(RAIL_W, RAIL_H, RAIL_L));
+    bodyMesh.setMatrixAt(1, dMat);
+    dMat.compose(dAt.set(dPos.x, floor + RAIL_H + BODY_H * 0.5, dPos.z),
+                 dYaw, dScale.set(BODY_W, BODY_H, BODY_L));
+    bodyMesh.setMatrixAt(2, dMat);
+
+    /* The mast is scaled rather than placed, and it is what makes the ride
+       height honest: the head sits at the route's own y, which is the height
+       the formation fired its beams from, and the deck sits on a flat floor,
+       so the column between them is 0.156 m at the low point of the drive and
+       0.281 m at the high one. Carried up to the drum's centre rather than to
+       its underside, so the joint is always buried in the drum and no nod
+       angle can open a hairline between them. */
+    const mast = dPos.y - floor - DECK_TOP;
+    dMat.compose(dAt.set(dPos.x, floor + DECK_TOP + mast * 0.5, dPos.z),
+                 dYaw, dScale.set(MAST_W, mast, MAST_W));
+    bodyMesh.setMatrixAt(3, dMat);
+
+    /* And the nod. About the heading, not across it -- "nod" is the servo's
+       word and not a description of the axis: the formation rolls its scan
+       plane about the forward direction, so a beam pointing straight down the
+       corridor does not move at all and one pointing at a wall sweeps the
+       full height of it. Rocking the head fore and aft instead would put the
+       returns on the floor and the ceiling of the corridor ahead, where this
+       station has none. */
+    dNod.setFromAxisAngle(dFwd, NOD * Math.sin(phase * NODS_PER_LAP * Math.PI * 2));
+    dHead.copy(dYaw).premultiply(dNod);
+    dMat.compose(dAt.set(dPos.x, dPos.y, dPos.z), dHead, dScale.set(1, 1, 1));
+    headMesh.setMatrixAt(0, dMat);
+
+    bodyMesh.instanceMatrix.needsUpdate = true;
+    headMesh.instanceMatrix.needsUpdate = true;
+  }
+  place(0);
+  // Matching the pose it was just placed in: at phase 0 the machine is at the
+  // far end of the route and has not arrived yet, and a material left at the
+  // default 0 would draw it whole there for the frame before the first update.
+  driveMat.userData.uniforms.uCut.value = 1;
+
+  const mats = [shellMat, markMat, driveMat];
+  // The drive's own place in the lap, kept only for the caller that sends no
+  // `run` of its own.
+  let phase = 0;
 
   return {
     group,
-    update({ t, cut, focus, local, charge }) {
+    update({ t, dt, run, cut, focus, local, charge }) {
       /* The station has no focus channel of its own -- the caller only sends
          one for the stations whose entries it counts -- so the entry being
          read is taken from how far into the section the reader is. Six
@@ -291,13 +496,44 @@ export function build(ctx) {
         u.uFocus.value = f;
         u.uCharge.value = charge || 0;
       }
+
+      /* `run` and not a clock of this station's own, and that is the whole
+         point of it existing. It is the same 0..1 the formation's travelling
+         band is drawn against, so the machine and the light on the route it
+         is driving cannot drift apart -- give the drive its own timer and the
+         two agree once a lap and disagree the rest of the time, which is
+         worse than neither of them moving. It is integrated from dt upstream,
+         so it is frame-rate independent rather than assuming 60 of anything,
+         and it slows to a quarter rate while the station is being dissolved,
+         which is exactly when a machine driving at full speed through a room
+         coming apart around it would look wrong. dt is what carries the drive
+         for a caller that sends no run at all. */
+      phase = typeof run === "number" ? run
+            : (phase + (dt || 0) / DRIVE_LAP) % 1;
+      /* 1 - phase: the route is stored from the near end outward and the
+         drive runs the other way. 6.98 m of route in a five-second lap is
+         1.40 m/s, which is what one of these actually surveys at. */
+      place(phase);
+
+      /* Arriving and leaving. Both ends of the lap are the same instant --
+         the machine cannot be at the far end and the near end at once -- so
+         one of them has to be a dissolve or the loop has a cut in it. Taken
+         against the station's own erosion rather than added to it: whichever
+         is further along wins, so scrolling away mid-drive still takes the
+         machine apart with the room rather than fighting it. */
+      const seam = Math.max(1 - ease(phase / ARRIVE),
+                            ease((phase - LEAVE0) / (LEAVE1 - LEAVE0)));
+      driveMat.userData.uniforms.uCut.value = Math.max(cut, seam);
     },
     dispose() {
       group.clear();
       boxGeo.dispose();
       plinthGeo.dispose();
+      bodyGeo.dispose();
+      headGeo.dispose();
       shellMat.dispose();
       markMat.dispose();
+      driveMat.dispose();
     }
   };
 }

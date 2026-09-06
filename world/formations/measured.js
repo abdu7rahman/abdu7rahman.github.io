@@ -19,9 +19,26 @@
  * one unbroken polyline over the tops of the bars. Unbroken is not a detail.
  * Five separate strokes would cross the boundary as five things appearing,
  * which is the cut the whole substrate exists to avoid.
+ *
+ * And it is drawn rather than standing already drawn. The substrate carries a
+ * travelling band -- a point knows where along its own feature it sits and the
+ * band passes over it once a lap -- so the profile is laid across the caps
+ * left to right, in the order the table reports the five runs, once every five
+ * seconds. That is the whole of the motion this station is allowed, and it is
+ * the right one: a rig somebody walks into does not animate itself, but an
+ * instrument standing in a room is an instrument taking a reading.
+ *
+ * The rig carries the same parameter as the stroke over it, and that is not
+ * decoration either. A settled station is always the far end of a pair -- the
+ * substrate holds formation k-1 and formation k and sits at mix 1 -- and a
+ * point only runs where both ends of that pair give it a flow, so whatever
+ * this file leaves unwritten is a thing the *next* station cannot move. The
+ * bundle of rollouts that Stack forms out of these same points is swept out
+ * of the body along its horizon, and it is swept because the bars and the
+ * chassis it is swept out of carry a reading of their own.
  */
 import * as THREE from "three";
-import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
+import { bands, polyline, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
 
 /* Offsets from the station anchor; the caller adds it. Solved against the
    rig's own extents rather than nudged. The plate is 2.44 across and the
@@ -205,6 +222,45 @@ export function build(ctx) {
      comes off the plane towards the reader. */
   const org = new THREE.Vector3(anchor.x - HALF_W, y0, anchor.z + BACK_Z);
 
+  /* How far along the reading a piece of the instrument stands: 0 at the left
+     end of the plate, 1 at the right. The axis is the reading -- five runs
+     laid out in the order the table reports them -- so the one honest
+     parameter for a lump of the rig is where along that axis it is, and the
+     band then crosses plate, bars and plane together instead of the accent
+     stroke travelling over a rig that is standing still underneath it.
+
+     Taken off the scattered position rather than the lattice node it came
+     from, and then clamped, which is not defensive: the chassis is jittered by
+     up to 11 mm and that is 0.0045 of the 2.44 the plate spans, so a node on
+     the left edge comes out at -0.0045. The substrate reads anything below
+     zero as a point that does not run at all rather than as a point at the
+     start of the run, so without the clamp the near edge of the plate would
+     be the one part of the rig that stays dead. */
+  const X0 = anchor.x - HALF_W, XW = 2 * HALF_W;
+  const across = x => Math.min(1, Math.max(0, (x - X0) / XW));
+
+  /* The corner is written here rather than through lib's axisTriad, which has
+     no flow to give: it draws through `triad`, and a triad is three strokes
+     out of an origin with nothing to be partway along. Each axis is its own
+     two-point stroke at one constant value instead, so the frame lights whole
+     as the band reaches the end of the plate it stands on.
+
+     1 rather than 0, which is the same instant on a wrapped lap and the reason
+     it is worth choosing between them: these same points are the pose at the
+     far end of Stack's committed rollout, which carries 1 as well, so the
+     value is constant across the crossing. Written as 0 it would read the same
+     standing still and lerp through every phase of the lap on the way over. */
+  const CORNER = 1.0;
+  const A = new THREE.Vector3(), B = new THREE.Vector3();
+  function corner(n, w, len, sz) {
+    const per = Math.max(3, Math.floor(n / 3));
+    for (let k = 0; k < 3; k++) {
+      A.copy(org);
+      B.set(org.x + (k === 0 ? len : 0), org.y + (k === 1 ? len : 0), org.z + (k === 2 ? len : 0));
+      polyline([A, B], per, w, FRAME, sz, 0, 0x4d10 + k * 13, [CORNER, CORNER]);
+    }
+  }
+
   /* One table of noise, read three at a time, with two entries of overrun so
      the read past the wrap is a read rather than a bounds check. */
   const JN = 4096, JM = JN - 1;
@@ -212,15 +268,16 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = r() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
     const nBar = S.share(0.70), perBar = POOL / Math.max(1, nBar);
     for (let k = 0; k < nBar; k++) {
       const o = ((k * perBar) | 0) * 3, j = (k * 3) & JM;
-      S.put(skin[o]     + jit[j]     * 0.004,
+      const x = skin[o] + jit[j] * 0.004;
+      S.put(x,
             skin[o + 1] + jit[j + 1] * 0.004,
-            skin[o + 2] + jit[j + 2] * 0.004, STRUCTURE, 1.0);
+            skin[o + 2] + jit[j + 2] * 0.004, STRUCTURE, 1.0, across(x));
     }
     // Fainter than the bars and jittered wider, so a lattice node reads as a
     // soft dot: the chassis is what the numbers are mounted in, not one of
@@ -228,19 +285,36 @@ export function build(ctx) {
     const nCh = S.share(0.80), perCh = NCH / Math.max(1, nCh);
     for (let k = 0; k < nCh; k++) {
       const o = ((k * perCh) | 0) * 3, j = (k * 3 + 1289) & JM;
-      S.put(CH[o]     + jit[j]     * 0.011,
+      const x = CH[o] + jit[j] * 0.011;
+      S.put(x,
             CH[o + 1] + jit[j + 1] * 0.011,
-            CH[o + 2] + jit[j + 2] * 0.011, STRUCTURE, 0.55);
+            CH[o + 2] + jit[j + 2] * 0.011, STRUCTURE, 0.55, across(x));
     }
     S.pad(0.02);
 
-    polyline(profile, P.share(0.92), P, PATH, 1.6, 0.010, 0x2b4d);
+    /* The reading. `true` maps the stroke's own arc length onto the whole lap,
+       so the band comes in along the lead off the 163x bar, crosses the five
+       caps in the order the table reports them, and leaves past the 4x one --
+       five seconds for the 4.45 m the profile runs, which is 0.89 m/s of
+       stroke. 0.16 of a lap is the substrate's band width, so 0.71 m of the
+       profile is lit at once: about one cap and the step down off it, which
+       makes what travels a reading head with a bar inside it rather than a
+       spark running along a wire. And it dwells where a step function dwells.
+       42% of the length is vertical -- the drop from 192x to 26x is 0.73 m of
+       it on its own, the tallest single move in the picture -- so the band
+       spends nearly half its pass on the differences between the runs rather
+       than on the runs, which is what the profile was drawn to show. */
+    polyline(profile, P.share(0.92), P, PATH, 1.6, 0.010, 0x2b4d, true);
     P.pad(0.014);
 
+    /* Each rule on its own arc length, which starts at the tick and runs the
+       width of the plane, so the four of them are ruled left to right with the
+       bars rather than across them: the scale and the thing it measures are
+       one instrument and they are read in one pass. */
     const per = Math.floor(F.share(0.74) / rules.length);
     for (let i = 0; i < rules.length; i++)
-      polyline(rules[i], per, F, FRAME, 0.8, 0.004, 0x3100 + i * 7);
-    axisTriad(org.x, org.y, org.z, 0, F.share(0.92), F, 0.28, 1.15);
+      polyline(rules[i], per, F, FRAME, 0.8, 0.004, 0x3100 + i * 7, true);
+    corner(F.share(0.92), F, 0.28, 1.15);
     F.pad(0.01);
   };
 }

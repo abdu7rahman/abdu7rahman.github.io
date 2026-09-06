@@ -22,12 +22,20 @@
  * cost is a shape -- it decides how much of the budget a candidate is worth
  * drawing with, and that is all it decides.
  *
+ * And it is a decision being taken rather than a decision already taken. The
+ * substrate carries a travelling band -- every point knows where along its own
+ * feature it sits, and the band passes over it once a lap -- so the bundle is
+ * swept out of the body along the horizon it was simulated over, and the one
+ * candidate that won is driven afterwards rather than at the same time. That
+ * ordering is the whole subject. A fan that is simply *there* is a photograph
+ * of a controller; a window searched and then committed to is the controller.
+ *
  * The accent arrives from the rig as the profile across the five bars and
  * leaves as the route through the corridor. In between it is the rollout that
  * won: one unbroken strand out of several hundred that did not.
  */
 import * as THREE from "three";
-import { bands, polyline, axisTriad, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
+import { bands, polyline, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
 
 /* Offsets from the station anchor; the caller adds it. The rig was read from
    2.78 back and level with the bars, because a bar you look down on is a
@@ -82,6 +90,44 @@ const LIFT = 0.55;
    drawing. The angular axis is odd so that straight ahead is one of the
    candidates rather than something the grid straddles. */
 const NV = 20, NW = 17;
+
+/* The control cycle, laid out along the substrate's travelling band.
+ *
+ * The band is one parameter shared by the whole world: a point carries where
+ * along its own feature it sits, world.js advances uRun at 0.2 feature-lengths
+ * a second, and anything within 0.16 of it -- the substrate's uRunWidth -- is
+ * drawn brighter and a little larger. One lap is therefore five seconds, and
+ * the two halves of it here are the two halves of one decision.
+ *
+ * The first half sweeps the window. A candidate's flow is the fraction of its
+ * own horizon, and since every one of the 246 arcs that survive the disc is
+ * integrated with the same 0.1 s tick over the same 2.0 s -- 21 poses each,
+ * no exceptions, because a candidate that hits the disc is dropped rather
+ * than truncated -- that fraction *is* simulated time. The band is the
+ * isochrone of the forward simulation: where the body would be at that
+ * instant under every command in the window at once. It is not a ring. At the
+ * end of the horizon the slowest candidate has covered 0.05 m and the fastest
+ * a full metre, so the front leaves the body as a blade and stretches out
+ * into the far edge of the fan, which is what searching a velocity window
+ * looks like when it is drawn honestly.
+ *
+ * The second half drives the one that won, and splitting the lap rather than
+ * running both at once is the whole point: for two and a half seconds the
+ * window is being priced, and for the next two and a half the body is on the
+ * route that came out of it. Both halves carry the same 2.0 s of horizon so
+ * both get the same half of the lap, which plays them at 0.8 of real time --
+ * as fast as this is allowed to be while still reading as a machine working
+ * rather than as a progress bar. The wrap closes it: the band leaves the end
+ * of the driven route and reappears at the body, which is a controller
+ * reaching its horizon and searching again, so the loop needs no seam.
+ *
+ * 0.16 of a lap is 0.32 of a candidate's horizon, which puts 0.64 s of
+ * simulated time inside the front on either side. Wide, deliberately: 246
+ * arcs converge on one origin, and a hairline drawn across them would be
+ * invisible for the first third of the horizon and a dotted line for the
+ * rest. What is wanted is a wave with a bright leading edge. */
+const SEARCH = [0.00, 0.50];
+const COMMIT = [0.50, 1.00];
 
 /* Where the fan is aimed. A waypoint ahead and off to one side -- a tracker
    is never steering at the goal, it is steering at the next point of a plan
@@ -203,6 +249,10 @@ export function build(ctx) {
      is allowed to make. */
   const P3 = new Float32Array(POOL * 3);
   const PS = new Float32Array(POOL);
+  // Where along its own horizon each pooled point sits, mapped onto the half
+  // of the lap the window is searched in. Written here because the parameter
+  // is already computed to place the point at all.
+  const PF = new Float32Array(POOL);
   let n = 0;
   for (let j = 0; j < traj.length && n < POOL; j++) {
     const pts = traj[j];
@@ -226,6 +276,10 @@ export function build(ctx) {
       const t = share < 2 ? 0 : (k / (share - 1)) * (pts.length - 1);
       const i0 = Math.min(pts.length - 2, t | 0), f = t - i0;
       const a = pts[i0], b = pts[i0 + 1];
+      // How far through its own horizon this point is: 0 at the body, 1 at
+      // the end of the 2.0 s. Uniform in step index, so it is uniform in both
+      // arc length and simulated time, which is why it can be read as either.
+      const u = t / Math.max(1, pts.length - 1);
       /* Cost spent as height as well as as density. A dynamic window is a
          planar thing and drawing it planar is honest and unreadable: thirty
          seven thousand additive points on one mathematical plane is a sheet of
@@ -235,11 +289,12 @@ export function build(ctx) {
          the body and separates by how bad it is getting, so the one that wins
          is the one that stays down. Nothing here is a measurement; the height
          is the cost function's shape, which is the point of drawing it. */
-      const lift = LIFT * (1 - wN) * (t / Math.max(1, pts.length - 1));
+      const lift = LIFT * (1 - wN) * u;
       P3[n * 3]     = a.x + (b.x - a.x) * f;
       P3[n * 3 + 1] = a.y + (b.y - a.y) * f + lift;
       P3[n * 3 + 2] = a.z + (b.z - a.z) * f;
       PS[n] = sz;
+      PF[n] = SEARCH[0] + (SEARCH[1] - SEARCH[0]) * u;
       n++;
     }
   }
@@ -248,16 +303,47 @@ export function build(ctx) {
   /* The poses. One where the decision is taken, one where the chosen rollout
      ends, and three along it -- a controller does not produce a curve, it
      produces a command that a body is in some pose under at every tick, and
-     the triads are where those poses are. */
+     the triads are where those poses are.
+
+     Each carries the moment of the drive its own tick falls at, so a pose
+     lights as the body reaches it instead of all five standing lit at once.
+     The three intermediate ones are ticks 5, 10 and 15 of the twenty, half a
+     second of simulated time apart, which is 0.63 s of page time at this
+     lap -- slow enough to read one frame arriving after another rather than
+     as a strobe down the route. The first sits at the start of the drive
+     because that is where the decision is taken: the window has just been
+     priced, and the body has not moved yet. */
   const chosen = traj[best];
-  const marks = [{ x: sx, z: sz, yaw: heading0, len: 0.26, sz: 1.2 }];
+  const span = COMMIT[1] - COMMIT[0];
+  const marks = [{ x: sx, z: sz, yaw: heading0, len: 0.26, sz: 1.2, f: COMMIT[0] }];
   for (let k = 1; k <= 3; k++) {
     const i = Math.round((k / 4) * (chosen.length - 1));
     marks.push({ x: chosen[i].x, z: chosen[i].z,
-                 yaw: heading0 + cmd[best].w * i * TICK, len: 0.11, sz: 0.95 });
+                 yaw: heading0 + cmd[best].w * i * TICK, len: 0.11, sz: 0.95,
+                 f: COMMIT[0] + span * (i / (chosen.length - 1)) });
   }
   const tail = chosen[chosen.length - 1];
-  marks.push({ x: tail.x, z: tail.z, yaw: cmd[best].th, len: 0.24, sz: 1.2 });
+  marks.push({ x: tail.x, z: tail.z, yaw: cmd[best].th, len: 0.24, sz: 1.2, f: COMMIT[1] });
+
+  /* A pose, written here rather than through lib's axisTriad, which has no
+     flow to give: it draws through `triad`, and a triad is three strokes out
+     of an origin with nothing to be partway along. So each axis is its own
+     two-point stroke carrying a single constant slice, which lights the whole
+     frame at once as the band reaches it. That is the honest reading of a
+     pose -- the body is at that tick or it is not, there is no being halfway
+     through one. The three directions are the columns of a yaw about world Y,
+     written out because there is no matrix here to read them off. */
+  const A = new THREE.Vector3(), B = new THREE.Vector3();
+  function pose(m, n, w) {
+    const c = Math.cos(m.yaw), s = Math.sin(m.yaw);
+    const ax = [[c, 0, -s], [0, 1, 0], [s, 0, c]];
+    const per = Math.max(3, Math.floor(n / 3));
+    for (let k = 0; k < 3; k++) {
+      A.set(m.x, y0, m.z);
+      B.set(m.x + ax[k][0] * m.len, y0 + ax[k][1] * m.len, m.z + ax[k][2] * m.len);
+      polyline([A, B], per, w, FRAME, m.sz, 0, 0x51a0 + k * 13, [m.f, m.f]);
+    }
+  }
 
   /* One table of noise, read three at a time, with two entries of overrun so
      the read past the wrap is a read rather than a bounds check. */
@@ -267,8 +353,8 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = r() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
     const nB = S.share(1.0), per = NP / Math.max(1, nB);
     for (let k = 0; k < nB; k++) {
@@ -279,15 +365,32 @@ export function build(ctx) {
       // light rather than a set of arcs.
       S.put(P3[o]     + jit[j]     * 0.007,
             P3[o + 1] + jit[j + 1] * 0.004,
-            P3[o + 2] + jit[j + 2] * 0.007, STRUCTURE, PS[i]);
+            P3[o + 2] + jit[j + 2] * 0.007, STRUCTURE, PS[i], PF[i]);
     }
     S.pad(0.02);
 
-    polyline(chosen, P.share(0.94), P, PATH, 1.7, 0.006, 0x2b4d);
+    // The route that won, on the second half of the lap. It is driven after
+    // the window has been searched rather than while it is being searched,
+    // which is the order the controller does it in and the only order in
+    // which the commitment reads as one.
+    /* 0.40, not the 1.7 this was drawn at, and for the same reason the bundle
+       itself had to be rescaled: the substrate sizes a point as
+       sz * dpr * (26 / depth) and ceilings it at 7 * dpr, and from this
+       station's 2.32 m eye 1.7 is 38 pixels before the clamp. The travelling
+       band widens a point it is over by 55%, which at 1.7 is 59 pixels -- also
+       clamped to 14. So the entire size half of the band was being thrown away
+       on the one strand it most needed to be visible on, and what was left of
+       it was a colour boost landing on pixels that were already saturated.
+       Frame-differenced over a lap, the search half of the cycle moved 12.4%
+       of its pixels and the drive half 3.5%, most of that the cloud's own
+       drift. At 0.40 the strand is 9.0 pixels at rest and 13.9 under the band,
+       so the boost survives whole and the commitment reads as a thing being
+       driven rather than as a line that is merely present. */
+    polyline(chosen, P.share(0.94), P, PATH, 0.40, 0.006, 0x2b4d, COMMIT);
     P.pad(0.012);
 
     const each = Math.floor(F.share(0.92) / marks.length);
-    for (const m of marks) axisTriad(m.x, y0, m.z, m.yaw, each, F, m.len, m.sz);
+    for (const m of marks) pose(m, each, F);
     F.pad(0.01);
   };
 }

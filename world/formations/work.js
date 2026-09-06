@@ -16,6 +16,15 @@
  * of it. The gap between those two strands is the entire reason a local
  * planner exists, and it is the only honest way to draw a plan.
  *
+ * And the plan is being driven rather than sitting there. Both strands carry a
+ * flow, so the substrate's travelling band runs the length of them -- 21.37 m
+ * of staircase and 19.88 m of curve, each mapped onto its own arc length, so
+ * the band is at the same fraction of the same journey on both at once -- and
+ * the eight poses laid along the executed curve light in turn as it reaches
+ * them. Nothing else here runs. The 1773 free cells are floor and the 681
+ * occupied ones are things standing on it, and a wall with a light travelling
+ * through it is not a wall.
+ *
  * Nothing here is a measurement of anything. It is a room that behaves like a
  * room a planner has been given.
  */
@@ -442,14 +451,22 @@ export function build(ctx) {
   const postXZ = Float32Array.from(stands);
   const nFree = freeXZ.length >> 1, nOcc = occXZH.length / 3;
 
-  return function fill(pos, kind, size, count) {
-    const { S, P, F } = bands(pos, kind, size, count);
+  return function fill(pos, kind, size, count, flow) {
+    const { S, P, F } = bands(pos, kind, size, count, flow);
 
     /* A free cell is one point by definition and the cell count is fixed by
        the resolution, so the only knob the grid has for spending its budget
        is how finely a column is sampled. Capped, because past about two dozen
        rungs on a 20 cm column the extra matter is brightness rather than
-       shape and pad() spends it better, spreading each cell into a cell. */
+       shape and pad() spends it better, spreading each cell into a cell.
+
+       Five arguments, which is how the writer is told a point does not run.
+       The lattice and the things standing in it are the map, and a map does
+       not travel; only the two strands further down and the poses on them
+       carry a flow. It is worth saying out loud because the cheap version of
+       "make the station move" is to run a band over everything, and a costmap
+       with a light going through its walls is not a costmap being used, it is
+       a screensaver. */
     const rungs = Math.max(3, Math.min(26,
       Math.floor((S.share(0.70) - nFree) / Math.max(1, nOcc))));
     for (let i = 0; i < freeXZ.length; i += 2)
@@ -471,13 +488,45 @@ export function build(ctx) {
     // rather than blurring across the ones next door.
     S.pad(0.05);
 
-    polyline(staircase, P.share(0.40), P, PATH, 0.70, 0.012, 0x2A17);
-    polyline(run, P.share(1.0), P, PATH, 1.50, 0.016, 0x2B44);
+    /* Both strands run, and each on its own arc length rather than on a shared
+       slice of one. They are two answers to the same question and they are not
+       the same length -- 21.37 m of grid-locked staircase against 19.88 m of
+       shortcut-and-smoothed curve, so the corners the second one is allowed to
+       cut are worth a metre and a half over this map -- and mapping each onto
+       0..1 separately is what puts the band at the same *fraction of the
+       journey* on both at the same moment. Sharing one parameter by length
+       instead would have the band leading on the shorter strand and lagging on
+       the longer one, which draws the two plans as being at different points of
+       the same drive. They are not. They are the same drive, drawn twice. */
+    polyline(staircase, P.share(0.40), P, PATH, 0.70, 0.012, 0x2A17, true);
+    polyline(run, P.share(1.0), P, PATH, 1.50, 0.016, 0x2B44, true);
     P.pad(0.02);
 
+    /* The eight poses light in turn as the band reaches each of them, which is
+       the one thing in this formation that reads as a base rather than as a
+       plan. Their flow is the number their position already came from: the
+       k-th pose is placed at k/7 of the executed curve's arc length, so k/7 is
+       where it is, and it comes up when the band is standing on it and not a
+       moment either side. At the substrate's 0.16 band width, 1/7 apart, two
+       are lit at a time and the handover between them is smooth, which is what
+       makes eight discrete markers read as one thing passing through them.
+
+       Constant across all three arms on purpose. A pose is a place the base
+       goes through, not a route of its own, and running a band up each arm
+       would have drawn three little journeys at right angles to the one that
+       matters.
+
+       lib's triad takes no flow argument and lib is not this file's to change,
+       so the flow is attached to the writer rather than to the call: triad
+       reaches the buffer only through put(), so a writer that fills in the
+       sixth argument on the way past is the whole of the change. */
+    let poseAt = -1;
+    const driven = { put: (x, y, z, k, s) => F.put(x, y, z, k, s, poseAt) };
     const arms = Math.floor(F.room / (poses.length / 4 + 1));
-    for (let i = 0; i < poses.length; i += 4)
-      axisTriad(poses[i], poses[i + 1], poses[i + 2], poses[i + 3], arms, F, 0.16, 1.0);
+    for (let i = 0, k = 0; i < poses.length; i += 4, k++) {
+      poseAt = k / (poses.length / 4 - 1);
+      axisTriad(poses[i], poses[i + 1], poses[i + 2], poses[i + 3], arms, driven, 0.16, 1.0);
+    }
     F.pad(0.01);
   };
 }

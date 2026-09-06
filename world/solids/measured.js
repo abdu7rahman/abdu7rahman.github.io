@@ -65,6 +65,29 @@ const RULE = 0.014;
    brightly as its own measurements competes with them. */
 const CHASSIS = 0.55;
 
+/* The arrival, and the constraint that shapes it.
+ *
+ * A bar standing short of its measured height is a wrong number, on a page
+ * whose entire claim is that every number on it was measured. So the growth
+ * cannot be something the reader watches: it has to be finished before the
+ * rig is legible, which rules out running it off the clock. `settle` is 1 at
+ * a stop and 0 at the middle of a crossing, so driving the height off that
+ * puts the whole move inside the erosion that is happening anyway -- the bars
+ * rise out of the plate as the instrument materialises and sink back into it
+ * as it comes apart -- and at every settled reading they are exact by
+ * construction rather than by timing.
+ *
+ * 0.55 is where the last of the five finishes rising. That is `settle` at
+ * mix = 0.85, so the crossing still has 15% of itself to run and the surface
+ * is still visibly burning: what the reader catches is the last of the growth
+ * closing under the last of the rim, not a chart drawing itself in. 0.06 of
+ * stagger between neighbours walks the arrival left to right across the five
+ * runs, the same direction and the same order the cloud lays its profile
+ * across the caps in -- 0.24 of the window spent on the stagger against 0.31
+ * on the rise, which is enough to read as a sequence and not enough to read
+ * as five separate events. */
+const ARRIVE = 0.55, LAG = 0.06;
+
 /* The instrument's own grey-teal. Lighter than it looks written down, and
    deliberately: `new THREE.Color("#...")` converts sRGB to linear, so a hex
    that reads as 0.62 of white arrives at the shader as 0.35 of it. At the old
@@ -182,9 +205,21 @@ export function build(ctx) {
 
   const bu = barMat.userData.uniforms, ru = rigMat.userData.uniforms;
 
+  /* How far the arrival had got when it was last written. The five matrices
+     are only recomposed when it is actually moving, which is one comparison a
+     frame at a settled station instead of five composes and a buffer upload --
+     and a settled station is where this instrument spends nearly all of the
+     time anybody is looking at it. */
+  let grown = -1;
+  const den = ARRIVE - LAG * (bars.length - 1);
+
   return {
     group,
-    update({ t, cut, focus, pointer, charge }) {
+    /* Nothing here integrates the clock, so nothing here needs `dt`: the
+       arrival is a function of where the reader is rather than of how long
+       they have been there, which is frame-rate independent by construction
+       and identical on a 60 Hz panel and a 144 Hz one. */
+    update({ t, cut, focus, pointer, charge, settle }) {
       // Ready-made when the caller has other stations to spend it on, off the
       // pointer when this is the only one it has.
       const c = charge === undefined
@@ -195,6 +230,24 @@ export function build(ctx) {
       // currently reading wants.
       bu.uFocus.value = typeof focus === "number" ? focus : -1;
       bu.uCharge.value = c;
+
+      const s = typeof settle === "number" ? settle : 1;
+      if (Math.abs(s - grown) > 0.002) {
+        grown = s;
+        for (let i = 0; i < bars.length; i++) {
+          const u = Math.min(1, Math.max(0, (s - i * LAG) / den));
+          // Smoothstepped, so a bar leaves the plate and arrives at its height
+          // without a corner at either end of the move. The floor is not
+          // decoration: a zero scale is a singular instance matrix, the cap's
+          // normal comes out of it as the zero vector, and normalising that in
+          // the surface shader is a NaN painted across the top of the bar.
+          const e = Math.max(0.02, u * u * (3 - 2 * u));
+          const h = bars[i].h * e;
+          box(barMesh, i, bars[i].x, y0 + h / 2, anchor.z, BAR_W, h, BAR_D);
+        }
+        barMesh.instanceMatrix.needsUpdate = true;
+      }
+
       ru.uTime.value = t;
       // The mount comes apart ahead of the measurement: at 1.15 the plate and
       // the plane have finished eroding eight tenths of the way through the

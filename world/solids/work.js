@@ -22,6 +22,16 @@
  * a mirrored constant on one side only and the matter dissolves into a room
  * that is not the one it came out of. Change both files or neither.
  *
+ * And it runs. The search is the same search the formation runs -- same map,
+ * same heuristic, same 129-cell answer -- but this side keeps the order it
+ * closed cells in, which turns the plan from a picture of an answer into a
+ * record of the work that produced it. 1357 tiles stand and lie back down in
+ * that order as the front crosses the map; the ribbon is laid in from the goal
+ * backwards, the direction A* actually reconstructs a path in; and it is
+ * retired from behind, at exactly the point the cloud's own travelling band
+ * has driven to. One cycle is three laps of that band. Nothing here is on a
+ * clock of its own and nothing here counts frames.
+ *
  * Nothing here is a measurement of anything. It is scenery that obeys the
  * rules a costmap obeys.
  */
@@ -70,6 +80,88 @@ const POST_W = 0.09;
    aliases into a dotted line at the far end of the map; thicker and it stops
    being a plan and becomes a kerb. */
 const TUBE_R = 0.02;
+
+/* ── the search, as relief ───────────────────────────────────────────────
+   A* closed 1357 of this map's 1773 free cells before the goal came off the
+   heap, and the order it closed them in is the only honest record of what the
+   planner did: a front that leaves the start, bends round the end of every
+   wall it meets, and reaches the goal 1357 pops later without ever having
+   looked at the 416 cells the heuristic saved it. So every expanded cell gets
+   a tile, and a tile stands up as the front arrives and lies back down behind
+   it. A cell the search never opened never moves, which is the part of an
+   admissible heuristic you can actually see.
+
+   Drawn with the instance matrix, and only after the cheaper thing was tried.
+   The material's one per-instance switch is uFocus, which lights a single
+   index and cannot express a band of eighty-two cells, aSeed is spoken for by
+   the dissolve -- it is deliberately zero here so the room erodes as one room
+   -- and materials/surface.js is not this file's to extend. Matrices are what
+   that leaves, and they are cheap at this size: counted over a whole cycle at
+   60 fps, a frame recomposes 57 of the 2039 instance matrices on average and
+   84 in its worst frame, each of them a scale and a translate.
+
+   A tile is an obstacle column's footprint, so a cell that stands is the same
+   size as a cell that is occupied, and it rests buried: its top sits 8 mm
+   under the top of a slab 50 mm thick, so a cell at rest is not drawn rather
+   than drawn flat and fighting the floor for the same pixels. The 50 mm of
+   rise puts its top 37 mm proud of the floor and still 18 mm under the ribbon,
+   which is what sets the ceiling -- a tile that reaches the plan is a tile
+   that punches through it. Measured off a 1916 x 953 render with the stage
+   parked at this station, that rise moves a cell 7.6 px at the near edge of
+   the map and 4.4 px at the far one, on cells that are 25 and 13 px across. */
+const TILE_H = 0.05, TILE_HIDE = 0.008, TILE_LIFT = 0.05;
+
+/* Half the width of the raised band, as a share of the expansion order.
+   Measured rather than chosen: the open list on this map holds 21 cells at the
+   median and 40 at its widest, so the frontier itself is 40 of 1357, or 0.029
+   of the order. This is twice that, deliberately. At the true width the median
+   cell is on the open list for 21 expansions, which at the rate below is 0.16
+   s, and a floor where every cell flicks up for a sixth of a second is a boil,
+   not a wave. At 0.06 of the order a cell takes 0.61 s to rise and settle, 82
+   of them are up at once, and they read as one front crossing a room. */
+const HALF = 0.03;
+
+/* ── the cycle ───────────────────────────────────────────────────────────
+   One cycle is three laps of the world's travelling band: 15 s where the
+   band's own lap is 5. Counted in laps rather than in seconds on purpose --
+   the loop advances that band with dt and slows it to a quarter rate while
+   this station is coming apart, so anything counted in laps of it is
+   frame-rate independent and stops when the station stops, without this file
+   holding a copy of either number.
+
+   Three laps and not one because of what the map measured. The executed route
+   is 19.88 m, which the band covers in one 5 s lap at 4.0 m/s, and nothing
+   solid can be put on the route at that speed: at this framing the near rim of
+   the map is 178 px per metre and the far rim 89, so a marker driving the plan
+   would cross the frame at up to 710 px/s, four times a lap. That is a fly in
+   the room, not a base in it. What runs at the band's speed is the band, which
+   is light and reads as light; the solid layer runs at a third of it and does
+   the planner's work instead -- the front sweeps, the plan is laid in, the
+   plan stands, and on the third lap it is retired from behind at exactly the
+   point the band has driven to. That last lap is the one place the two layers
+   have to agree, and it is the one place they are the same number.
+
+   The front crosses between these two, as a share of the cycle: 0.72 of 15 s
+   is 10.8 s of sweep, of which the front is over the map itself for 10.2, so
+   the search is played back at 133 of its 1357 cells a second. It is done well
+   before the cycle ends and it starts a beat after it begins, so the floor is
+   flat at both ends and the loop closes on stillness instead of on a cut. That
+   it overlaps the drive is not a compromise, it is what a costmap planner
+   does: the global plan is re-searched while the last one is still being
+   followed, and on a map where nothing has moved the search comes back with
+   the same answer, which is why the ribbon that goes down is the ribbon that
+   came off. */
+const LAPS = 3;
+const SWEEP0 = 0.02, SWEEP1 = 0.74;
+
+/* How long the plan takes to arrive, as a share of the cycle. It arrives the
+   way A* produces it: backwards, from the goal along the came-from chain to
+   the start, because that is the direction the answer exists in. Laying it
+   from the start instead would be drawing the drive, and the drive is what the
+   band is already doing. 1.5 s for 19.88 m is 13 m/s, which is far too fast
+   for anything to be moving at and about right for something being
+   remembered. */
+const LAY = 0.10;
 
 export function build(ctx) {
   const anchor = ctx.anchor;
@@ -215,7 +307,16 @@ export function build(ctx) {
 
   const STEP = [1, 0, -1, 0, 0, 1, 0, -1, 1, 1, 1, -1, -1, 1, -1, -1];
 
-  function plan(from, to) {
+  /* The one place this file's copy of the search is not character for
+     character the formation's: it is handed an array and writes the order it
+     closed cells in into it. An observer and nothing more -- it sits where
+     closed[cur] is already being set, reads no cost, touches no heap, and
+     costs one push per expansion. The plan that comes back is the same plan,
+     which is checkable and was checked: 129 cells, identical to the one the
+     unrecorded search returns, cell for cell. The formation is not given the
+     recorder because the formation has no use for it, and a mirrored file that
+     carries a line it does not need is a line that rots. */
+  function plan(from, to, order) {
     const g = new Float32Array(NX * NZ).fill(Infinity);
     const came = new Int32Array(NX * NZ).fill(-1);
     const closed = new Uint8Array(NX * NZ);
@@ -225,9 +326,12 @@ export function build(ctx) {
     let found = false;
     while (open.size) {
       const cur = open.pop();
-      if (cur === to) { found = true; break; }
+      // The goal is never closed -- the loop breaks on it -- so it is recorded
+      // here or the front stops one cell short of the thing it was sent for.
+      if (cur === to) { found = true; order.push(cur); break; }
       if (closed[cur]) continue;
       closed[cur] = 1;
+      order.push(cur);
       const cx = cur % NX, cz = (cur / NX) | 0;
       for (let k = 0; k < 16; k += 2) {
         const dx = STEP[k], dz = STEP[k + 1];
@@ -251,7 +355,8 @@ export function build(ctx) {
 
   const start = nearestOpen(Math.round(NX * 0.22), NZ - 2);
   const goal = nearestOpen(Math.round(NX * 0.78), 1);
-  const cells = plan(start, goal);
+  const order = [];
+  const cells = plan(start, goal, order);
 
   const MARGIN = 0.02;
   const REACH = 0.5 + MARGIN / CELL;
@@ -332,6 +437,27 @@ export function build(ctx) {
   const tier = (ctx.quality && ctx.quality.substrate) || 60000;
   const low = tier <= 9000, high = tier >= 60000;
 
+  /* One tile per expanded cell, in the order they were expanded, so an index
+     into this array is a moment in the search and the band over it is a range
+     of moments.
+
+     Thinned on the low tier, and this is the one thing in the room that may be
+     thinned. The blocks may not: the cloud this erodes into has every one of
+     them, so a tier that dropped a hundred would be watching one room become a
+     different one. Nothing in the cloud stands where a tile stands -- the
+     formation spends a single point on each free cell and leaves it on the
+     floor -- so half the tiles is half a wave over the same map, not another
+     map. Keyed off the tier's own point budget rather than off `low`, which is
+     set at 9000 and so never fires for the 12000-point tier that actually
+     wants the saving. */
+  const stride = tier <= 12000 ? 2 : 1;
+  const nTiles = Math.ceil(order.length / stride);
+  const tileXZ = new Float32Array(nTiles * 2);
+  for (let k = 0, i = 0; k < nTiles; k++, i += stride) {
+    tileXZ[k * 2] = wx(order[i] % NX);
+    tileXZ[k * 2 + 1] = wz((order[i] / NX) | 0);
+  }
+
   const grey = makeSurface({
     base: "#c9ccd4", accent: pal["--landing-accent"],
     teal: pal["--landing-teal"], fog: pal["--landing-bg"]
@@ -365,7 +491,12 @@ export function build(ctx) {
      the axes the scale is along, so a non-uniform scale changes their length
      and not their direction, and the fragment shader normalises anyway. */
   const cellGeo = new THREE.BoxGeometry(1, 1, 1);
-  const nCells = occ.length / 3 + 1;
+  /* Slab, then the blocks, then the tiles, and the layout is fixed because the
+     update walks it by index: instance 0 is the floor, 1..681 are the occupied
+     cells in the order the grid is scanned, and everything after TILE0 is the
+     search in the order it happened. */
+  const TILE0 = occ.length / 3 + 1;
+  const nCells = TILE0 + nTiles;
 
   /* A seed of nothing, deliberately. The dissolve is a world-space field, and
      with every instance reading it unshifted the erosion comes apart in
@@ -395,6 +526,22 @@ export function build(ctx) {
     m.setPosition(occ[i], floorY + (h - SINK) * 0.5, occ[i + 1]);
     cells3d.setMatrixAt(k, m);
   }
+
+  /* Where a tile sits when the search is nowhere near it, and the one call
+     that moves one -- `h` is 0 at rest and 1 at the top of the band. The scale
+     is written every time rather than once at build because makeScale writes
+     the whole matrix, so it is also what clears the previous position out of
+     it; the two calls in this order are the entire composition, with no
+     rotation to carry and nothing to invert. The Matrix4 is the one the loop
+     above filled the blocks with, reused, which is what keeps this free of
+     allocation at fifty-odd calls a frame. */
+  const TILE_REST = floorY - SLAB_GAP - TILE_HIDE - TILE_H * 0.5;
+  function tileAt(k, h) {
+    m.makeScale(CELL * FOOT, TILE_H, CELL * FOOT);
+    m.setPosition(tileXZ[k * 2], TILE_REST + h * TILE_LIFT, tileXZ[k * 2 + 1]);
+    cells3d.setMatrixAt(TILE0 + k, m);
+  }
+  for (let k = 0; k < nTiles; k++) tileAt(k, 0);
   cells3d.instanceMatrix.needsUpdate = true;
 
   const postGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -425,7 +572,7 @@ export function build(ctx) {
   group.add(cells3d, posts3d);
 
   const us = [grey.userData.uniforms];
-  let route = null, tubeGeo = null;
+  let route = null, tubeGeo = null, rings = 0, perRing = 0;
   if (run.length > 1) {
     /* Straight segments rather than a spline through them. The route was
        proved clear as a sequence of straight runs and the corners it was
@@ -452,19 +599,49 @@ export function build(ctx) {
        is a different length every time the map is: a fixed count would put
        forty segments into a corner on one build and four on the next. */
     const along = low ? 0.14 : high ? 0.05 : 0.09;
-    tubeGeo = new THREE.TubeGeometry(path, Math.max(16, Math.round(path.getLength() / along)),
-                                     TUBE_R, low ? 4 : high ? 8 : 6, false);
+    rings = Math.max(16, Math.round(path.getLength() / along));
+    const ribs = low ? 4 : high ? 8 : 6;
+    tubeGeo = new THREE.TubeGeometry(path, rings, TUBE_R, ribs, false);
+
+    /* How much of the ribbon is drawn is a draw range on this geometry, which
+       works because of two properties that are worth writing down since they
+       are relied on rather than checked at run time. A tube emits its indices
+       ring by ring along its length, six per rib per ring, so the indices from
+       j * perRing onwards are the tube from ring j to its end and nothing
+       else. And a CurvePath maps its parameter through the cumulative lengths
+       of the curves in it, so ring j sits at j/rings of the arc length -- the
+       same arc length the cloud's band is parameterised on, over the same
+       vertices, which is why a cut at the band's position lands on the band
+       rather than near it. Both were checked against the geometry this builds:
+       at 398 rings over 19.88 m, no ring's indices reach outside its own pair
+       of rings, and ring j's first vertex sits one tube radius from the point
+       at j/398 of the arc length to the last digit a float has.
+
+       A range rather than a second material or a second mesh, because the
+       station has a budget of three draws and the ribbon is the third of
+       them. */
+    perRing = ribs * 6;
     group.add(new THREE.Mesh(tubeGeo, route));
     us.push(route.userData.uniforms);
   }
 
+  /* What has to survive between frames: which lap of the band this is, where
+     the band was when it was last asked -- the only way to notice a lap turning
+     over -- and the range of tiles that was standing, so this frame knows what
+     it has to put back down. [0, -1] is the empty range. */
+  let lap = 0, was = 0, wLo = 0, wHi = -1;
+
   return {
     group,
-    /* Nothing in this room has a degree of freedom, so a frame is four uniform
-       writes per material and no matrix work at all. The charge arrives ready
-       when the caller has other stations to spend it on; the fallback is for
-       a caller that only has this one. */
-    update({ t, cut, focus, pointer, charge }) {
+    /* This used to say that nothing in the room had a degree of freedom, so a
+       frame was four uniform writes per material and no matrix work at all.
+       That was the problem rather than the design: seven stations, none of
+       which did anything except carry the clock into a dissolve. A frame is
+       now the same four writes, plus the fifty-odd instance matrices the
+       search front has moved over, plus one draw range for the ribbon. The
+       charge arrives ready when the caller has other stations to spend it on;
+       the fallbacks are for a caller that only has this one. */
+    update({ t, run, cut, focus, pointer, charge }) {
       const c = charge === undefined
         ? Math.min(1, (pointer ? pointer.speed : 0) * 2.2) : charge;
       for (let i = 0; i < us.length; i++) {
@@ -473,6 +650,96 @@ export function build(ctx) {
         u.uCut.value = cut;
         u.uFocus.value = focus;
         u.uCharge.value = c;
+      }
+
+      /* Where the station is in its own cycle. The band laps once every five
+         seconds; this counts the laps, so the phase is exactly (lap + band) /
+         LAPS. Exactly, and not an accumulator advanced by dt, because an
+         accumulator drifts against the very thing it is supposed to be a
+         multiple of, and the last lap of the cycle is the one where the ribbon
+         is cut at the band's own position: an accumulator a tenth of a lap out
+         would put that cut two metres from the light it is supposed to be
+         following.
+
+         Parked at the middle of a lap when there is no band to read -- the
+         plan drawn, the front stopped a fifth of the way across the map --
+         because a caller without a world around it should get a still of this
+         station and not an empty one. */
+      const band = run === undefined ? 0.5 : run;
+      if (band < was) lap = (lap + 1) % LAPS;
+      was = band;
+      const p = (lap + band) / LAPS;
+
+      /* The front, in expansion order. It is walked from just off one end of
+         the order to just off the other, so the band is empty at both ends of
+         its window instead of appearing mid-map with eighty-two cells already
+         standing. -9 is "not searching", which is the last quarter of the
+         cycle and the first fiftieth of it, and is why the floor is flat when
+         the loop closes. */
+      const swept = (p - SWEEP0) / (SWEEP1 - SWEEP0);
+      const front = swept < 0 || swept > 1 ? -9 : -HALF + swept * (1 + 2 * HALF);
+
+      /* Which tiles the band is over now against the ones it was over last
+         frame. Only the union of the two is written: everything inside it is
+         standing at a new height, everything that has dropped out of it has to
+         be put back down, and the twelve hundred cells either side have not
+         moved and are not touched. Measured over a cycle at 60 fps that union
+         is 57 instances a frame and 84 in the worst one, the width of the band
+         once at each end of the sweep, and never the whole array. */
+      const last = Math.max(1, nTiles - 1);
+      let lo = 0, hi = -1;
+      if (front > -9) {
+        lo = Math.max(0, Math.ceil((front - HALF) * last));
+        hi = Math.min(last, Math.floor((front + HALF) * last));
+      }
+      let a, b;
+      if (hi < lo) { a = wLo; b = wHi; }
+      else if (wHi < wLo) { a = lo; b = hi; }
+      else { a = Math.min(lo, wLo); b = Math.max(hi, wHi); }
+      // Flattened as the room comes apart: a cell standing on a floor that is
+      // eroding out from under it is a cell floating, and the crossing is the
+      // one moment this station is not a costmap.
+      const rise = 1 - cut;
+      for (let i = a; i <= b; i++) {
+        let h = 0;
+        if (i >= lo && i <= hi) {
+          /* Smooth at both ends of the band so a cell arrives and leaves
+             rather than switching on. Squared, which is what makes it flat
+             where it meets the floor: a cell that stops rising abruptly reads
+             as a click, and eighty-two of them clicking is the boil this is
+             meant to avoid. The rounding above keeps this term inside [0, 1]. */
+          const d = i / last - front;
+          const e = 1 - d * d / (HALF * HALF);
+          h = e * e * rise;
+        }
+        tileAt(i, h);
+      }
+      if (b >= a) cells3d.instanceMatrix.needsUpdate = true;
+      wLo = lo; wHi = hi;
+
+      /* How much of the ribbon has gone, measured from its start. Three legs,
+         and they are the planner's own three: the plan arrives backwards from
+         the goal along the came-from chain, it stands while the search that
+         will replace it crosses the floor, and on the last lap it is retired
+         from behind at `band` itself -- not a rescaling of it, because a plan
+         consumed a little ahead of or behind the light running down it is two
+         events where there should be one. The cycle ends with the ribbon empty
+         at the goal and begins with it empty at the goal, so the loop has no
+         seam in it: there is one instant of zero-length ribbon and the next
+         thing that happens is the next plan being laid. Quantised to a ring on
+         the way out -- 5 cm of route at the high tier, 9 at the other two --
+         which is a third of a cell, against a travelling band that is 3.2 m of
+         route from its middle to its edge. */
+      if (tubeGeo) {
+        const gone = p < LAY ? 1 - p / LAY
+                   : p < (LAPS - 1) / LAPS ? 0
+                   : band;
+        // Clamped rather than trusted. The band arrives from the loop and a
+        // frame whose dt came back negative -- a clock stepping backwards
+        // behind a headless renderer does exactly this -- would otherwise ask
+        // for a draw range starting before the buffer.
+        const j = Math.max(0, Math.min(rings, Math.round(gone * rings)));
+        tubeGeo.setDrawRange(j * perRing, (rings - j) * perRing);
       }
     },
     dispose() {
