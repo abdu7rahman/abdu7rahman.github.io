@@ -48,6 +48,7 @@ export function makeCameraRig(camera) {
   }
 
   const away = new THREE.Vector3();
+  let t0 = 0;
   // How far the eye is from the thing it is pointed at. The depth of field
   // focuses on this, so the plane in focus is always whatever the camera was
   // aimed at rather than a distance somebody typed.
@@ -60,6 +61,7 @@ export function makeCameraRig(camera) {
        of it. Along the view axis rather than along world Z, or the pull-back
        would go sideways wherever the camera is not facing down the corridor. */
     update(p, pointer, dt, back, lift) {
+      t0 += dt || 0;
       const { fov } = sample(p);
       const R = CAMERA.pointer;
       // The pointer moves the eye, never the target: swinging both is how a
@@ -73,6 +75,19 @@ export function makeCameraRig(camera) {
         eye.addScaledVector(away, back || 0);
         eye.y += lift || 0;
       }
+      /* A breath, and a very small one. The eye is parked on its composed
+         shot for the whole of a reading now -- that was the fix for a camera
+         that used to drift three metres across a single state -- and a camera
+         that is *exactly* still is the one thing that reads as rendered
+         rather than shot. Two incommensurable periods so it never repeats,
+         zero mean so it cannot accumulate into drift, and 12 millimetres of
+         amplitude: at this page's typical three-metre standoff through a
+         44-degree lens that is 0.004 in NDC, which is four pixels on a 1916
+         frame. Below the threshold at which anybody could call it movement,
+         above the threshold at which the frame looks dead. */
+      eye.x += Math.sin(t0 * 0.31) * 0.012;
+      eye.y += Math.sin(t0 * 0.23 + 1.7) * 0.009;
+      eye.z += Math.sin(t0 * 0.19 + 3.1) * 0.010;
       camera.position.copy(eye);
       camera.lookAt(at);
       focus = eye.distanceTo(at);

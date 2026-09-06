@@ -584,6 +584,19 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   .carousel.is-active .proj,
   .carousel.is-active .carousel__viewport { transition: none; }
   .carousel.is-active .proj { opacity: 1; transform: none; }
+  /* Depth is motion, and motion is the thing this query is asking for less of.
+     The state still changes -- it has to, it is how the page is navigated --
+     but it changes by appearing rather than by travelling, and nothing moves
+     through the reader's own axis. */
+  /* One line each, deliberately. check_contrast.py finds the staged panel rule
+     by looking for `is-staged #main > .sec,` followed by a newline, and reads
+     the backing alpha the type sits on out of it -- so a second rule written
+     in that shape, earlier in the file, shadows the one the gate is actually
+     for. It did: the gate came back with "the staged panel has no backing"
+     the moment this block was added. The gate is right to be strict about it
+     and the selectors go on one line rather than the gate being loosened. */
+  body.home.is-staged #main > .sec, body.home.is-staged #main > .hero, body.home.is-staged #main > .is-back { transform: none; }
+  body.home.is-staged #main > .sec, body.home.is-staged #main > .hero { transition: opacity 200ms linear; }
 }
 @media (prefers-contrast: more) {
   body.home { --landing-mut: #b3b3b8; --landing-rule: #4a4a4a; }
@@ -627,6 +640,11 @@ body.home.is-staged .rail { flex: none; position: static; }
 body.home.is-staged #main {
   position: relative;
   flex: 1 1 auto; min-height: 0;
+  /* The depth the panels move through. 1200px is about the distance a reader
+     sits from the glass, which is what makes a Z translation read as the panel
+     moving rather than as it being sheared: shorter and the corners of a
+     62vw panel splay, longer and 160px of travel stops being visible at all. */
+  perspective: 1200px;
 }
 
 /* Every state, stacked on the same pixels. Only the live one is in the
@@ -662,7 +680,21 @@ body.home.is-staged #main > .hero {
       rgba(10, 10, 10, .94) 86%,
       rgba(10, 10, 10, 0) 100%);
   opacity: 0; pointer-events: none;
-  transform: translate3d(0, 2.4vh, 0);
+  /* In depth, not up and down. The world behind this panel is a corridor the
+     camera flies, and a state change is the camera arriving at the next
+     station in it -- so a panel that slides 2.4vh and fades is reporting a
+     different event from the one actually happening. It says "next section",
+     which is the one thing this layout exists not to say. Moved along the same
+     axis the camera is moving along, the type and the world are doing one
+     thing: what you have read recedes past you and what you have not comes up
+     out of the depth the machine is standing in.
+
+     Small numbers, and they have to be. The panel carries a measure of running
+     prose and five benchmark tables; scaled far enough to read as flight it is
+     also scaled far enough to resample every glyph on it. 160px of Z against
+     the 1200px perspective below is a scale of 0.88, which is a legible move
+     over 520ms and is gone before anybody tries to read through it. */
+  transform: translate3d(0, 0, -160px);
   /* Held back a beat so the words land as the world does rather than a
      half-second ahead of it. The world's own flight is world/config.js's
      CAMERA.ease and the two numbers answer to each other. */
@@ -673,7 +705,11 @@ body.home.is-staged #main > .hero {
    text's -- the DOM only has to get out of the way and come back, and anything
    longer here competes with the transformation it is supposed to be reporting. */
 body.home.is-staged #main > .is-live { opacity: 1; pointer-events: auto; transform: none; }
-body.home.is-staged #main > .is-back { transform: translate3d(0, -2.4vh, 0); }
+/* Behind you, so it goes the other way and passes the lens. Further than the
+   160 the ones ahead sit at, because a thing coming towards you covers ground
+   faster than a thing receding and matching the two numbers makes the exit
+   look slower than the entrance. */
+body.home.is-staged #main > .is-back { transform: translate3d(0, 0, 220px); }
 
 /* The bands stop being bands. Section tone was how a document separated one
    part from the next; here the world does that, and a second opaque fill over

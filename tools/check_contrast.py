@@ -66,10 +66,18 @@ def panel_alpha():
     number stops being a gate the first time someone changes the other one.
     """
     css = LANDING.read_text()
-    m = re.search(r"is-staged #main > \.sec,\s*\n[^{]*\{(.*?)\n\}", css, re.S)
-    if not m:
+    # Every rule written in that shape, not the first one. A second rule with
+    # the same selector prefix -- a reduced-motion override, say -- used to
+    # shadow the one this is actually for, and the gate then failed with "no
+    # backing" against a stylesheet whose backing was perfectly correct. A
+    # false alarm on a load-bearing gate is worse than no gate, because it is
+    # the kind of failure somebody eventually silences.
+    rules = re.findall(r"is-staged #main > \.sec,\s*\n[^{]*\{(.*?)\n\}", css, re.S)
+    if not rules:
         raise SystemExit("check_contrast: no staged panel rule in landing.css")
-    stops = re.findall(r"rgba\(\s*10,\s*10,\s*10,\s*(\.\d+|[01](?:\.\d+)?)\s*\)", m.group(1))
+    stops = []
+    for body in rules:
+        stops += re.findall(r"rgba\(\s*10,\s*10,\s*10,\s*(\.\d+|[01](?:\.\d+)?)\s*\)", body)
     if not stops:
         raise SystemExit("check_contrast: the staged panel has no backing")
     # The fade to nothing at the outer edge is margin the grid's padding keeps

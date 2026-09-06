@@ -275,6 +275,9 @@ export async function boot(mount, formationModules) {
   // Seconds for the arm to play its four waypoints out and back once.
   const ARM_CYCLE = 14;
   let armPhase = 0;
+  const viewProj = new THREE.Matrix4(), viewProjLast = new THREE.Matrix4();
+  const focusPt = new THREE.Vector3(), ndcNow = new THREE.Vector3(), ndcWas = new THREE.Vector3();
+  let haveLast = false;
   let framedPanel;
   const jointQ = new Array(6);
   const armFrames = Array.from({ length: 6 }, () => new THREE.Matrix4());
@@ -451,6 +454,37 @@ export async function boot(mount, formationModules) {
       // aimed at rather than a distance somebody typed once.
       finish.uniforms.uFocus.value = rig.focus;
     }
+    /* Where the frame moved, in NDC, so the finish pass can smear along it.
+       There is no velocity buffer and adding one would mean a second render of
+       every station's geometry; for a camera that translates and turns without
+       anything else in the scene moving quickly, one reprojected point carries
+       almost all of it. The point chosen is whatever the rig is looking at,
+       because that is the thing whose sharpness a reader judges the frame by,
+       and reprojecting it through last frame's matrix gives exactly the
+       distance it travelled across the glass.
+
+       Guarded on the uniform existing rather than assumed, so this stays
+       correct whether or not the finish pass is the one that reads it. */
+    if (finish && finish.uniforms.uMotion) {
+      camera.updateMatrixWorld();
+      viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      focusPt.set(0, 0, -rig.focus).applyMatrix4(camera.matrixWorld);
+      ndcNow.copy(focusPt).applyMatrix4(viewProj);
+      if (haveLast) {
+        ndcWas.copy(focusPt).applyMatrix4(viewProjLast);
+        // Per second, not per frame: a smear that is a fixed number of pixels
+        // per frame is twice as long on a 30 Hz panel as on a 60 Hz one, which
+        // is the wrong way round from how a shutter actually behaves.
+        finish.uniforms.uMotion.value.set(
+          (ndcNow.x - ndcWas.x) / Math.max(1e-4, dt),
+          (ndcNow.y - ndcWas.y) / Math.max(1e-4, dt));
+      } else {
+        finish.uniforms.uMotion.value.set(0, 0);
+      }
+      viewProjLast.copy(viewProj);
+      haveLast = true;
+    }
+
     if (composer) composer.render(dt); else renderer.render(scene, camera);
 
     // A formation per frame the reader is not scrolling through. The test is
