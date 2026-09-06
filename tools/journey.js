@@ -44,10 +44,14 @@ const REDUCED = args.includes('--reduced');
 // only honest way to reach it from a desktop browser.
 const UNSTAGED = args.includes('--unstaged');
 const W = +opt('width', UNSTAGED ? 800 : 1440), H = +opt('height', 900);
-// Always asked for, because capability.js refuses to run on a software
-// rasteriser and a headless browser is nothing else. Overridable, so the
-// low tier can be looked at too.
-const TIER = opt('tier', 'medium');
+/* Always asked for, because capability.js refuses to run on a software
+   rasteriser and a headless browser is nothing else. Overridable, so the other
+   tiers can be looked at too -- and the default is the one most desktop
+   visitors are served, which medium was not. Defaulting to medium meant every
+   screenshot taken to judge the world by was of a world drawn out of 34000
+   points when the machine it was being judged for draws it out of 80000, and
+   nothing in the output said so. It says so now. */
+const TIER = opt('tier', 'high');
 // Where in a crossing the mid-flight frame is taken. Measured as a share of
 // the world's own travel rather than in milliseconds, because the easing
 // converges per *frame*: the 280 ms that is halfway through a crossing on a
@@ -461,6 +465,7 @@ async function walkScroll(page, boot, ctx) {
       stations: w.stations.map(s => ({ id: s.id, range: s.range, settle: s.settle }))
     };
   });
+  console.log(`tier: ${TIER} (pass --tier high|medium|low to change it)`);
   console.log('boot:', JSON.stringify(boot, null, 1));
   if (boot && boot.solidsBuilt !== boot.solidsWanted) {
     problems.push(`only ${boot.solidsBuilt} of ${boot.solidsWanted} solids built --`

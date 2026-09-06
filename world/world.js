@@ -27,7 +27,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { FinishShader } from "./materials/post.js";
-import { STATIONS, TOKENS, CAMERA, TRANSIT, measureBands, measureStage, stationMix, anchorOf } from "./config.js";
+import { STATIONS, TIERS, TOKENS, CAMERA, TRANSIT, measureBands, measureStage, stationMix, anchorOf } from "./config.js";
 import { detect, tokens } from "./capability.js";
 import { makeScroll } from "./scroll.js";
 import { makePointer } from "./pointer.js";
@@ -112,6 +112,15 @@ export async function boot(mount, formationModules) {
   });
   substrate.uniforms.uArc.value = TRANSIT.arc;
   substrate.uniforms.uDpr.value = dpr;
+  /* Against the high tier, which is what every formation was written for.
+     Capped, because the rule holds total coverage constant and that is the
+     right invariant only while the points are not already touching: the low
+     tier's uncapped 2.58 turned the hero's dust into visible chunks and put
+     8% of its frame above 140 against high's 1.7%. 1.8 keeps medium at the
+     1.53 that measured indistinguishable from high and stops short of the
+     size where a sample stops reading as a sample. */
+  substrate.uniforms.uDensity.value =
+    Math.min(1.8, Math.sqrt(TIERS.high.substrate / Math.max(1, q.substrate)));
   scene.add(substrate.points);
 
   /* Where the stations sit along the journey, measured from whichever thing

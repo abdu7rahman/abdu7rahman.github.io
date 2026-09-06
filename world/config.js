@@ -39,21 +39,28 @@ export const STATIONS = [
   // points, and a surface drawn through either would be inventing a boundary
   // neither of them has. About still has the solid arm standing in it.
   { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0],  solid: false },
-  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false },
+  /* Half the cloud, and the only station that needs the instruction. Swept at
+     the high tier -- gain against how much of the frame comes back above 140 --
+     six of the seven barely move (Work 0.002 at every gain, Path 0.003) and
+     About goes 0.129, 0.044, 0.021 across 1.0, 0.6, 0.4. It is the one station
+     where the cloud is the whole subject and it is read from close enough to
+     fill the frame with it, so it is the one that has to be told. */
+  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false, cloud: 0.5 },
   { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6],  solid: true  },
   { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2],  solid: true  },
-  /* `cloud` scales the substrate at this station and only here. Stack is a
-     bundle of rollouts, which means several thousand points sharing an origin
-     and fanning out from it, and additively that core is not a dense fan, it
-     is a white smear -- measured off a render, 8% of the frame above 140 and
-     a peak of 183 with no strand structure left in it at all. A third of that
-     brings the core back under the tonemap's shoulder while the sparse ends
-     of the trajectories stay above the grain, which is the whole reading: how
-     many were tried, and how far apart they ended up. It does not separate
-     the core into strands and no single scalar can -- that is a thousand
-     trajectories sharing an origin, and additively their first half-metre is
-     one object however dim each of them is. */
-  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false, cloud: 0.34 },
+  /* `cloud` scales the substrate at this station and only here. Stack draws a
+     rollout bundle -- three hundred candidates leaving one origin -- and near
+     that origin they are the same object however dim each of them is, so it
+     saturated: measured off a render, 8% of the frame above 140, a peak of
+     183, no strand structure left. Most of that turned out to be splat size
+     rather than exposure and is fixed where it belongs, in the formation. The
+     rest is here, and it now runs the other way. Drawn at the scale it was
+     sampled at, the fan is three hundred hairlines rather than three hundred
+     smears, and nine times less coverage is nine times less light: the same
+     station measured p90 = 12 against About's 58 two states earlier. 1.35
+     spends back what the correct splat size cost, which is a different thing
+     from spending it on a splat that was wrong. */
+  { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false, cloud: 1.35 },
   { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8],  solid: true  },
   { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0],  solid: true  }
 ];
@@ -224,7 +231,33 @@ export const CAMERA = {
    what this whole rebuild exists to stop being. `stagger` is the fraction of
    the crossing spent waiting for other points to go first, which is what
    turns a wipe into a reorganisation. */
-export const TRANSIT = { arc: 0.62, stagger: 0.42, heat: 1.25 };
+/* `heat` is how much brighter a point is at the middle of a morph than at
+   rest -- the substrate multiplies its colour by 0.55 + heat * sin(pi * mix).
+   At 1.25 that is 0.55 settled against 1.80 in transit, a swing of 3.3, and it
+   was stacking multiplicatively with the cloud's own swell: measured at the
+   tier the site actually serves, a crossing came out with 22% of the frame
+   above 140 against 0.2% either side of it. Twenty times, for a change of
+   state.
+
+   0.45 halved that and was still the brightest thing on the page: the
+   hero-into-About crossing came back at 0.120 with the arm inside it barely
+   distinguishable from the cloud it was turning into, which is the one thing a
+   crossing has to show. The uFade either side of that frame is the same 0.31
+   as the settled state next to it, so the four-fold difference is not exposure
+   at all -- it is this term and the bow, stacked on a morph that bunches the
+   cloud through its own middle.
+
+   0.25 was tried and is not better: across the six crossings it moved three
+   down and three up, which is the signature of a measurement that has run out
+   of resolution rather than of a number that wants changing. The mid-crossing
+   frame is taken at 54% of the world's own travel and where that lands varies
+   by enough to move the reading +/-0.04, while the settled frames repeat to
+   the digit. So 0.45 stands, and the hero-into-About crossing stays the
+   brightest moment on the page -- two clouds centred on the same machine
+   passing through each other is intrinsically the densest thing here, and
+   dimming it further would be dimming the transformation rather than the
+   flash. */
+export const TRANSIT = { arc: 0.62, stagger: 0.42, heat: 0.45 };
 
 /* ── quality tiers ──────────────────────────────────────────────────────
    Chosen by world/capability.js, not by user agent sniffing. The substrate is

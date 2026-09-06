@@ -90,8 +90,17 @@ export function makeSurface({ base, accent, teal, fog, instanced = true }) {
         // event seen twice.
         float grain = snoise(vW * 2.3 + vSeed * 17.0) * 0.5 + 0.5;
         float cut = uCut * 1.18;
-        if (grain < cut - 0.09) discard;
-        float edge = smoothstep(cut - 0.09, cut + 0.02, grain);
+        /* The band the burning rim is drawn over. 0.11 wide, it was not a rim:
+           the fraction of the noise range it covers is not the fraction of the
+           *surface* it covers, because the field is smooth and a smooth field
+           crosses a wide threshold slowly. Half-eroded, a fifth of the
+           surviving fragments were inside it and they were spread over most of
+           the corridor -- a photograph of that frame is a wall of glowing
+           orange cracks, which reads as lava rather than as matter coming
+           apart. At 0.045 it is a filigree along the opening edge, which is
+           what a rim is, and what is behind it can be seen. */
+        if (grain < cut - 0.035) discard;
+        float edge = smoothstep(cut - 0.035, cut + 0.010, grain);
 
         /* Three terms -- key, wrap, kicker -- and the weights matter more than
            the terms do. They were 0.30 ambient + 0.72 key + 0.34 wrap + 0.26

@@ -35,16 +35,25 @@ import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
    The reachable volume runs 1.75 wide, 1.36 tall and 1.68 deep and its centre
    of mass sits 0.19 above and 0.10 in front of the base plate, which is a
    much bigger object than the arm that generated it: at the manipulator's own
-   standoff it overflows the frame on three sides. 1.62 back with the eye a
-   third of a metre above the plate and the target pushed 0.6 to the left puts
-   96% of the written points inside a 1440x900 frame with their weight at 0.23
-   across it -- right of centre, clear of the panel, which at this width owns
-   the left 54% of the glass. The remaining 4% is the near lip of the floor,
-   which is the one part of this that loses nothing by running off the bottom
-   edge. 47 degrees rather than the manipulator's 42 because the envelope is
-   half a metre wider than the machine and the alternative was another half
-   metre of standoff, which is the travel this station is not allowed. */
-export const VIEW = { pos: [0.66, -0.22, 1.62], look: [0.05, -0.36, -0.10], fov: 47 };
+   standoff it overflows the frame on three sides.
+
+   1.62 of standoff did not solve that, it only moved where the overflow
+   landed, and the 0.6 of leftward aim that went with it was not about the
+   envelope at all -- it was pushing the subject out from behind the panel by
+   swinging the camera, which framing.js now does in NDC for every station at
+   once. Left in, the two corrections stacked: measured off a render at
+   1440x960, the *arm* ran to +1.57 in NDC, so more than half the machine this
+   section is about was outside the frame and what remained was a fragment
+   seen from underneath.
+
+   So: aimed at the envelope, and far enough back to hold it. From 3.80 the
+   whole reachable volume lands inside the frame at every aspect the page will
+   stage -- x from -0.08 to +0.86 at 1440x960 and -0.01 to +0.70 at 1916x953,
+   y within +/-0.61 of centre -- with the arm that generated it sitting inside
+   that at [+0.13, +0.61]. It is 1.53 of travel from the hero's eye on the
+   same 42-to-45 of lens, which is the move the section is: the same machine,
+   stepped back from, with everything it can reach drawn around it. */
+export const VIEW = { pos: [0.55, 0.05, 3.80], look: [0.35, -0.10, -0.06], fov: 45 };
 
 /* The joint box the envelope is sampled over.
  *

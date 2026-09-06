@@ -52,6 +52,16 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
     uMix:    { value: 0 },      // 0 = formation A, 1 = formation B
     uArc:    { value: 0.55 },   // how far points bow off the straight line
     uDpr:    { value: 1 },
+    /* sqrt(80000 / count). A tier does not draw a different world, it draws
+       the same world out of fewer points -- 12000 at the low tier against
+       80000 at the high -- and a point is a fixed size, so the same object
+       came out with a seventh of the coverage and a seventh of the light. The
+       formations are all written against the high tier's density, so the fix
+       belongs here rather than seven times over: fewer samples of the same
+       shape are drawn proportionally bigger, and total coverage is what stays
+       constant across tiers instead of point count. Square root because
+       coverage goes as the square of the radius. */
+    uDensity:{ value: 1 },
     uCharge: { value: 0 },      // pointer speed
     uFade:   { value: 1 },      // how much of the cloud is wanted right now
     uPointer:{ value: new THREE.Vector3() },
@@ -72,7 +82,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
     blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */`
       ${SIMPLEX3}
-      uniform float uTime, uMix, uArc, uDpr, uCharge, uFade;
+      uniform float uTime, uMix, uArc, uDpr, uDensity, uCharge, uFade;
       uniform vec3 uPointer;
       attribute vec3 aA, aB;
       attribute float aSeed, aKA, aKB, aSA, aSB;
@@ -120,7 +130,7 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
         // fixed in the near field: a hard ceiling on the splat, and a fade
         // that empties the couple of metres the text actually occupies.
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = clamp(sz * uDpr * (26.0 / max(0.9, depth)), 1.0, 7.0 * uDpr);
+        gl_PointSize = clamp(sz * uDpr * uDensity * (26.0 / max(0.9, depth)), 1.0, 7.0 * uDpr * uDensity);
         vAlpha = smoothstep(0.7, 2.2, depth) * (1.0 - smoothstep(26.0, 44.0, depth));
       }`,
     fragmentShader: /* glsl */`

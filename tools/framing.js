@@ -130,6 +130,40 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         }
         groups.push({ name: top.name || ('group' + w.scene.children.indexOf(top)), meshes, world: box, ndc: nd });
       }
+      /* The cloud's own extent, which no traversal of the scene graph will
+         give you: the substrate is one buffer of eighty thousand points and
+         its bounding box is the whole page. What matters at a station is where
+         the *current* formation put them, so this reads the live attribute --
+         the positions actually on the GPU this frame, mid-morph or not -- and
+         boxes the ones that are not parked at the origin. */
+      /* aA, not position. The morph happens on the GPU -- the vertex shader
+         mixes the two target buffers per point -- so the `position` attribute
+         is a zero-filled placeholder and boxing it says the whole formation is
+         one point at the origin, which is what the first version of this
+         reported. aA is the formation the station is settled on. */
+      const sub = w.substrate.points.geometry.getAttribute('aA');
+      const cbox = { min: [1e9, 1e9, 1e9], max: [-1e9, -1e9, -1e9] };
+      let np = 0;
+      for (let k = 0; k < sub.count; k++) {
+        const x = sub.getX(k), y = sub.getY(k), z = sub.getZ(k);
+        if (!isFinite(x) || (x === 0 && y === 0 && z === 0)) continue;
+        np++;
+        cbox.min[0] = Math.min(cbox.min[0], x); cbox.max[0] = Math.max(cbox.max[0], x);
+        cbox.min[1] = Math.min(cbox.min[1], y); cbox.max[1] = Math.max(cbox.max[1], y);
+        cbox.min[2] = Math.min(cbox.min[2], z); cbox.max[2] = Math.max(cbox.max[2], z);
+      }
+      if (np) {
+        const nd = { min: [1e9, 1e9], max: [-1e9, -1e9], behind: 0 };
+        for (let a = 0; a < 8; a++) {
+          vec.set(a & 1 ? cbox.max[0] : cbox.min[0], a & 2 ? cbox.max[1] : cbox.min[1], a & 4 ? cbox.max[2] : cbox.min[2]);
+          vec.applyMatrix4(cam.matrixWorldInverse);
+          if (vec.z > -cam.near) { nd.behind++; continue; }
+          vec.applyMatrix4(cam.projectionMatrix);
+          nd.min[0] = Math.min(nd.min[0], vec.x); nd.max[0] = Math.max(nd.max[0], vec.x);
+          nd.min[1] = Math.min(nd.min[1], vec.y); nd.max[1] = Math.max(nd.max[1], vec.y);
+        }
+        groups.push({ name: 'cloud', meshes: np, world: cbox, ndc: nd });
+      }
       const roster = w.scene.children.map((c, k) =>
         `${k}:${c.type}${c.visible ? '' : '(hidden)'}`).join(' ');
       const panel = window.__stage.panel();

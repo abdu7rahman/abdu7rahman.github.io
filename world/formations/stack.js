@@ -114,8 +114,11 @@ const W_GOAL = 1.0, W_HEAD = 0.22, W_SLOW = 0.30;
 
 /* Points held in the bundle's pool, more than the largest tier draws of them
    so the walk in fill thins the fan rather than writing the same candidate
-   twice. */
-const POOL = 30000;
+   twice. 30000 was not more: the structure band is 62% of 80000 at the high
+   tier, which is 49600, so every candidate was being written to the page one
+   and a half times over -- half the bundle drawn twice on top of itself, in a
+   picture whose whole subject is how densely the window was sampled. */
+const POOL = 60000;
 
 /* Where the robot is standing when it has to decide, relative to the anchor,
    and which way it is facing. Set back towards the reader and pointing away,
@@ -206,7 +209,19 @@ export function build(ctx) {
     const share = j === traj.length - 1 ? POOL - n
                 : Math.min(POOL - n, Math.round(POOL * weight[j] / wsum));
     const wN = (weight[j] - 0.28) / 0.72;      // 1 is the cheapest candidate
-    const sz = 0.62 + 0.78 * wN;
+    /* Splat size, and it has to be read against this station's own camera
+       rather than against the material's defaults. The substrate sizes a point
+       as sz * dpr * (26 / depth) and ceilings it at 7 * dpr; this eye stands
+       2.32 from the bundle, so the bracket was 13.9 to 31.4 pixels and every
+       one of them clamped to 14. Two things followed. The cost encoding was
+       dead -- the cheapest candidate and the dearest drew exactly the same
+       width -- and, worse, three hundred candidates spread across 1.28 m at
+       508 px/m sit 2.2 pixels apart, so a 14-pixel splat covered its six
+       nearest neighbours and the fan could not have resolved into arcs at any
+       brightness at all. At 0.10 to 0.23 the same bracket is 2.2 to 5.2
+       pixels, the cheap candidates are the thick ones again, and the sampling
+       is drawn at the scale it was sampled at. */
+    const sz = 0.10 + 0.13 * wN;
     for (let k = 0; k < share; k++) {
       const t = share < 2 ? 0 : (k / (share - 1)) * (pts.length - 1);
       const i0 = Math.min(pts.length - 2, t | 0), f = t - i0;
