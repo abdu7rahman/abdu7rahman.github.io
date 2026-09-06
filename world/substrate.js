@@ -136,18 +136,41 @@ export function makeSubstrate(count, { accent, teal, fg, stagger, heat }) {
         vKind = mix(aKA, aKB, m);
         vHeat = bow;
 
-        /* The travelling band. Both endpoints carry a flow or the point is
-           not running, because a feature that exists in one formation and not
+        /* The travelling band.
+        
+           The first version of this required a flow at both ends of the morph,
+           on the grounds that a feature which exists in one formation and not
            the other would otherwise pulse on the way in and stop dead on the
-           way out. Wrapped on the near side only -- fract of a negative is
-           still positive in GLSL, but the distance has to be measured the
-           short way round or the band tears every time it laps. */
-        float fl = mix(aFA, aFB, m);
+           way out. That reasoning is right about the pop and wrong about the
+           gate, and the difference matters because of where a settled reader
+           actually sits: the ease is asymptotic, so a station at rest is at
+           mix 0.99 of the pair *before* it, not mix 0 of its own. Gated on
+           both, a station could therefore only run where its neighbour
+           happened to assign flow to the same point indices -- so the
+           corridor's LiDAR sweep was silent at the one moment anybody was
+           looking at it, for reasons entirely to do with the rollout bundle
+           one state earlier.
+        
+           So the strength ramps with the morph instead of switching on it.
+           A point running in only one of the two ends still runs, at the
+           weight that end has, which goes to zero exactly where the feature
+           does. No pop, and no station's motion depends on what its
+           neighbours chose to animate.
+        
+           Wrapped on the near side only -- fract of a negative is still
+           positive in GLSL, but the distance has to be measured the short way
+           round or the band tears every time it laps. */
+        float hasA = step(0.0, aFA), hasB = step(0.0, aFB);
+        float w = mix(hasA, hasB, m);
         vRun = 0.0;
-        if (aFA >= 0.0 && aFB >= 0.0) {
+        if (w > 0.001) {
+          // Only the ends that have one contribute to where the band is, or a
+          // point running at one end would be dragged toward -1 by the other.
+          float fl = (aFA * hasA * (1.0 - m) + aFB * hasB * m)
+                   / max(1e-4, hasA * (1.0 - m) + hasB * m);
           float d = fract(fl - uRun);
           d = min(d, 1.0 - d);
-          vRun = smoothstep(uRunWidth, 0.0, d);
+          vRun = smoothstep(uRunWidth, 0.0, d) * w;
         }
         float sz = mix(aSA, aSB, m);
         // A point the band is over is drawn a little larger as well as a
