@@ -285,7 +285,18 @@ export async function boot(mount, formationModules) {
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (now - last) / 1000);
+    /* Clamped, then scaled. The clamp is what stops a tab coming back from
+       the background and advancing the world by four minutes in one frame; the
+       scale is for probes, and it defaults to 1 so the product never sees it.
+    
+       It is not a convenience. A headless run on a software rasteriser draws
+       at three to five seconds a frame, and with dt held at 50 ms that world
+       advances one eightieth of real time -- so nine seconds of wall clock at
+       a probe is a hundred milliseconds of the world's own clock, two per cent
+       of a five-second lap. Every measurement of whether anything moves is a
+       lower bound by that factor unless the clock can be driven, and a
+       diagnostic that under-reports by eighty times is worse than none. */
+    const dt = Math.min(0.05, (now - last) / 1000) * (window.__worldSpeed || 1);
     last = now; t += dt;
 
     // Two property reads; the stage can arrive or leave at any time.

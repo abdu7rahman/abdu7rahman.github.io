@@ -66,6 +66,8 @@ const TIER = opt('tier', 'high');
    explicitly (--move 900) it is the check that matters most; left on by
    default it breaks the check that runs every time. */
 const MOVE_MS = +opt('move', 0);
+// How much faster than real time to run the world while the pair is taken.
+const MOVE_SPEED = +opt('movespeed', 120);
 const MOVE_CLIP = () => ({ x: Math.round(W * 0.54), y: 60, width: Math.round(W * 0.44), height: Math.max(64, H - 220) });
 // Where in a crossing the mid-flight frame is taken. Measured as a share of
 // the world's own travel rather than in milliseconds, because the easing
@@ -307,8 +309,15 @@ async function walkStages(page, ctx) {
        being something this tool asserts. */
     if (MOVE_MS > 0) {
       const before = await page.screenshot({ clip: MOVE_CLIP(page) });
+      /* The world's clock, not the wall's. This browser draws at three to five
+         seconds a frame and the loop clamps dt at 50 ms, so waiting a second
+         here advances the world by about twelve milliseconds -- a quarter of a
+         per cent of a lap. Scaled, the same wait covers the lap it is supposed
+         to, through the same code path the product runs. */
+      await page.evaluate(v => { window.__worldSpeed = v; }, MOVE_SPEED);
       await page.waitForTimeout(MOVE_MS);
       const after = await page.screenshot({ clip: MOVE_CLIP(page) });
+      await page.evaluate(() => { window.__worldSpeed = 1; });
       ctx.moved.push({ tag, a: before, b: after });
     }
     steps = await page.evaluate(() => window.__jSteps.slice());

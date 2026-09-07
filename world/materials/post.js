@@ -142,10 +142,20 @@ export const FinishShader = {
          at is a seven-pixel radius across and three and a half down -- the
          disc has always been that ellipse, because the offsets are in UV and
          the frame is not square, and the corner term inherits it rather than
-         arguing with it. It takes light out of the corner rather than putting
-         it back, which is the only direction anything in this file is allowed
-         to move: seven settled stations measured 0.12% to 2.35% of the render
-         half above 140, and that number has been fought down twice. */
+         arguing with it.
+
+         Blur is not automatically free of the brightness budget, which is the
+         thing to be careful about here: the disc is averaged in front of the
+         tone curve, the curve is concave, and averaging in front of a concave
+         curve returns more than curving in front of an average. So it was
+         measured rather than assumed, against a frozen copy of the tree so
+         that nobody else's edits could land in the answer. Over the six
+         stations that do not animate their own subject, 0.35 comes back at
+         0.87% of the render half above 140 against the same file at 0.89%
+         and 0.90% with this term absent, and a mean luma of 20.44 against
+         20.44 and 20.46. It is inside the noise, and the noise is Hero: the
+         arm plays a 14-second cycle, which moves that one station between
+         1.36% and 1.62% run to run all by itself. */
       coc = min(coc + uMaxCoC * uField * min(1.0, 2.0 * r * r), uMaxCoC);
 
       /* Motion blur, with no velocity buffer to build it from, out of two
@@ -265,17 +275,19 @@ export const FinishShader = {
 
       /* Grain, and it stays in front of the falloff, which is not where the
          physics puts it. On film the emulsion is behind the lens, so the
-         corner should keep its noise while it loses its light. Moved there,
-         it measurably costs: the frame is mostly black, the framebuffer
-         clamps at zero, and half of a zero-mean grain laid on a black pixel
-         is not a grain at all, it is a lift. Measured over the render half at
-         the seven settled stations, grain behind the falloff took the mean
-         luma from 19.00 to 19.31 and the fraction above 140 from 0.96% to
-         1.01%, with Contact going 0.16% to 0.41% on its own. Rectified noise
-         on black is the most expensive kind of correctness on offer here and
-         this page cannot buy it. Left in front, the corner's grain is scaled
-         by the same 0.42 the picture is: wrong about film, right about eight
-         bits and about the gate. */
+         corner ought to keep its noise while it loses its light. It was moved
+         there and measured, and it costs: this frame is mostly black, the
+         framebuffer clamps at zero, and the negative half of a zero-mean
+         grain laid on a black pixel is not a grain at all, it is thrown away.
+         What is left is a lift. Over the render half at the seven settled
+         stations it raised the mean luma of every one of them -- 19.12 to
+         19.27 across the seven, and 6.27 to 6.44 at Contact, the darkest,
+         which is 2.7% of a station that is almost all floor. The fraction
+         above 140 barely moves, 0.958% to 0.960%, and that is precisely what
+         makes it expensive: the lift is in the floor rather than in the
+         highlights, and the floor is what the type sits on. Left in front,
+         the corner's grain is scaled by the same 0.42 the picture is: wrong
+         about film, right about eight bits and about the gate. */
       vec2 gp = vUv * vec2(1024.0, 1024.0) + fract(uTime) * 91.7;
       // Per-channel, because film grain is three emulsions and one grey
       // wobble over the top of everything reads as video noise.

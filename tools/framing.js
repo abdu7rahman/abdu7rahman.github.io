@@ -141,6 +141,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
          is a zero-filled placeholder and boxing it says the whole formation is
          one point at the origin, which is what the first version of this
          reported. aA is the formation the station is settled on. */
+      /* Both ends, not just A. A settled station sits at mix 0.99 of the pair
+         before it, so the formation a reader is actually looking at is the B
+         end -- boxing A alone reports the previous station's shape under this
+         station's name, which is how a camera here came to be solved against
+         an envelope half the size of the one the file writes. */
+      const subB = w.substrate.points.geometry.getAttribute('aB');
       const sub = w.substrate.points.geometry.getAttribute('aA');
       const cbox = { min: [1e9, 1e9, 1e9], max: [-1e9, -1e9, -1e9] };
       let np = 0;
@@ -163,6 +169,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
           nd.min[1] = Math.min(nd.min[1], vec.y); nd.max[1] = Math.max(nd.max[1], vec.y);
         }
         groups.push({ name: 'cloud', meshes: np, world: cbox, ndc: nd });
+      }
+      {
+        const bb = { min: [1e9, 1e9, 1e9], max: [-1e9, -1e9, -1e9] };
+        let nb = 0;
+        for (let k = 0; k < subB.count; k++) {
+          const x = subB.getX(k), y = subB.getY(k), z = subB.getZ(k);
+          if (!isFinite(x) || (x === 0 && y === 0 && z === 0) || y < -300) continue;
+          nb++;
+          bb.min[0] = Math.min(bb.min[0], x); bb.max[0] = Math.max(bb.max[0], x);
+          bb.min[1] = Math.min(bb.min[1], y); bb.max[1] = Math.max(bb.max[1], y);
+          bb.min[2] = Math.min(bb.min[2], z); bb.max[2] = Math.max(bb.max[2], z);
+        }
+        if (nb) {
+          const nd2 = { min: [1e9, 1e9], max: [-1e9, -1e9], behind: 0 };
+          for (let a = 0; a < 8; a++) {
+            vec.set(a & 1 ? bb.max[0] : bb.min[0], a & 2 ? bb.max[1] : bb.min[1], a & 4 ? bb.max[2] : bb.min[2]);
+            vec.applyMatrix4(cam.matrixWorldInverse);
+            if (vec.z > -cam.near) { nd2.behind++; continue; }
+            vec.applyMatrix4(cam.projectionMatrix);
+            nd2.min[0] = Math.min(nd2.min[0], vec.x); nd2.max[0] = Math.max(nd2.max[0], vec.x);
+            nd2.min[1] = Math.min(nd2.min[1], vec.y); nd2.max[1] = Math.max(nd2.max[1], vec.y);
+          }
+          groups.push({ name: 'cloud(B)', meshes: nb, world: bb, ndc: nd2 });
+        }
       }
       const roster = w.scene.children.map((c, k) =>
         `${k}:${c.type}${c.visible ? '' : '(hidden)'}`).join(' ');

@@ -67,7 +67,24 @@ import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
    that at [+0.13, +0.61]. It is 1.53 of travel from the hero's eye on the
    same 42-to-45 of lens, which is the move the section is: the same machine,
    stepped back from, with everything it can reach drawn around it. */
-export const VIEW = { pos: [0.55, 0.05, 3.80], look: [0.35, -0.10, -0.06], fov: 45 };
+/* Re-solved, against the envelope this file actually writes rather than
+   against the one its header used to claim. That header said 1.75 x 1.36 x
+   1.68; boxing the 41921 points the fill emits gives 2.604 x 1.653 x 2.275,
+   centred 0.740 above the plate, 0.209 in front of it and 0.448 to its left --
+   half again as wide and a third deeper. The standoff before this was solved
+   from the wrong figure and inherited its error: measured against the real
+   volume, the envelope ran off the top of the frame at every aspect the page
+   will stage and off the right of it at 1440x960.
+
+   From 4.60 it fits at both, x from -0.37 to +0.93 in the narrowest staged
+   window and -0.22 to +0.75 in the widest, y inside +/-0.67 of centre. Further
+   back fits with more margin and buys nothing: at 5.60 the envelope clears by
+   another tenth and the arm inside it drops from 0.40 of the frame's width to
+   0.32, and the arm is the thing the volume is a claim about. 2.32 m of travel
+   from the hero's eye on the same lens, which is the move this section is --
+   the same machine, stepped back from, with everything it can reach drawn
+   around it. */
+export const VIEW = { pos: [0.42, 0.28, 4.60], look: [0.30, 0.06, -0.06], fov: 45 };
 
 /* The joint box the envelope is sampled over.
  *
