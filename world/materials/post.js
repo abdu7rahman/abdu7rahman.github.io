@@ -59,19 +59,41 @@ export const FinishShader = {
        focus: the sharpness half of the lens falloff, next to the brightness
        half the vignette already does. */
     uField:   { value: 0.35 },
-    uGrain:   { value: 0.05 },
+    // 0.032. Grain belongs on a photograph, not over one: at 0.05 it was the
+    // largest thing moving in a frame whose subject moves by nine pixels.
+    uGrain:   { value: 0.032 },
     uVig:     { value: 1.0 },
     uNear:    { value: 0.1 },
     uFar:     { value: 140 },
     uFocus:   { value: 3 },      // metres; whatever the rig is pointed at
     uAperture:{ value: 1.15 },   // how fast it falls out of focus
-    uMaxCoC:  { value: 0.011 },  // ceiling on the blur, in UV
+    /* 0.0055, half what it was. 0.011 in UV is 21 pixels across a 1916 frame,
+       which is not depth of field on a subject three metres away, it is a
+       subject nobody can see the machining on -- and stacked on an
+       underexposed image with grain over it, the whole render came out as
+       soup. Ten pixels still separates the near rim of a costmap from its far
+       corner, which is all this is for. */
+    uMaxCoC:  { value: 0.0055 }, // ceiling on the blur, in UV
     uBloom:   { value: 0.22 },
     uThresh:  { value: 0.78 },
     // Under one, because the world is lit in radiance now and the shoulder
     // has to have something to roll off. At 1.05 everything metal sat on the
     // flat part of the curve.
-    uExposure:{ value: 0.62 },
+    /* 1.15, up from 0.62, and that number was the single worst thing about
+       this page. The session it came from started with the opposite fault --
+       the corridor's median pixel was 109 of 255 against a background of 10,
+       which is a washed-out slab -- and the fix was applied three times
+       running without anybody checking where it had landed. It landed here:
+       on Work, the station carrying the occupancy grid, 0.3% of the render sat
+       above 100 and the ninetieth percentile was 63, so nine tenths of the
+       picture lived between 10 and 63. That is not a dark scene, it is an
+       underexposed one, and no amount of lighting range rescues an image
+       crushed into the bottom quarter of the display's tonal range.
+
+       The range work was right and stays: a lit face at 140 against a face
+       turned away at 29 is 4.8 to 1, the same ratio the surface material was
+       reweighted to produce. What changes is where that ratio sits. */
+    uExposure:{ value: 1.15 },
     uTexel:   { value: new THREE.Vector2(1 / 1280, 1 / 720) }
   },
   vertexShader: /* glsl */`
