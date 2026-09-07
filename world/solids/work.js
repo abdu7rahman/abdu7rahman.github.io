@@ -629,7 +629,7 @@ export function build(ctx) {
      the band was when it was last asked -- the only way to notice a lap turning
      over -- and the range of tiles that was standing, so this frame knows what
      it has to put back down. [0, -1] is the empty range. */
-  let lap = 0, was = 0, wLo = 0, wHi = -1;
+  let lap = 0, was = 0, wLo = 0, wHi = -1, wSink = false;
 
   return {
     group,
@@ -679,38 +679,70 @@ export function build(ctx) {
       const swept = (p - SWEEP0) / (SWEEP1 - SWEEP0);
       const front = swept < 0 || swept > 1 ? -9 : -HALF + swept * (1 + 2 * HALF);
 
-      /* Which tiles the band is over now against the ones it was over last
-         frame. Only the union of the two is written: everything inside it is
-         standing at a new height, everything that has dropped out of it has to
-         be put back down, and the twelve hundred cells either side have not
-         moved and are not touched. Measured over a cycle at 60 fps that union
-         is 57 instances a frame and 84 in the worst one, the width of the band
-         once at each end of the sweep, and never the whole array. */
+      /* The closed set stays closed.
+
+         A band that raised eighty-two cells and put every one of them back
+         down behind itself was drawing a wave, and a wave is not what a search
+         does: A* closes cells and never re-opens them, so a costmap being
+         searched is a region *filling in*. Drawn as a wave it was also nearly
+         invisible -- 82 tiles rising 5 cm at 178 px/m is nine pixels each over
+         a couple of per cent of the frame, and measured against the commit
+         before any of this it moved the frame 0.14% to 0.21%, the weakest
+         reading of any station here. Left standing, the same sweep displaces
+         up to 1357 of them and the room visibly fills.
+
+         The cost is one full rewrite while the region settles back, which is
+         what the last quarter of the cycle is for -- already flat, already
+         there so the loop closes on stillness. The write set is otherwise
+         unchanged: a tile leaving the band's trailing edge is already at its
+         closed height, so nothing behind the front is touched. 57 instances a
+         frame through the sweep, 84 at worst, 1357 for the seconds of sink. */
       const last = Math.max(1, nTiles - 1);
       let lo = 0, hi = -1;
       if (front > -9) {
         lo = Math.max(0, Math.ceil((front - HALF) * last));
         hi = Math.min(last, Math.floor((front + HALF) * last));
       }
+      /* How much of what has been closed is still standing. Three cases, and
+         the first one matters: before the sweep begins nothing has been closed,
+         so this is 0 -- read as 1 there it would stand the whole room up during
+         the fiftieth of the cycle that is supposed to be flat before the front
+         arrives. Through the sweep it is 1 and the i < lo test decides what has
+         been closed. After it, it eases to 0 across the flat quarter, so the
+         region sinks rather than being switched off. */
+      const sink = swept < 0 ? 0
+                 : swept <= 1 ? 1
+                 : 1 - Math.min(1, Math.max(0, (p - SWEEP1) / Math.max(1e-6, 1 - SWEEP1)));
+      // Smoothstepped, so it leaves and arrives at rest.
+      const standing = sink * sink * (3 - 2 * sink);
+      const sinking = standing > 0.0005 && standing < 0.9995;
       let a, b;
-      if (hi < lo) { a = wLo; b = wHi; }
+      if (sinking || wSink) { a = 0; b = last; }
+      else if (hi < lo) { a = wLo; b = wHi; }
       else if (wHi < wLo) { a = lo; b = hi; }
       else { a = Math.min(lo, wLo); b = Math.max(hi, wHi); }
+      wSink = sinking;
       // Flattened as the room comes apart: a cell standing on a floor that is
       // eroding out from under it is a cell floating, and the crossing is the
       // one moment this station is not a costmap.
       const rise = 1 - cut;
       for (let i = a; i <= b; i++) {
         let h = 0;
-        if (i >= lo && i <= hi) {
+        if (front <= -9 || i < lo) {
+          // Closed, or the whole region between sweeps: standing until it sinks.
+          h = standing * rise;
+        } else if (i <= hi) {
           /* Smooth at both ends of the band so a cell arrives and leaves
              rather than switching on. Squared, which is what makes it flat
              where it meets the floor: a cell that stops rising abruptly reads
              as a click, and eighty-two of them clicking is the boil this is
-             meant to avoid. The rounding above keeps this term inside [0, 1]. */
+             meant to avoid. The rounding above keeps this term inside [0, 1].
+             The frontier stands a little proud of what it has already closed,
+             which is the only thing separating the two: the open list is where
+             the planner is now and the closed set is where it has been. */
           const d = i / last - front;
           const e = 1 - d * d / (HALF * HALF);
-          h = e * e * rise;
+          h = (0.72 + 0.28 * e * e) * standing * rise;
         }
         tileAt(i, h);
       }

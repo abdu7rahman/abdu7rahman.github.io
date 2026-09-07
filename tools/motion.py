@@ -19,6 +19,17 @@ Two numbers per station and the second one is the one that matters:
           percent; on one where a plan is being driven or a window re-searched
           it is percent.
 
+What this cannot do is resolve amplitude. Each cell is one pair of frames at
+two arbitrary phases of a five-second loop, so it answers "does this station
+look different at two moments" and not "by how much". Run to run, stations that
+had not been touched at all moved by factors of four and eight between two
+consecutive measurements -- Stack 0.62% to 2.39%, Contact 0.04% to 0.31%. Read
+it as a detector, not as a gauge: an order of magnitude against the same
+station on an earlier commit is a real finding, a doubling is noise, and
+anything tuned against a single reading here is tuned against a coin toss.
+Averaging several pairs per station would fix that and would cost several times
+the runtime; it has not been done, so the limit stands and is written down.
+
     python3 tools/motion.py DIR [--thresh 14]
 """
 import sys, os, struct, zlib
