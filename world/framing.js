@@ -31,12 +31,6 @@
    edge pass behind the reading. */
 const GAIN = 0.55;
 
-/* The panel's backing is opaque to 86% of its width and gone by 100%, so what
-   actually occludes is 0.86 of what it measures. Hard-coded against the
-   gradient in landing.css rather than read from it: reading would mean parsing
-   a background shorthand every frame to recover a number that only changes
-   when someone edits that rule on purpose. If it moves, this moves. */
-const OPAQUE = 0.86;
 
 export function makeFraming(camera) {
   let shift = 0, want = 0;
@@ -48,8 +42,34 @@ export function makeFraming(camera) {
        only changes when the state changes or the window resizes. */
     measure(panel) {
       if (!panel || !document.body.classList.contains("is-staged")) { want = 0; return; }
-      const w = panel.getBoundingClientRect().width;
-      want = Math.max(0, Math.min(0.8, (w * OPAQUE / window.innerWidth) * GAIN));
+      /* Where the type actually is, not how wide its panel is.
+      
+         This used to read the panel's width and assume the panel was a column
+         down the left, because it was. It is not any more -- the reading
+         column is centred in the frame and the world runs behind and around
+         it -- and the old sum would have taken 86% of a full-width panel and
+         pushed the composition half a frame to the right to clear type that
+         is not there.
+      
+         So it measures the opaque span instead and shifts toward whichever
+         side has more room. Centred, the two sides are equal and the shift is
+         zero, which is right: with the column in the middle the world is read
+         in the margins either side of it and there is no direction to favour.
+         Pin the column left again and this returns the old behaviour on its
+         own, without anybody having to remember to change it back. */
+      const r = panel.getBoundingClientRect();
+      const cs = getComputedStyle(panel);
+      const w = window.innerWidth;
+      const a = (r.left + parseFloat(cs.paddingLeft || 0) - 40) / w;
+      const b = (r.right - parseFloat(cs.paddingRight || 0) + 40) / w;
+      const clearL = Math.max(0, a), clearR = Math.max(0, 1 - b);
+      // Under a couple of per cent of the frame apart is centred as far as
+      // anybody looking at it is concerned, and chasing it would make the
+      // composition twitch on a resize.
+      if (Math.abs(clearL - clearR) < 0.02) { want = 0; return; }
+      const toRight = clearR > clearL;
+      const mid = toRight ? (b + 1) / 2 : a / 2;
+      want = Math.max(-0.8, Math.min(0.8, (mid * 2 - 1) * GAIN));
     },
 
     /* Eased, because states have different panel widths -- Work takes 62vw and

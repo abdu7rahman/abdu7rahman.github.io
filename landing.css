@@ -653,11 +653,29 @@ body.home.is-staged #main {
 body.home.is-staged #main > .sec,
 body.home.is-staged #main > .hero {
   position: absolute; inset: 0 auto 0 0;
-  /* Left of the frame, and only as much of it as the measure needs. What is
-     left is not margin, it is where the world is: the type has always sat left
-     with the machine to the right of it, and staging makes that the layout
-     rather than an arrangement inside one section. */
-  width: min(100%, max(520px, var(--panel-w, 46vw)));
+  /* Sized to what is in it, not to a fraction of the window.
+
+     This was 46vw, 62 on the two states that carry tables, on the reasoning
+     that the type has always sat left with the machine to the right of it.
+     The reasoning is fine; the arithmetic put the content second. At 1916 it
+     gave Work's project card and Measured's five benchmark tables -- 182
+     measured numbers, which are the entire claim this page makes -- 750
+     pixels, kept 1150 for the render, and then took another 16% off the
+     content with a right padding on the grid inside. A page whose subject is
+     measurement cannot put the measurements in a gutter.
+
+     Turned round: the column asks for the width its content actually needs and
+     the world gets the remainder. Measured's tables want 1180 before a cell
+     wraps, so with padding the column is 1260 and the world still has 656 --
+     more than half again what the content used to get. The prose states ask
+     for less and the world gets more there, which is also right: a paragraph
+     at 62 characters beside a manipulator is the shot, and a benchmark table
+     squeezed to fit beside one is not. Centring it instead was tried and is
+     worse: it splits the remainder into two strips too narrow to hold a robot
+     and hides the subject behind the type. */
+  --content-w: 900px;
+  width: min(100%, calc(var(--content-w) + 2 * clamp(24px, 3vw, 56px)));
+  padding-inline: clamp(24px, 3vw, 56px);
   /* Each state reads normally inside itself. A short one is a held frame; a
      long one -- Work, Measured -- is scrolled, and only when it has nothing
      left to show does the wheel move on. Nothing is cut. */
@@ -671,13 +689,15 @@ body.home.is-staged #main > .hero {
      dissolves into the world before it reaches an edge. An edge here would be
      a panel floating on top of the render, which is the thing this is not. */
   /* Solid for every pixel a word can land on and fading only past that. The
-     grid below stops at 84% of the panel, so the falloff happens entirely in
-     margin: text is always on the .94, which is the figure the contrast gate
-     reads out of this declaration. */
+     stops follow the reading column rather than a fraction of the panel now
+     that the panel is the whole frame: opaque across the measure, gone by the
+     edges, so text is always on the .94 -- which is the figure the contrast
+     gate reads out of this declaration -- and the world is uncovered in the
+     margins either side rather than being cut off by a hard edge at 86%. */
   background:
     linear-gradient(to right,
       rgba(10, 10, 10, .94) 0%,
-      rgba(10, 10, 10, .94) 86%,
+      rgba(10, 10, 10, .94) 88%,
       rgba(10, 10, 10, 0) 100%);
   opacity: 0; pointer-events: none;
   /* In depth, not up and down. The world behind this panel is a corridor the
@@ -721,7 +741,10 @@ body.home.is-staged .hero { padding-block: 0; min-height: 0; }
 /* The measure, and the room the falloff needs. 16% of a 60vw panel is about
    140px at 1440 -- wider than the gutter, which is the point: it is where the
    backing stops being solid, and nothing may be set in it. */
-body.home.is-staged .grid { margin-inline: 0; max-width: none; padding-right: 16%; }
+/* The gutter this reserved was for a world that stood to the right of the
+   column. The world is behind the column now, so the grid gets its full
+   width -- which is what the tables were short of. */
+body.home.is-staged .grid { margin-inline: 0; max-width: none; }
 
 /* The footer is not a state, so it would otherwise lie in the flow underneath
    all of them. Pinned instead, as a strip that stays put while everything else
@@ -758,17 +781,27 @@ body:not(.is-staged) .stage-count { display: none; }
 body.home.is-staged .carousel__viewport { height: auto !important; }
 
 
-/* How much frame a state needs, which is not the same for all of them. Prose
-   states want a measure and nothing more, so they leave most of the width to
-   the world. Work and Measured carry a card with a stats column and five
-   benchmark tables; squeezed into a measure the project title wrapped to four
-   lines and the numbers stacked under their own labels, which is the content
-   being damaged to make room for a view. They get the width and the world
-   gets less of it there -- the camera at those two stations is framed on
-   matter that sits right of centre anyway. */
-body.home.is-staged #work,
-body.home.is-staged #measured { --panel-w: 62vw; }
-body.home.is-staged #path { --panel-w: 52vw; }
+/* How wide the reading column is, which is not the same for all of them. It
+   used to be how much of the frame the panel took, back when the panel was a
+   column down the left; now the panel is the frame and this is the measure
+   inside it, so the numbers are in pixels and they answer to what is actually
+   being read rather than to what is left over for the render.
+
+   Prose wants a measure and nothing more -- 62 characters is where About sits
+   -- and 820 gives it that with air either side. Work carries a project card
+   with a stats column beside a description; Measured carries five benchmark
+   tables of five columns each, and squeezed into a measure the project title
+   wrapped to four lines and the numbers stacked under their own labels, which
+   was the content being damaged to make room for a view. 1180 is what a
+   five-column table needs before it starts wrapping cells. */
+/* Written through #main so they outrank the default. The default lives in the
+   `#main > .sec` rule above, which is an id and three classes; `is-staged
+   #work` is an id and two, so it loses -- and every state silently got the
+   prose width. Work's card came out 608 pixels wide against the 711 it had
+   before the column was resized, which is the opposite of the point. */
+body.home.is-staged #main > #work,
+body.home.is-staged #main > #measured { --content-w: 1180px; }
+body.home.is-staged #main > #path { --content-w: 1000px; }
 
 /* The hero's columns were chosen against the full window: the name takes 8 of
    12 and everything else 7, which left room for the robot to the right of the
