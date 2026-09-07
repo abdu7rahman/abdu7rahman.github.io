@@ -59,7 +59,25 @@ import { bands, polyline, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
    there: an offset in metres is an offset in NDC only after dividing by
    `tan(fov/2) * aspect`, so half a metre framed correctly at 16:10 and
    nowhere else. The key aims at the instrument again. */
-export const VIEW = { pos: [0.30, 0.74, 2.78], look: [0, 0.72, -0.24], fov: 44 };
+/* And then the standoff was wrong, for the same reason About's was: it was
+   solved before framing.js existed. That correction pushes the composition
+   0.29 in NDC clear of the type -- and this station's panel is the widest on
+   the page, 62vw, so it is also the largest push. A shot already filling the
+   frame has nowhere to be pushed to. Measured off the rig's own box, 2.45
+   across by 1.85 tall by 1.13 deep, the top of it reached +1.20 in NDC at
+   every aspect the page will stage and the near right corner +1.15 at
+   1440x960: the bars ran off the top of the frame and off the side of it, and
+   the profile over them was cut.
+
+   From 3.60 the whole rig is inside it -- x from -0.36 to +0.92 in the
+   narrowest staged window and -0.19 to +0.76 in the widest, y within 0.85 of
+   centre -- and it still fills 64% of the frame's width, which is what keeps
+   it an instrument rather than a diagram of one. The eye rises only six
+   centimetres to 0.80 with it. That matters more than the distance does: the
+   solve that centred the rig vertically wanted the eye at 1.35, which looks
+   *down* into the bars, and everything above about standing among them rather
+   than reading a chart pasted on the glass would have gone with it. */
+export const VIEW = { pos: [0.30, 0.80, 3.60], look: [0, 0.74, -0.24], fov: 44 };
 
 /* Two states, and the second needs a key of its own. Stack is the same rig
    from further out and above: the section is a list of what the numbers were
