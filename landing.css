@@ -920,7 +920,7 @@ body.home.is-staged #main {
    the pointer. */
 body.home.is-staged #main > .sec,
 body.home.is-staged #main > .hero {
-  position: absolute; inset: 0 auto 0 0;
+  position: absolute; top: 0; bottom: 0;
   /* Sized to what is in it, not to a fraction of the window.
 
      This was 46vw, 62 on the two states that carry tables, on the reasoning
@@ -938,12 +938,38 @@ body.home.is-staged #main > .hero {
      more than half again what the content used to get. The prose states ask
      for less and the world gets more there, which is also right: a paragraph
      at 62 characters beside a manipulator is the shot, and a benchmark table
-     squeezed to fit beside one is not. Centring it instead was tried and is
-     worse: it splits the remainder into two strips too narrow to hold a robot
-     and hides the subject behind the type. */
+     squeezed to fit beside one is not.
+
+     Biased inward rather than flush to the left edge. Fully centred was tried
+     once and rejected, and the objection was right about the arithmetic of
+     the time: with the panel a hard-edged 62vw slab, centring split the
+     remainder into two strips too narrow to hold a robot. Neither half of
+     that holds now. The panel is not 62vw -- it is its own content plus a
+     gutter -- and it is not hard-edged, it fades to nothing over the gutter
+     at both ends, so the world does not stop at a boundary, it runs under the
+     reading and out the other side. What is left is a bias: most of the free
+     frame goes to the left of the column, the rest to the right, and the
+     subject sits in the larger margin with its near edge passing behind the
+     type. At 1916 that is 243px one side and 365 the other on the states that
+     carry tables, against 0 and 608 flush-left -- two margins the world is
+     visible in instead of one strip beside a wall.
+
+     A share rather than a length, because the whole point is that it scales:
+     at any width the column takes what its content needs and the leftover is
+     divided the same way, so no window size gets a composition nobody
+     checked. Below the point where the content fills the frame the share
+     resolves to zero on its own and the column is flush again, which is
+     correct -- there is no free frame left to divide. */
   --content-w: 900px;
-  width: min(100%, calc(var(--content-w) + 2 * clamp(24px, 3vw, 56px)));
-  padding-inline: clamp(24px, 3vw, 56px);
+  /* Wide enough that the fade either side is a fade and not a cut, and it is
+     the fade's width as well as the text's inset for exactly that reason:
+     every pixel a glyph can land on has to be on the full backing. */
+  --gutter: clamp(28px, 3.4vw, 64px);
+  --panel-w: min(100%, calc(var(--content-w) + 2 * var(--gutter)));
+  --bias: 0.40;
+  width: var(--panel-w);
+  left: calc((100% - var(--panel-w)) * var(--bias));
+  padding-inline: var(--gutter);
   /* Each state reads normally inside itself. A short one is a held frame; a
      long one -- Work, Measured -- is scrolled, and only when it has nothing
      left to show does the wheel move on. Nothing is cut. */
@@ -956,16 +982,27 @@ body.home.is-staged #main > .hero {
   /* Not a card: a pool of the page's own background under the words that
      dissolves into the world before it reaches an edge. An edge here would be
      a panel floating on top of the render, which is the thing this is not. */
-  /* Solid for every pixel a word can land on and fading only past that. The
-     stops follow the reading column rather than a fraction of the panel now
-     that the panel is the whole frame: opaque across the measure, gone by the
-     edges, so text is always on the .94 -- which is the figure the contrast
-     gate reads out of this declaration -- and the world is uncovered in the
-     margins either side rather than being cut off by a hard edge at 86%. */
+  /* Solid for every pixel a word can land on and fading only past that, at
+     both ends now that the column is off the left edge. Flush-left the left
+     edge of this gradient was the left edge of the window and could be
+     opaque; biased inward it is a boundary in the middle of the render, and
+     an opaque one is the panel-floating-on-top-of-the-picture that this whole
+     treatment exists not to be.
+
+     The stops are the gutter exactly, not a percentage. A percentage was fine
+     while one side needed fading and cost nothing if it overshot into the
+     margin; on both sides it decides whether text sits on the backing, and
+     12% of a 1300px panel is 156px against a 54px inset -- a hundred pixels
+     of every line set on a fade. Pinned to --gutter the fade is precisely the
+     padding, so the first glyph starts where the backing reaches full
+     strength. .94 is the figure the contrast gate reads out of this
+     declaration, and it takes the strongest stop, so the two zeroes at the
+     edges are margin as far as it is concerned -- which is what they are. */
   background:
     linear-gradient(to right,
-      rgba(10, 10, 10, .94) 0%,
-      rgba(10, 10, 10, .94) 88%,
+      rgba(10, 10, 10, 0) 0,
+      rgba(10, 10, 10, .94) var(--gutter),
+      rgba(10, 10, 10, .94) calc(100% - var(--gutter)),
       rgba(10, 10, 10, 0) 100%);
   opacity: 0; pointer-events: none;
   /* In depth, not up and down. The world behind this panel is a corridor the
@@ -1178,18 +1215,28 @@ body.home.is-staged .nudge { bottom: max(68px, calc(env(safe-area-inset-bottom) 
    being read rather than to what is left over for the render.
 
    Prose wants a measure and nothing more -- 62 characters is where About sits
-   -- and 820 gives it that with air either side. Work carries a project card
-   with a stats column beside a description; Measured carries five benchmark
-   tables of five columns each, and squeezed into a measure the project title
-   wrapped to four lines and the numbers stacked under their own labels, which
-   was the content being damaged to make room for a view. 1180 is what a
-   five-column table needs before it starts wrapping cells. */
+   -- and 900 gives it that with air either side. (820 for a while, and this
+   comment went on saying so after the value moved.) Work carries a project
+   card with a stats column beside a description; Measured carries five
+   benchmark tables of five columns each, and squeezed into a measure the
+   project title wrapped to four lines and the numbers stacked under their own
+   labels, which was the content being damaged to make room for a view.
+
+   The two were one declaration at 1180 and are not any more, because only one
+   of them needs it. 1180 is what a five-column table wants before it starts
+   wrapping cells, and Measured has five of those tables. Work has a card:
+   a description, a stats column, chips. At 1060 that card is about 790 wide
+   -- more than the 711 it had before any of this -- and the state gets back
+   120px of frame for the world on either side of it, which on a 1440 laptop
+   is the difference between a sliver and a margin. Sharing a number with a
+   state that has a harder constraint is how a card ends up as wide as a
+   benchmark table for no reason anybody chose. */
 /* Written through #main so they outrank the default. The default lives in the
    `#main > .sec` rule above, which is an id and three classes; `is-staged
    #work` is an id and two, so it loses -- and every state silently got the
    prose width. Work's card came out 608 pixels wide against the 711 it had
    before the column was resized, which is the opposite of the point. */
-body.home.is-staged #main > #work,
+body.home.is-staged #main > #work { --content-w: 1060px; }
 body.home.is-staged #main > #measured { --content-w: 1180px; }
 body.home.is-staged #main > #path { --content-w: 1000px; }
 

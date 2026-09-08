@@ -63,13 +63,33 @@ export function makeFraming(camera) {
       const a = (r.left + parseFloat(cs.paddingLeft || 0) - 40) / w;
       const b = (r.right - parseFloat(cs.paddingRight || 0) + 40) / w;
       const clearL = Math.max(0, a), clearR = Math.max(0, 1 - b);
-      // Under a couple of per cent of the frame apart is centred as far as
-      // anybody looking at it is concerned, and chasing it would make the
-      // composition twitch on a resize.
-      if (Math.abs(clearL - clearR) < 0.02) { want = 0; return; }
-      const toRight = clearR > clearL;
-      const mid = toRight ? (b + 1) / 2 : a / 2;
-      want = Math.max(-0.8, Math.min(0.8, (mid * 2 - 1) * GAIN));
+      const total = clearL + clearR;
+      if (total <= 0) { want = 0; return; }
+      /* The centre of the uncovered frame, weighted by how much of it is on
+         each side -- not the centre of whichever side happens to be bigger.
+      
+         That distinction did not exist while the column was pinned to an edge,
+         because then one side *was* the whole clear frame and the two answers
+         agreed. Biased inward there are two strips and taking the midpoint of
+         the larger one reads the layout backwards: the column moved 355px
+         right at 1916, which is a 9% asymmetry between the strips, and the old
+         sum turned it into a 0.390 shear -- further right than the 0.286 it
+         asked for when the column was flush against the left edge and the
+         entire right half of the frame was clear. Centring the type was
+         pushing the subject out of frame.
+      
+         Area-weighted it comes back 0.053 on the same layout: the world sits
+         near the middle with a slight lean into the larger margin, which is
+         the composition the bias exists to make. And the old behaviour is not
+         lost -- pin the column left again and this returns 0.272 against the
+         0.286 it used to give, a difference nobody can see. Symmetric, both
+         terms cancel and it is exactly zero without needing to be told. */
+      const cog = (clearL * (a / 2) + clearR * ((b + 1) / 2)) / total;
+      const next = Math.max(-0.8, Math.min(0.8, (cog * 2 - 1) * GAIN));
+      // A deadband on the answer rather than on the inputs, so a composition
+      // this close to centred is centred and a resize does not make it twitch
+      // between two shears nobody can tell apart.
+      want = Math.abs(next) < 0.01 ? 0 : next;
     },
 
     /* Eased, because states have different panel widths -- Work takes 62vw and
