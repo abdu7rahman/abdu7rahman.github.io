@@ -189,12 +189,12 @@ export async function boot(mount, formationModules) {
      module is a station drawn as points, which is what every one of them was
      until now, rather than a page that fails to boot. */
   const solids = new Array(STATIONS.length).fill(null);
-  for (let k = 1; k < STATIONS.length; k++) {
+  for (let k = 0; k < STATIONS.length; k++) {
     if (!STATIONS[k].solid) continue;
     try {
       const mod = await import(`./solids/${STATIONS[k].id}.js`);
       if (!mod || !mod.build) continue;
-      const inst = mod.build({ anchor: anchorOf(STATIONS[k]), pal, quality: q });
+      const inst = mod.build({ anchor: anchorOf(STATIONS[k]), pal, quality: q, arm });
       inst.group.visible = false;
       scene.add(inst.group);
       solids[k] = inst;
@@ -423,7 +423,7 @@ export async function boot(mount, formationModules) {
     // anything solid standing. If it does, the cloud steps back for it and
     // comes forward again through the crossing.
     const dom = state.mix < 0.5 ? state.i : state.i + 1;
-    const solidHere = dom === 0 ? !!(arm && arm.solid) : !!solids[dom];
+    const solidHere = !!solids[dom] || (dom === 0 && !!(arm && arm.solid));
     // A cloud-only station still holds back a little: at full strength the
     // densest of them saturates its own shape away.
     /* 0.07 settled. Measured rather than guessed: with the cloud switched off
@@ -455,7 +455,7 @@ export async function boot(mount, formationModules) {
     substrate.uniforms.uFade.value = gain * (solidHere
       ? 0.07 + 0.35 * Math.sin(Math.PI * state.mix)
       : 0.62 + 0.10 * Math.sin(Math.PI * state.mix));
-    for (let k = 1; k < solids.length; k++) {
+    for (let k = 0; k < solids.length; k++) {
       const sol = solids[k];
       if (!sol) continue;
       const cut = k === state.i ? state.mix : k === state.i + 1 ? 1 - state.mix : 1;

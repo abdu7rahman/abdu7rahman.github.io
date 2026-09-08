@@ -38,7 +38,7 @@ export const STATIONS = [
   // a reachable workspace and a bundle of rollouts are both sets of sampled
   // points, and a surface drawn through either would be inventing a boundary
   // neither of them has. About still has the solid arm standing in it.
-  { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0],  solid: false },
+  { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0],  solid: true  },
   /* Half the cloud, and the only station that needs the instruction. Swept at
      the high tier -- gain against how much of the frame comes back above 140 --
      six of the seven barely move (Work 0.002 at every gain, Path 0.003) and
