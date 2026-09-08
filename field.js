@@ -23,8 +23,19 @@
   // is the one place it must not run.
   if (!document.body || document.body.classList.contains("home")) return;
 
-  var reduce = window.matchMedia &&
-               window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Kept as the query and not just its answer, so a change of the preference
+  // while the page is open is answered too. Read once, it was not: measured on
+  // /nope, two frames 2.5 s apart with the preference switched on after load
+  // differed by a median of 1 and a peak of 6 out of 255, against an exact 0
+  // and 0 when the same preference was set before load. Six is a small number
+  // because the fog drifts at u_time * 0.015 and two and a half seconds of that
+  // barely moves a pixel value -- but the loop behind it was a requestAnimation
+  // Frame running every frame for a reader who had just asked for no animation,
+  // which is what the preference is about and not the amplitude. states.js
+  // takes the whole stage down on the same event; this is the same contract.
+  var stillMq = window.matchMedia &&
+                window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduce = !!(stillMq && stillMq.matches);
 
   var canvas = document.createElement("canvas");
   canvas.className = "bg-field";
@@ -253,20 +264,41 @@
   function play() { if (raf == null && !reduce) raf = requestAnimationFrame(frame); }
   function stop() { if (raf != null) { cancelAnimationFrame(raf); raf = null; } }
 
-  resize();
-  if (reduce) {
-    // One settled frame, no loop and no pointer light: the uniforms would
-    // otherwise sit at their zero defaults, which puts the mouse pool in the
-    // bottom-left corner of a frame nobody asked to be lit.
+  /* One settled frame, no loop and no pointer light: the uniforms would
+     otherwise sit at their zero defaults, which puts the mouse pool in the
+     bottom-left corner of a frame nobody asked to be lit.
+
+     12 seconds in is the phase this settles at from a cold start, chosen
+     because the fbm is still climbing out of its own first frame before then.
+     It is a variable rather than a literal so that the preference arriving
+     mid-visit freezes the field where it already is: cutting a running field
+     back to its load-time phase is a jump in the noise, which is motion, which
+     is the one thing the reader has just asked for less of. */
+  var settledAt = 12.0;
+  function settle() {
     gl.uniform2f(uMouse, 0.5, 0.5);
     gl.uniform1f(uGlow, 0.0);
-    gl.uniform1f(uScroll, 0.0);
+    gl.uniform1f(uScroll, scroll);
     gl.uniform1f(uRush, 0.0);
-    gl.uniform1f(uTime, 12.0);
+    gl.uniform1f(uTime, settledAt);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-  } else {
-    play();
   }
+
+  resize();
+  if (reduce) settle(); else play();
+
+  function watchStill(e) {
+    reduce = !!e.matches;
+    if (!reduce) { play(); return; }
+    stop();
+    // performance.now() and the timestamp rAF hands frame() share one time
+    // origin, so this is the clock the last drawn frame was drawn at and not
+    // an approximation of it.
+    if (start) settledAt = (performance.now() - start) / 1000;
+    settle();
+  }
+  if (stillMq && stillMq.addEventListener) stillMq.addEventListener("change", watchStill);
+  else if (stillMq && stillMq.addListener) stillMq.addListener(watchStill);
 
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) stop(); else play();
@@ -277,7 +309,7 @@
     clearTimeout(t);
     t = setTimeout(function () {
       resize();
-      if (reduce) gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (reduce) settle();
     }, 150);
   });
 })();

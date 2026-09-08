@@ -22,6 +22,16 @@
                  text-shadow: 0 0 1px rgba(255, 249, 240, .5), 0 0 22px rgba(255, 138, 92, .24); }
   .lost__lede { margin: 16px auto 0; max-width: 46ch; color: var(--ink-2); line-height: 1.6; }
   .lost__acts { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 30px; }
+  /* style.css draws a read-position bar off scroll(root block). This page is
+     exactly one viewport tall by construction -- .lost is min-height: 100vh
+     and nothing here is longer than it, measured at 900 of 900 at 1440x900
+     and 844 of 844 at 390x844 -- so the timeline has no range at all and the
+     animation is parked on its `to` frame. What that draws is scaleX(1): a
+     2px #ff8a5c rule across every one of the 1440 pixels of the top edge,
+     read straight off the screenshot, telling a reader they have finished
+     reading a page with nothing on it. The bar belongs to a long document,
+     and this is the one page on the site that can never be one. */
+  body.err::after { display: none; }
 </style>
 </head>
 <body class="err">
@@ -50,6 +60,16 @@
   </div>
 </main>
 
-<script src="field.js?v=a89a8d98" defer></script>
+<!-- Root-absolute for the same reason the stylesheet at the top of the file is,
+     which this one line did not follow. Served for /demo/deeper/nope, a bare
+     field.js resolves against /demo/deeper/ and comes back a 404, and the
+     shader is the only thing on this page besides the type. Measured against a
+     server that answers a miss the way Pages does: one canvas.bg-field at
+     /nope and at /a/b/c/nope, zero at /demo/deeper/nope, with the stamped
+     field script logged at 404 under /demo/deeper/. tools/stamp.py strips the
+     leading slash before it hashes, so the stamp is unaffected -- and the
+     filename is written without an attribute around it here because the same
+     pattern in a comment is one stamp.py would rewrite. -->
+<script src="/field.js?v=1c23bf3b" defer></script>
 </body>
 </html>

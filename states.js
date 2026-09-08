@@ -107,6 +107,16 @@
   var run = 0, runAt = 0;
   function onWheel(e) {
     if (!staged) return;
+    /* A wheel with ctrl held is not a scroll, it is the browser's zoom, and
+       preventDefault on it takes page zoom away from a reader who needs it --
+       WCAG 1.4.4 asks for 200% and this file was answering every one of those
+       gestures by advancing a state instead. It arrives here because the
+       zoom gesture is a wheel event like any other; it is not filtered by
+       deltaY, which is nonzero and often large, and not by the target, which
+       is whatever is under the pointer. Ctrl is the only thing that separates
+       them, so ctrl is what is tested, and the state stays where it is while
+       the reader resizes the page around it. */
+    if (e.ctrlKey) return;
     var live = panels[i];
     var d = e.deltaY;
     if (Math.abs(d) < 1) return;
@@ -166,16 +176,44 @@
     show(n);
   }
 
+  /* The input this file takes, attached only while it is the file taking it.
+     Bound once at load it was live on every viewport, including the ones that
+     can never stage -- and a non-passive wheel listener on window is not free
+     for a page that never uses it: it takes the whole document off the
+     compositor's fast scroll path, because the browser has to run the handler
+     before it knows whether the scroll was cancelled. Read back out of a 390px
+     phone with DOMDebugger.getEventListeners, window carried
+     {type: "wheel", passive: false} for the whole visit and onWheel returned on
+     its first line every time. Now the listeners arrive with the stage and go
+     with it, so the scrolling document is a document with nothing of this
+     file's in front of it. */
+  function bind(on) {
+    var f = on ? "addEventListener" : "removeEventListener";
+    window[f]("wheel", onWheel, { passive: false });
+    window[f]("keydown", onKey);
+    document[f]("click", onClick);
+  }
+
   function enter() {
     if (staged) return;
+    // Asked again rather than only at load. The width query and the motion
+    // query are independent, so a reader who turns motion down while staged
+    // gets leave() from the listener below and then gets the whole thing back
+    // the next time the window changes width -- measured: reduce on at 1440,
+    // out to 800 and back, and the page re-staged with reduce still matching.
+    // A preference that a window drag can undo is not a preference.
+    if (still.matches) return;
     staged = true;
     document.body.classList.add("is-staged");
+    bind(true);
     var want = ids.indexOf(location.hash.slice(1));
     show(want >= 0 ? want : 0, "silent");
   }
   function leave() {
     if (!staged) return;
     staged = false;
+    bind(false);
+    var was = i;
     document.body.classList.remove("is-staged");
     panels.forEach(function (p) {
       p.classList.remove("is-live", "is-back");
@@ -183,12 +221,40 @@
       p.removeAttribute("aria-hidden");
     });
     document.body.removeAttribute("data-state");
+    // show() put this marker on, so this takes it off. main.js's scroll-spy
+    // owns it again the moment the document is a document, and it will not
+    // clear a marker it did not set: it holds one entry and short-circuits
+    // when the section it computes is the one it already believes is current.
+    var links = document.querySelectorAll("[data-nav][aria-current]");
+    Array.prototype.forEach.call(links, function (a) { a.removeAttribute("aria-current"); });
     i = -1;                                   // so re-entering repaints
+    /* And put the reader back where they were reading. Staged, scrollY is
+       pinned at 0 and the state you are on is the only record of your place in
+       the page; unstaged, that record is gone and 0 means the top. Measured:
+       staged at Measured, dragged to 800px, and the reader landed at scrollY 0
+       of a 9094px document with #measured still in the address bar and the
+       section they were reading 2409px below the fold. Placed rather than
+       glided -- window.scrollTo takes html's scroll-behavior: smooth otherwise,
+       and a 2409px animated scroll fired off the middle of a window drag is
+       noise on top of a reflow. The bar is sticky and 60px of it would sit over
+       the heading, so it comes off the target. */
+    if (was >= 0) {
+      var bar = document.querySelector(".rail");
+      var el = panels[was];
+      var y = el.getBoundingClientRect().top + window.pageYOffset -
+              (bar ? bar.getBoundingClientRect().height : 0);
+      y = Math.max(0, y);
+      // The one test that answers both questions at once: a browser that knows
+      // scroll-behavior is a browser that reads the options form of scrollTo,
+      // and one that does not has no smooth scroll to override anyway.
+      if ("scrollBehavior" in document.documentElement.style) {
+        window.scrollTo({ top: y, left: 0, behavior: "auto" });
+      } else {
+        window.scrollTo(0, y);
+      }
+    }
   }
 
-  window.addEventListener("wheel", onWheel, { passive: false });
-  window.addEventListener("keydown", onKey);
-  document.addEventListener("click", onClick);
   if (mq.addEventListener) mq.addEventListener("change", function () { mq.matches ? enter() : leave(); });
   else if (mq.addListener) mq.addListener(function () { mq.matches ? enter() : leave(); });
   if (still.addEventListener) still.addEventListener("change", function () { if (still.matches) leave(); });

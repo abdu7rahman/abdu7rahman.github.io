@@ -41,7 +41,19 @@
     current = entry;
   }
 
+  // Staged, there is no scroll to spy on and every answer this gives is wrong.
+  // The seven states are position: absolute inset 0 on the same pixels, so all
+  // seven report a top of 0 -- under the 288px line a 900px window puts here --
+  // and the loop below walks past every one of them and settles on the last;
+  // then the document is exactly one viewport, so the bottom test is true as
+  // well and pins it to the last a second time. Measured: with the page staged
+  // at Work, one resize left aria-current="true" on #work and #contact at the
+  // same time, states.js having set the first and this the second. states.js
+  // owns the marker while it owns the page, and `current` is dropped rather
+  // than kept so that the first pass after the document comes back re-applies
+  // it instead of matching against a section nobody is on any more.
   function update() {
+    if (document.body.classList.contains("is-staged")) { current = null; return; }
     var line = window.innerHeight * 0.32;
     var active = targets[0];
     for (var i = 0; i < targets.length; i++) {
