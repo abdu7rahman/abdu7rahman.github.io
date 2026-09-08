@@ -120,7 +120,7 @@ export async function boot(mount, formationModules) {
   }
 
   // The atmosphere is part of the world, not a canvas underneath it.
-  const sky = makeAtmosphere({ accent: pal["--landing-accent"], steps: q.fogSteps });
+  const sky = makeAtmosphere({ accent: pal["--landing-accent"] });
   scene.add(sky);
 
   /* ── the one real object ─────────────────────────────────────────── */
@@ -207,6 +207,35 @@ export async function boot(mount, formationModules) {
   // How many things a station has that can be the one being read, so the
   // surface material can light it and let the rest recede.
   const FOCUS_OF = { work: 10, measured: 5, path: 6 };
+
+  /* Which project card is open, for the one station whose reading order is
+     not its scroll order. Work is a carousel: staged it has no inner scroll,
+     so the `local` that drives every other station's focus is pinned at 0 and
+     only the first of its ten regions could ever light. carousel.js says
+     which card it is on; this follows.
+
+     Eased rather than assigned, and that is the whole reason it is a float.
+     uFocus lights instance k by 1 - |k - uFocus| clamped, so a value of 3.4
+     lights region 3 at 0.6 and region 4 at 0.4 -- passing through the
+     intermediate values is a light travelling across the costmap toward the
+     project you just paged to, and snapping is a cut. 6 per second crosses
+     one card in about 280 ms, which is inside the slide's own transition.
+
+     Picked up from the handle rather than only from the event, and in the
+     loop rather than only at boot. carousel.js is a classic deferred script
+     and this is a module that boots behind an arm mesh and seven bakes; the
+     order the two reach their first line in is not something either can rely
+     on, and reading it once at boot got -1 on a real load -- the page event
+     had already been and gone. Asking again each frame until an answer comes
+     costs one property read and removes the assumption. */
+  let cardTo = -1;
+  let cardAt = -1;
+  function onPage(e) {
+    const v = e && e.detail && e.detail.i;
+    cardTo = typeof v === "number" ? v : -1;
+    if (cardAt < 0) cardAt = cardTo;
+  }
+  document.addEventListener("carousel:page", onPage);
   // How many of the leading stations the solid arm is present for.
   const ARM_STATIONS = STATIONS.findIndex(s => s.id === "work") > 0
                      ? STATIONS.findIndex(s => s.id === "work") : 1;
@@ -284,7 +313,20 @@ export async function boot(mount, formationModules) {
     framing.measure(window.__stage && window.__stage.panel());
   }
   size();
-  window.addEventListener("resize", size, { passive: true });
+  /* Coalesced into one frame, because size() is not a cheap handler and it
+     was bound raw. It re-measures every station's band and re-stitches the
+     whole camera spline, and both measureBands and framing.measure call
+     getBoundingClientRect, which forces layout. A window drag or a phone
+     rotating its address bar away emits resize dozens of times a second and
+     every one of those was paying for a full re-stitch that the next event
+     30 ms later threw away. rAF is the right clock for it: the work only
+     matters once per painted frame, and a resize storm collapses to one. */
+  let sizing = 0;
+  function onResize() {
+    if (sizing) return;
+    sizing = requestAnimationFrame(() => { sizing = 0; size(); });
+  }
+  window.addEventListener("resize", onResize, { passive: true });
 
   let raf = 0, last = performance.now(), running = true, t = 0, baking = false;
   let state = { i: 0, mix: 0 };
@@ -419,6 +461,8 @@ export async function boot(mount, formationModules) {
     const settleT = 1 - Math.sin(Math.PI * state.mix);
     run = (run + dt * RUN_RATE * (0.25 + 0.75 * settleT)) % 1;
     substrate.uniforms.uRun.value = run;
+    if (cardTo < 0 && window.__carousel) cardTo = cardAt = window.__carousel.i;
+    if (cardTo >= 0) cardAt += (cardTo - cardAt) * Math.min(1, dt * 6);
     // Whichever station is the dominant one right now, and whether it has
     // anything solid standing. If it does, the cloud steps back for it and
     // comes forward again through the crossing.
@@ -466,8 +510,12 @@ export async function boot(mount, formationModules) {
       const span = Math.max(1e-6, st.range[1] - st.range[0]);
       const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
       const n = FOCUS_OF[st.id];
+      // The carousel wins where there is one, because it is what the reader
+      // is actually driving; `local` is the fallback for a station you read
+      // by scrolling through it.
+      const paged = st.id === "work" && cardTo >= 0;
       sol.update({ t, dt, run, settle: settleT, cut, local, pointer, charge,
-                   focus: n ? local * (n - 1) : -1 });
+                   focus: paged ? cardAt : (n ? local * (n - 1) : -1) });
     }
 
     const rush = Math.min(1, Math.abs(scroll.v) * 5.5);
@@ -570,7 +618,13 @@ export async function boot(mount, formationModules) {
     cap,
     dispose() {
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", size);
+      if (sizing) cancelAnimationFrame(sizing);
+      // The listener that is bound, not the function it calls -- these came
+      // apart when the resize was coalesced, and removing `size` would have
+      // left onResize attached to a renderer that no longer exists.
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("carousel:page", onPage);
+      if (depth) depth.dispose();
       pointer.dispose();
       for (const sol of solids) if (sol && sol.dispose) sol.dispose();
       substrate.dispose();

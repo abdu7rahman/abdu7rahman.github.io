@@ -52,7 +52,31 @@
     prev.disabled = i === 0;
     next.disabled = i === slides.length - 1;
     if (pos) pos.textContent = pad(i + 1) + " / " + pad(slides.length);
+    /* And tell the world which one is open.
+
+       The surface material carries a per-instance uFocus so the object being
+       read is the one that is lit, and world.js was feeding it scroll
+       progress through the station's band. That works for the stations you
+       scroll through and not for this one: staged, Work has no inner scroll
+       at all -- the whole section is one viewport and paging is the
+       affordance -- so `local` is pinned at 0 and the first of the ten
+       costmap regions was lit no matter which of the ten cards you were
+       reading. Nine of them could never light.
+
+       A document event rather than a direct call, because carousel.js is a
+       classic deferred script and world/index.js is a module that boots
+       behind two fetches and a bake; neither can hold a reference to the
+       other at a predictable time. The handle is for the same reason in
+       reverse -- the world reads it once at boot to catch the page it
+       missed. */
+    try {
+      document.dispatchEvent(new CustomEvent("carousel:page", {
+        detail: { i: i, of: slides.length }
+      }));
+    } catch (err) { /* no CustomEvent constructor: the page still pages */ }
   }
+
+  window.__carousel = { get i() { return i; }, of: slides.length };
 
   function go(delta) {
     i = Math.max(0, Math.min(slides.length - 1, i + delta));

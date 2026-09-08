@@ -520,10 +520,10 @@
             <table class="bench__table">
               <thead>
                 <tr><th scope="col">Window</th><th scope="col">Python</th><th scope="col">C++</th>
-                    <th scope="col" class="ta-r">Per trajectory</th><th scope="col" class="viz-h">Relative (log)</th></tr>
+                    <th scope="col" class="ta-r">Per traj.</th><th scope="col" class="viz-h">Relative (log)</th></tr>
               </thead>
               <tbody>
-                <tr><th scope="row">Accel-limited <span class="sub">one control cycle, ~30 traj.</span></th>
+                <tr><th scope="row">Accel-limited <span class="sub">one control cycle, 36 traj. numpy / 30 C++</span></th>
                     <td>0.3037 ms</td><td>0.0098 ms</td><td class="ta-r"><b>26×</b></td>
                     <td class="viz"><span class="bar bar--py" style="--w:34%"></span><span class="bar bar--cpp" style="--w:6%"></span></td></tr>
                 <tr><th scope="row">Full velocity space <span class="sub">2,626 trajectories</span></th>
@@ -537,6 +537,14 @@
               26×. Give it 2,626 and vectorisation amortises that down to 4×. So the C++ port buys the
               most where it matters least — both clear a 20 Hz budget on the real window — and the global
               planner is where it earns its keep.
+              <br><br>
+              The speedup column is per trajectory, which is why dividing the two times in the top row
+              gives 31 rather than 26. The two sides do not sweep the same window: numpy builds it with
+              <code>arange</code> against a stop of <code>v_max + resolution</code>, which admits one
+              velocity sample past the limit the window is supposed to have, so it scores 36 candidates
+              where the C++ loop's <code>v &lt;= v_max</code> scores 30. Per trajectory is the honest
+              comparison of the two implementations; it also means the numpy column is timing 20% more
+              work than the label on the window claims.
             </p>
           </figure>
 
@@ -828,9 +836,9 @@
     "three/addons/": "./vendor/three/addons/"
 } }
 </script>
-<script type="module" src="world/index.js?v=10fefde1"></script>
+<script type="module" src="world/index.js?v=be0abc69"></script>
 <script src="main.js?v=a712628a" defer></script>
-<script src="carousel.js?v=2c437c32" defer></script>
+<script src="carousel.js?v=b32d1589" defer></script>
 <script src="immersive.js?v=22a99886" defer></script>
 <script src="states.js?v=39ef2b5c" defer></script>
 </body>
