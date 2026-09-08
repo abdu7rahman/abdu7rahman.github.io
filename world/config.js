@@ -49,17 +49,23 @@ export const STATIONS = [
   { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6],  solid: true  },
   { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2],  solid: true  },
   /* `cloud` scales the substrate at this station and only here. Stack draws a
-     rollout bundle -- three hundred candidates leaving one origin -- and near
-     that origin they are the same object however dim each of them is, so it
-     saturated: measured off a render, 8% of the frame above 140, a peak of
-     183, no strand structure left. Most of that turned out to be splat size
-     rather than exposure and is fixed where it belongs, in the formation. The
-     rest is here, and it now runs the other way. Drawn at the scale it was
-     sampled at, the fan is three hundred hairlines rather than three hundred
-     smears, and nine times less coverage is nine times less light: the same
-     station measured p90 = 12 against About's 58 two states earlier. 1.35
-     spends back what the correct splat size cost, which is a different thing
-     from spending it on a splat that was wrong. */
+     rollout bundle leaving one origin, and near that origin the candidates are
+     the same object however dim each of them is, so it saturated: measured off
+     a render, 8% of the frame above 140, a peak of 183, no strand structure
+     left. Most of that turned out to be splat size rather than exposure and is
+     fixed where it belongs, in the formation. The rest is here, and it runs
+     the other way: drawn at the scale it was sampled at the bundle is
+     hairlines rather than smears, and much less coverage is much less light.
+     1.35 spends back what the correct splat size cost, which is a different
+     thing from spending it on a splat that was wrong.
+
+     The gain is still right and the figures under it were not. This described
+     a fan of three hundred candidates invented for the picture; the formation
+     is now the vendored controller's own dynamic window -- 9 x 5 x 11 = 495
+     samples, of which 402 survive the footprint sweep -- and the render it
+     produces is 1.12% of the frame above 140 at p90 luma 18, against the 8%
+     and p90 12 quoted above. Both sets of numbers are real measurements of
+     two different formations, and only the second one is on the page. */
   { id: "stack",    owns: ["stack"],    anchor: [0, -0.55, -13.2],  solid: false, cloud: 1.35 },
   { id: "path",     owns: ["path"],     anchor: [0, -0.15, -19.8],  solid: true  },
   { id: "contact",  owns: ["contact"],  anchor: [0,  0.00, -26.0],  solid: true  }
