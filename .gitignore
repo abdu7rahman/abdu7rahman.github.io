@@ -4,5 +4,8 @@ __pycache__/
 
 # Probe output. tools/journey.js writes a run of full-size renders here
 # every time it walks the page; they are evidence for one commit, not an
-# asset the site serves.
-tmp-journey/
+# asset the site serves. Widened from the one directory to the prefix after
+# a second one turned up: comparing a change against a baseline means two
+# runs on disk at once, and the next probe that wants somewhere to put 20 MB
+# of PNGs should not have to come back here first.
+tmp-*/
