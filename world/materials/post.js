@@ -176,8 +176,11 @@ export const FinishShader = {
 
          r runs 0 at the centre to 0.7071 at the corner, so 2r^2 is 0 to 1
          across the frame's own diagonal at any aspect. At 0.35 the corner
-         carries 0.0039 in UV, which on the 1916x953 frame this was measured
-         at is a seven-pixel radius across and three and a half down -- the
+         carries 0.0019 in UV, which on the 1916x953 frame this was measured
+         at is a 3.7-pixel radius across and 1.8 down. It said 0.0039 and seven
+         pixels until the ceiling above was halved from 0.0111 to 0.0055 and
+         this was not carried through with it; the two exposure figures below
+         were taken at the old value as well. The
          disc has always been that ellipse, because the offsets are in UV and
          the frame is not square, and the corner term inherits it rather than
          arguing with it.
@@ -326,15 +329,21 @@ export const FinishShader = {
          uAoR / (2 tan(fov/2) z), and the y half-tangent here is 0.404 at the
          44 degrees most stations sit at, so the constant is uAoR / (0.808 z):
          at Work's six metres, 0.075 of a metre comes out at 0.0155 in UV,
-         which is 30 pixels across a 1916 frame and 15 down. x is scaled by
-         the texel ratio so the disc is round in pixels and not in UV.
+         which is 15 pixels down a 953-high frame.
+
+         x is scaled by uTexel.x / uTexel.y, which is h/w. It was written the
+         other way up and that is worth leaving a note about, because the
+         comment said "round in pixels" while the code squared the distortion
+         rather than removing it: uTexel is (1/w, 1/h), so uTexel.y / uTexel.x
+         is w/h, and at 1916x953 the disc came out 59.7 pixels across by 14.8
+         down -- a 4:1 ellipse where a circle was intended and claimed.
 
          Only nearer neighbours occlude, and only within half a metre. Without
          the range test the far wall of the corridor would occlude the near
          one and every silhouette would grow a dark halo, which is the classic
          way this effect announces itself as an effect. */
       float aoR = uAoR / (0.808 * max(z, 0.35));
-      vec2 aoS = vec2(uTexel.y / uTexel.x, 1.0) * aoR;
+      vec2 aoS = vec2(uTexel.x / uTexel.y, 1.0) * aoR;
       float ao = 0.0;
       for (int i = 0; i < 8; i++) {
         float f = (float(i) + 0.5) / 8.0;

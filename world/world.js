@@ -79,6 +79,27 @@ export async function boot(mount, formationModules) {
   scene.add(key);
 
   let composer = null, finish = null, depth = null;
+  /* The tier that skips the finish pass must not also skip the grade.
+  
+     ACES and the exposure live in post.js, and post.js is guarded on q.post,
+     which TIERS.low turns off -- and capability.js sends every client under
+     900px wide, or with a coarse pointer, to low. So every phone was being
+     handed the renderer's raw linear output. The two figures this repo already
+     has make the size of it exact: a key-facing face leaves the surface
+     material at 72 of 255 and a face turned away at 11, and the graded numbers
+     are 140 and 29. Mobile was getting roughly half the intended display
+     values, which is the same "crushed into the bottom quarter of the tonal
+     range" state that took three rounds to find on the desktop tier.
+  
+     The renderer's own ACES is not the Narkowicz fit post.js uses and it
+     cannot be, but it is the same curve family at the same exposure, and half
+     a grade is not a defensible alternative to the whole one. It costs
+     nothing: the tonemap is a few instructions in the output stage of a shader
+     that already runs. */
+  if (!q.post) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+  }
   if (q.post) {
     /* The finish pass needs depth, and EffectComposer does not hand it any:
        it ping-pongs two colour targets and throws the depth away between
@@ -528,6 +549,12 @@ export async function boot(mount, formationModules) {
   // world is never driven from here.
   window.__world = {
     scene, camera, renderer, scroll, cap, substrate, stations: STATIONS, THREE,
+    /* The rig sampled at an arbitrary progress, without moving anything. The
+       hold between a state's two identical keys is only checkable from
+       outside this way: every probe that walks the page samples the ends of a
+       state's scroll, which is exactly where the Catmull-Rom bulge that used
+       to sit in the middle of every hold was zero. */
+    rigAt(p) { return rig.at(p); },
     /* Which stations actually got their solid built. A module that fails to
        load is forgiven -- that is deliberate, a station with no solid is a
        station drawn as points rather than a page that will not boot -- but it

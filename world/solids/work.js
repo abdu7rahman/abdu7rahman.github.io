@@ -435,7 +435,12 @@ export function build(ctx) {
      one. Boxes are cheap; the tube is the only thing here whose cost is a
      choice. */
   const tier = (ctx.quality && ctx.quality.substrate) || 60000;
-  const low = tier <= 9000, high = tier >= 60000;
+  /* `low` was `tier <= 9000` and TIERS.low.substrate is 12000, so it never
+     fired: the low tier silently took the medium branch everywhere it was
+     read. That was already found once for `stride` further down and fixed
+     only there, which left two uses of a constant everybody could see was
+     dead. Keyed off the budget the tier actually has. */
+  const low = tier <= 20000, high = tier >= 60000;
 
   /* One tile per expanded cell, in the order they were expanded, so an index
      into this array is a moment in the search and the band over it is a range
@@ -695,8 +700,10 @@ export function build(ctx) {
          what the last quarter of the cycle is for -- already flat, already
          there so the loop closes on stillness. The write set is otherwise
          unchanged: a tile leaving the band's trailing edge is already at its
-         closed height, so nothing behind the front is touched. 57 instances a
-         frame through the sweep, 84 at worst, 1357 for the seconds of sink. */
+         closed height, so nothing behind the front is touched. 79 instances a
+         frame through the sweep, 84 at worst, and all 1357 for the 3.8 seconds
+         of sink -- which averages 401 over the cycle, not the 57 this said
+         before the sink was added and the arithmetic was not carried back. */
       const last = Math.max(1, nTiles - 1);
       let lo = 0, hi = -1;
       if (front > -9) {

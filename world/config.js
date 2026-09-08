@@ -104,6 +104,16 @@ export function measureBands(stations) {
       const y0 = r.top + window.scrollY, y1 = y0 + r.height;
       top = Math.min(top, y0); bot = Math.max(bot, y1);
     }
+    /* Cleared, because stitch() prefers spans over settle and measureBands
+       never writes one. A page that started staged and was then narrowed past
+       the threshold -- a window drag, an external display going away, devtools
+       responsive mode -- kept the seven equal sevenths staging had measured
+       while the sections had moved to 0-0.068, 0.068-0.13, 0.13-0.24,
+       0.24-0.61 and so on. That is exactly the failure the top of this file
+       exists to prevent: the world showing the projects while the reader is a
+       screen into the benchmarks. A cold load under the threshold was always
+       fine, because spans was undefined; it was only ever the transition. */
+    s.spans = null;
     if (!isFinite(top)) { s.range = [0, 0]; }
     else s.range = [Math.max(0, Math.min(1, (top - mid) / span)),
                     Math.max(0, Math.min(1, (bot - mid) / span))];

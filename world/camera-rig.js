@@ -19,6 +19,16 @@ let keys = [{ at: 0, pos: [0, 0, 3], look: [0, 0, 0], fov: 42 },
             { at: 1, pos: [0, 0, 3], look: [0, 0, 0], fov: 42 }];
 export function setKeys(k) { if (k && k.length >= 2) keys = k; }
 
+/* Whether two keys are the same point. A tenth of a millimetre: the keys are
+   composed by hand in metres and stitch() copies one object into two, so a
+   pair that is meant to be a hold is bit-identical -- this only has to be
+   loose enough not to be defeated by the anchor addition. */
+function same(u, v) {
+  return Math.abs(u[0] - v[0]) < 1e-4
+      && Math.abs(u[1] - v[1]) < 1e-4
+      && Math.abs(u[2] - v[2]) < 1e-4;
+}
+
 function catmull(p0, p1, p2, p3, t, out) {
   const t2 = t * t, t3 = t2 * t;
   for (let i = 0; i < 3; i++) {
@@ -42,8 +52,27 @@ export function makeCameraRig(camera) {
           d = keys[Math.min(keys.length - 1, i + 2)];
     const span = Math.max(1e-6, c.at - b.at);
     const t = Math.min(1, Math.max(0, (p - b.at) / span));
-    catmull(a.pos, b.pos, c.pos, d.pos, t, pos);
-    catmull(a.look, b.look, c.look, d.look, t, look);
+    /* A hold is held flat, not splined.
+    
+       stitch() emits two identical keys at both ends of a state's reading
+       window precisely so the eye stands still while it is being read. Two
+       coincident Catmull-Rom control points do not produce a constant: with
+       p1 == p2 == P the curve reads 1.125 P - 0.0625 (p0 + p3) at its
+       midpoint, so the segment bows toward or away from the *neighbouring*
+       stations, which are 6.6 m away down the corridor. Sampled at 400 points
+       per window against the real keys that is 0.737 m of drift on Measured,
+       0.708 on Work, 0.530 on Contact and 0.647 m on Stack's look point --
+       against a deliberate 12 mm breath and a 2.4 m frame height, a quarter of
+       the frame.
+    
+       It survived because both endpoints are exact. Every check that had been
+       run on it -- the journey probe, the "0.07 metres of eye" figure quoted
+       in post.js -- measures the ends of a state's scroll, and the bulge is
+       entirely in the middle, which is where a reader spends the state. */
+    if (same(b.pos, c.pos)) { pos[0] = b.pos[0]; pos[1] = b.pos[1]; pos[2] = b.pos[2]; }
+    else catmull(a.pos, b.pos, c.pos, d.pos, t, pos);
+    if (same(b.look, c.look)) { look[0] = b.look[0]; look[1] = b.look[1]; look[2] = b.look[2]; }
+    else catmull(a.look, b.look, c.look, d.look, t, look);
     return { fov: b.fov + (c.fov - b.fov) * (t * t * (3 - 2 * t)) };
   }
 
