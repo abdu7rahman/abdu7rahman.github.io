@@ -31,8 +31,16 @@ export function makePointer() {
       // you, and it does not blow up when a tab comes back from the
       // background with a 2-second dt.
       const h = Math.min(0.05, dt);
+      /* Both terms carry the step, which only the spring one used to.
+         `v += a` makes `a` a change in velocity per frame rather than an
+         acceleration, so the 60*h on the spring term is what turns it into
+         one; the damping term had none, and so removed a fixed fraction of
+         the velocity every frame however long the frame was. On a 120 Hz
+         display that is twice the drag per second of a 60 Hz one -- the
+         cursor's weight was a function of the monitor. At 60 Hz, 60*h is 1
+         and this is exactly what it was, so the tuning carries over. */
       for (const k of ["x", "y"]) {
-        const a = (t[k] - s[k]) * stiffness * 60 * h - v[k] * damping;
+        const a = ((t[k] - s[k]) * stiffness - v[k] * damping) * 60 * h;
         v[k] += a;
         s[k] += v[k] * h;
       }

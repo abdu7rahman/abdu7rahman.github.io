@@ -273,16 +273,32 @@ export const TRANSIT = { arc: 0.62, stagger: 0.42, heat: 0.45 };
    Chosen by world/capability.js, not by user agent sniffing. The substrate is
    one draw call whatever its size, so the counts are far higher than the old
    per-scene particle budgets could be: what costs here is fill rate and the
-   baked formations, not draw calls. Seven formations at 80k is about 11 MB of
-   Float32, which is less than one of the textures a site like this would
+   baked formations, not draw calls.
+
+   A bake is six floats a point -- position, kind, size, and the flow value
+   that says where along its own feature the point sits -- so at 80k that is
+   1.92 MB each and 13.44 MB for the seven, plus 5.12 MB for the live
+   attribute set the shader reads. It was 11.2 MB until the flow channel
+   added the sixth float, and the comment here said 11 for a while after it
+   did not. Still less than one of the textures a site like this would
    otherwise be carrying, and they are baked one per idle frame rather than
-   all at boot. What actually bounds the high tier is overdraw: additive
-   points up to seven pixels across at device pixel ratio 2 is a lot of blend,
-   which is why the tier is only chosen for eight cores and 8 GB. */
+   all at boot.
+
+   What actually bounds the high tier is overdraw: additive points up to
+   seven pixels across at device pixel ratio 2 is a lot of blend, which is
+   why the tier is only chosen for eight cores and 8 GB.
+
+   fogSteps is gone rather than fixed. world.js passed it as
+   `makeAtmosphere({ accent, steps: q.fogSteps })` and makeAtmosphere
+   destructures `{ accent }` alone, so the value was dropped on the floor and
+   all three tiers have always had identical fog. There is nothing to step:
+   that shader has no loop in it. A knob that reads like a quality tradeoff
+   and does nothing is worse than no knob, because it is the first thing
+   somebody turns down when the low tier is slow. */
 export const TIERS = {
-  high:   { dpr: 2.0, substrate: 80000, post: true,  arm: true,  fogSteps: 5 },
-  medium: { dpr: 1.5, substrate: 34000, post: true,  arm: true,  fogSteps: 4 },
-  low:    { dpr: 1.0, substrate: 12000, post: false, arm: false, fogSteps: 3 }
+  high:   { dpr: 2.0, substrate: 80000, post: true,  arm: true  },
+  medium: { dpr: 1.5, substrate: 34000, post: true,  arm: true  },
+  low:    { dpr: 1.0, substrate: 12000, post: false, arm: false }
 };
 
 /* ── the palette, read from the stylesheet ──────────────────────────────

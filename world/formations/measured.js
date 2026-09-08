@@ -79,19 +79,12 @@ import { bands, polyline, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
    than reading a chart pasted on the glass would have gone with it. */
 export const VIEW = { pos: [0.30, 0.80, 3.60], look: [0, 0.74, -0.24], fov: 44 };
 
-/* Two states, and the second needs a key of its own. Stack is the same rig
-   from further out and above: the section is a list of what the numbers were
-   taken with, and the reading is the instrument entire rather than any one
-   bar. Without a key the camera spent Stack flying four metres onward and
-   finished inside the rig, which is the smear of white that state was
-   rendering.
-
-   Both aim at the instrument rather than left of it, for the reason above:
-   getting clear of the panel is a job done in NDC, once, for every station. */
-export const VIEWS = [
-  VIEW,
-  { pos: [1.42, 1.48, 3.55], look: [0, 0.52, -0.34], fov: 40 }
-];
+/* The second key this used to declare belonged to Stack, and Stack is its own
+   station now -- same anchor, same rig, its own VIEW from further out and
+   above. stitch() asks for views[min(j, len-1)] and j never leaves 0, so the
+   entry was unreachable while its comment explained why the camera needed it.
+   Removed rather than corrected: the mechanism in world.js stays, and a
+   formation that really does span two states can still export VIEWS. */
 
 /* The measurements, exactly as the Measured tables report them: A* on three
    costmaps, DWA on the two windows the controller actually evaluates. The
@@ -132,8 +125,13 @@ function height(x) { return FOOT + (Math.log(x) - LO) / (HI - LO) * RISE; }
 const TICKS = [MIN, 10, 100, MAX];
 const TICK_OUT = 0.13;                   // how far a tick steps off the plane
 
-/* More surface samples than the largest tier will ever draw, so the walk in
-   fill thins the skin rather than placing the same point twice. */
+/* Fewer surface samples than the high tier draws, not more, which is what
+   this used to claim. The bars take 70% of the structure band and that band
+   is 49,600 points at 80k, so 34,720 draws walk a 28,000-entry pool at a
+   stride of 0.806 and a fifth of the entries are placed twice. The jitter is
+   indexed by the draw rather than by the entry, so the two copies land 4 mm
+   apart and the skin reads as a skin; the pool is a cap on how much surface
+   has to be parameterised at boot, not a guarantee of distinctness. */
 const POOL = 28000;
 
 export function build(ctx) {

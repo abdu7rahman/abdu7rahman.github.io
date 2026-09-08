@@ -24,7 +24,6 @@ export function makeDissolveMaterial({ color, accent, rough = 0.42 }) {
     uColor:   { value: new THREE.Color(color) },
     uAccent:  { value: new THREE.Color(accent) },
     uRough:   { value: { value: rough }.value },
-    uPointer: { value: new THREE.Vector2(0, 0) },
     uCharge:  { value: 0 }       // pointer speed, drives the surface unrest
   };
 

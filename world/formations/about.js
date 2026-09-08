@@ -156,12 +156,23 @@ function reachable(p, frames) {
   return true;
 }
 
-/* Accepted tool positions held in the pool. More than the largest tier draws
-   of them, so the walk in fill thins the envelope rather than writing the
-   same solution twice, and enough that the shell's thin regions are still
-   populated once the volume has been divided by them. Solving for it costs
-   the boot a few tens of milliseconds, once: 17000 accepted out of 24349
-   draws, a 69.8% acceptance rate. */
+/* Accepted tool positions held in the pool. Fewer than the high tier draws,
+   which is the opposite of what this said: the structure band at 80k is
+   49,600 points and the envelope takes nearly all of it, so about 43,000
+   draws walk a 17,000-entry pool at a stride under one half and most
+   positions are visited two or three times.
+
+   That is fine, and it is worth saying why rather than claiming it does not
+   happen. What is pooled is a *solved* position -- a tool point inside the
+   reachable set, which costs an IK acceptance test to find -- and what is
+   drawn is that position plus a jitter indexed by the draw, not by the
+   entry. Two draws of one solution land 6 mm apart in different directions.
+   So the pool is a budget on the expensive half and the cheap half still
+   fills the volume; sizing it to the tier would triple the boot cost to
+   remove a repetition nobody can see.
+
+   Solving for it costs the boot a few tens of milliseconds, once: 17000
+   accepted out of 24349 draws, a 69.8% acceptance rate. */
 const POOL = 17000;
 
 /* The fan, and how far off the executed move its alternates are allowed to
