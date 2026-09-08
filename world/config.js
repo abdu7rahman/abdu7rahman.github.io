@@ -39,13 +39,31 @@ export const STATIONS = [
   // points, and a surface drawn through either would be inventing a boundary
   // neither of them has. About still has the solid arm standing in it.
   { id: "hero",     owns: ["intro"],    anchor: [0,  0.00,   0.0],  solid: true  },
-  /* Half the cloud, and the only station that needs the instruction. Swept at
-     the high tier -- gain against how much of the frame comes back above 140 --
-     six of the seven barely move (Work 0.002 at every gain, Path 0.003) and
-     About goes 0.129, 0.044, 0.021 across 1.0, 0.6, 0.4. It is the one station
-     where the cloud is the whole subject and it is read from close enough to
-     fill the frame with it, so it is the one that has to be told. */
-  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false, cloud: 0.5 },
+  /* No gain here any more, and the reason it had one is worth keeping.
+  
+     It was 0.5. Swept at the high tier against how much of the frame comes
+     back above 140, six of the seven stations barely moved -- Work 0.002 at
+     every gain, Path 0.003 -- and About went 0.129, 0.044, 0.021 across 1.0,
+     0.6 and 0.4. It was the one station where the cloud was the whole subject
+     and it was read from close enough to fill the frame, so it was the one
+     that had to be told.
+  
+     Those numbers were measurements of a volumetric fill, and the fill is
+     gone: the reachable set is drawn as a section, contour rings and a swept
+     plane of solutions, which is line work. Line work does not saturate the
+     way a solid mass of points does, and holding it at half strength was
+     dimming a drawing to fix a problem it does not have -- measured on the
+     new formation at 1440, full strength takes the left margin from 15.5 to
+     26.6 mean and 101 to 148 at p99 while the fraction of frame over 140
+     stays at 0.017. Nothing washes. So the instruction goes rather than being
+     re-tuned, because the station it was written for is not the one standing
+     here.
+  
+     One consequence to know before changing anything: world.js drops the
+     cloud to 0.07 of uFade wherever a solid stands, so giving About a solid
+     would take this formation down with it. It is the drawing. If a solid
+     ever goes in here, that ratio has to be revisited in the same commit. */
+  { id: "about",    owns: ["about"],    anchor: [0,  0.00,   0.0],  solid: false },
   { id: "work",     owns: ["work"],     anchor: [0, -0.55,  -6.6],  solid: true  },
   { id: "measured", owns: ["measured"], anchor: [0, -0.55, -13.2],  solid: true  },
   /* `cloud` scales the substrate at this station and only here. Stack draws a

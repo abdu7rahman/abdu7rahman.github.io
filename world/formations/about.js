@@ -7,19 +7,49 @@
  * is what the substrate was a moment ago, leaves the arm and becomes the
  * volume the arm can reach, around the arm, in place.
  *
- * The envelope is neither a sphere nor a blob. Every point of it is a tool
- * position out of the same forward kinematics the mesh is posed by, for a
- * joint vector drawn from the box below, so the shell has the shape the
- * hardware gives it: thick where a lot of joint space maps to one region,
- * thin where the arm has to be nearly straight to get there, cut off flat
- * where it would have to reach through the plate it is bolted to, and hollow,
- * because a six-axis arm cannot fold its own tool back into its own shoulder.
+ * What that volume is, drawn the way a volume is drawn.
  *
- * And it is reached into rather than displayed. A shell of points standing
- * still states a fact about the hardware; the same shell with the base joint
- * mapped onto the substrate's travelling band is the machine finding that
- * fact out. A plane of solutions sweeps the volume once every lap, the way
- * the arm would cover it: by slewing.
+ * It used to be a scatter: seventeen thousand accepted tool positions, uniform
+ * in joint space, walked at a stride and jittered into the forty-one thousand
+ * draws the structure band had for them, additively. Every point of it was true
+ * and the picture was not -- rendered, it was a grey cotton ball with the
+ * machine lost inside it, the weakest thing on this page. A cloud of samples is a
+ * measurement; it is not a shape, because a shape is a boundary and a boundary
+ * is exactly what a uniform fill has no way of stating. So nothing is filled
+ * here any more. Every point this formation writes is on a line, and the lines
+ * are the same forward kinematics read for its edges instead of its interior.
+ *
+ * The reason that works is one fact, and it is worth stating before anything
+ * below makes sense. The first joint origin is a pure translation up the base
+ * axis, so every later frame is that translation, a rotation about it, and the
+ * chain -- and rotating the whole chain about the base axis changes neither
+ * the tool's height nor its distance from that axis, nor any line of the
+ * reachability test, which is heights and distances and nothing else. Measured
+ * over 20000 draws, re-solving the same arm with the base joint moved
+ * somewhere else in its range moves the tool's (distance, height) pair by
+ * 8.9e-16 and never once changes the verdict. The reachable set is therefore a
+ * solid of revolution: one two-dimensional region in the half-plane, swept
+ * through the base joint's own range. The sixth joint is redundant for the
+ * same kind of reason -- it turns the tool about the axis the tool point sits
+ * on, and over 20000 draws it moved that point by exactly 0.
+ *
+ * So: one region, measured once, and drawn three ways at the same time. As a
+ * *section* -- the region itself, cut by a vertical plane through the base
+ * axis, both sides of it, outlined and hatched, which is the oldest drawing
+ * there is of a workspace and the only one that can show what is inside.
+ * As a *surface* -- ten contour rings of the shape that section makes when it
+ * is turned, so the flat figure is read as a solid. And as a *sweep* --
+ * twenty-one half-planes of solutions at twenty-one base angles across the
+ * arc the hero move's own base range covers, each carrying that angle as its
+ * place in the substrate's travelling band, so once a lap a plane of solutions
+ * slews about the base axis and the ground under it lights in the same wedge.
+ * That is the motion the machine would actually make to cover its own
+ * envelope, and it is the difference between a fact and a machine.
+ *
+ * Inside the section, the machine's own structure: where the wrist can be, an
+ * area; where the elbow can be, which is a *line*, because one joint moves it
+ * and one joint traces an arc. The outer boundary on its own says how far. A
+ * workspace drawing is about what is in it.
  *
  * The accent arrives from the manipulator as one executed trajectory. Here it
  * becomes the fan that trajectory was chosen out of: that same move and six
@@ -33,58 +63,50 @@ import { bands, polyline, rng, STRUCTURE, PATH } from "./lib.js";
 import { RUN_SHARE, runTriad } from "./hero.js";
 import { linkFrames, toolPoint, poseAt, POSES, TCP_Z } from "../kinematics.js";
 
-/* Offsets from the station anchor; the caller adds it. A step in from the
-   manipulator's 2.30 and a little round it, which is as far as this station
-   is allowed to move -- the transformation is the subject and a camera that
-   travels while the matter reorganises steals the reorganisation.
+/* Offsets from the station anchor; the caller adds it.
 
-   Solved rather than nudged, against the envelope this file actually writes.
-   Re-measured off the buffer rather than off this paragraph, because this
-   paragraph had drifted: it read 1.75 wide, 1.36 tall and 1.68 deep with a
-   centre of mass 0.19 above the base plate, and boxing the 41921 envelope
-   points the fill hands the substrate at the high tier gives 2.604 wide,
-   1.653 tall and 2.275 deep, centred 0.740 above the plate, 0.209 in front of
-   it and 0.448 to its left. The 0.19 was the centroid's world y read as a
-   height, and the plate is at -0.55. Either way the conclusion it was drawn
-   for stands harder than it did: this is a much bigger object than the arm
-   that generated it, and at the manipulator's own standoff it overflows the
-   frame on three sides. The NDC readings below are framing.js's and were
-   never in doubt; the dimensions were.
+   Re-solved twice, and the second time for a reason that had nothing to do
+   with this file. The first: the header used to claim the envelope was 1.75 x
+   1.36 x 1.68 and it is 2.62 x 1.65 x 2.34, so every standoff before 4.60 was
+   solved against an object half again smaller than the one being drawn.
 
-   1.62 of standoff did not solve that, it only moved where the overflow
-   landed, and the 0.6 of leftward aim that went with it was not about the
-   envelope at all -- it was pushing the subject out from behind the panel by
-   swinging the camera, which framing.js now does in NDC for every station at
-   once. Left in, the two corrections stacked: measured off a render at
-   1440x960, the *arm* ran to +1.57 in NDC, so more than half the machine this
-   section is about was outside the frame and what remained was a fragment
-   seen from underneath.
+   The second is the layout. The reading column is no longer pinned to the left
+   edge with the world in the strip beside it: it is biased inward, 40% of the
+   free frame to its left and 60% to its right, and it fades to nothing over its
+   own gutter at both ends. So the world is read in two margins and runs under
+   the type between them, and world/framing.js -- which shears the projection to
+   clear the column -- now weights that shear by how much clear frame is on each
+   side and returns 0.053 at 1916x953 and 0.072 at 1440x900, where the old sum
+   returned 0.390. The subject is no longer pushed into the right margin; it
+   sits very near the middle of the frame.
 
-   So: aimed at the envelope, and far enough back to hold it. From 3.80 the
-   whole reachable volume lands inside the frame at every aspect the page will
-   stage -- x from -0.08 to +0.86 at 1440x960 and -0.01 to +0.70 at 1916x953,
-   y within +/-0.61 of centre -- with the arm that generated it sitting inside
-   that at [+0.13, +0.61]. It is 1.53 of travel from the hero's eye on the
-   same 42-to-45 of lens, which is the move the section is: the same machine,
-   stepped back from, with everything it can reach drawn around it. */
-/* Re-solved, against the envelope this file actually writes rather than
-   against the one its header used to claim. That header said 1.75 x 1.36 x
-   1.68; boxing the 41921 points the fill emits gives 2.604 x 1.653 x 2.275,
-   centred 0.740 above the plate, 0.209 in front of it and 0.448 to its left --
-   half again as wide and a third deeper. The standoff before this was solved
-   from the wrong figure and inherited its error: measured against the real
-   volume, the envelope ran off the top of the frame at every aspect the page
-   will stage and off the right of it at 1440x960.
+   That inverts the composition problem. The column covers NDC -0.629 to +0.444
+   at 1916x953 and -0.754 to +0.632 at 1440x900, so a subject that fits beside
+   the type is a subject nobody sees: it has to be wide enough to come out both
+   sides of it. From 4.60 on a 45 degree lens the old envelope spanned -0.22 to
+   +0.75 and did neither.
 
-   From 4.60 it fits at both, x from -0.37 to +0.93 in the narrowest staged
-   window and -0.22 to +0.75 in the widest, y inside +/-0.67 of centre. Further
-   back fits with more margin and buys nothing: at 5.60 the envelope clears by
-   another tenth and the arm inside it drops from 0.40 of the frame's width to
-   0.32, and the arm is the thing the volume is a claim about. 2.32 m of travel
-   from the hero's eye on the same lens, which is the move this section is --
-   the same machine, stepped back from, with everything it can reach drawn
-   around it. */
-export const VIEW = { pos: [0.42, 0.28, 4.60], look: [0.30, 0.06, -0.06], fov: 45 };
+   Solved against the section, because the section is the figure: from 3.67 m on
+   a 30 degree lens, aimed 0.73 m above the plate and 0.10 to the right of the
+   base axis -- which is what leaves the axis itself on the frame's centre line
+   once framing.js has sheared it -- the cut figure spans -0.76 to +0.72 in NDC
+   at 1916x953 and -0.95 to +0.90 at 1440x900, and stands from -0.71 to +0.97
+   vertically at both. So it clears the column by 0.13 of the frame on the left
+   and 0.28 on the right at the wide window, 0.20 and 0.27 at the narrow one: a
+   hatched flank in each margin, the whole figure inside the frame top to
+   bottom, and the machine that generated it in the middle with the reading over
+   it -- its six joint origins span [-0.47, 0.00] of NDC, which is entirely
+   behind the type. That is the right way round for this station. The hero
+   showed the machine; what this one has to say is the volume around it.
+
+   The lens is the other half of it. Stepping back from 2.30 to 3.67 while going
+   from 42 degrees to 30 leaves the arm itself almost exactly the size it was --
+   1.27 m of machine subtends 0.715 of NDC at the hero's key and 0.643 here --
+   so what the 1.74 m of travel buys is not a smaller robot, it is the room
+   around one. It also keeps the eye outside the volume: the nearest point this
+   formation writes is 2.30 m from the lens, which is exactly clear of the near
+   fade the substrate applies under 2.2, and the furthest is 5.24. */
+export const VIEW = { pos: [1.25, 0.90, 3.45], look: [1.25, 0.18, -0.15], fov: 30 };
 
 /* The joint box the envelope is sampled over.
  *
@@ -97,12 +119,13 @@ export const VIEW = { pos: [0.42, 0.28, 4.60], look: [0.30, 0.06, -0.06], fov: 4
  *
  * The widening is not uniform because the joints do not do the same job. The
  * three that carry the arm out into the room get the most, because they are
- * what makes the envelope an envelope. The base gets least: swung a full turn
- * it sweeps the same shell round twice and fills the left of the frame, which
- * belongs to the type. The last joint gets none at all, and loses nothing by
- * it -- it turns the tool about its own approach axis, the tool point sits on
- * that axis, and so every sample of it lands exactly where some other sample
- * already wrote. */
+ * what makes the envelope an envelope. The last gets none at all and loses
+ * nothing by it, and the base's 0.45 does not bound the drawing the way the
+ * others do -- both for the same reason, which is in the header: neither joint
+ * moves the tool in the half-plane the region is measured in. What the base's
+ * range bounds is the *working arc*, the 99.12 degrees the sheets are drawn
+ * across and the band travels; the surface those solutions trace is the same
+ * at every base angle and is drawn all the way round. */
 const WIDEN = [0.45, 1.05, 1.30, 1.55, 1.55, 0];
 const LO = WIDEN.map((w, k) => Math.min(...POSES.map(p => p[k])) - w);
 const HI = WIDEN.map((w, k) => Math.max(...POSES.map(p => p[k])) + w);
@@ -115,12 +138,12 @@ const HI = WIDEN.map((w, k) => Math.max(...POSES.map(p => p[k])) + w);
 const CLEAR = 0.015;
 
 /* And how far the tool has to stay off the arm carrying it. This is where the
-   hole in the middle of the volume comes from, and it is worth being exact
-   about why, because the kinematics on its own does not produce one: on these
-   origins the shoulder and wrist offsets very nearly cancel, and a tool point
-   can be brought within about a centimetre of the base axis by a chain that
-   is folded straight through its own forearm. Those are solutions of the
-   equations and not places the arm can go.
+   hole in the volume comes from, and it is worth being exact about why,
+   because the kinematics on its own does not produce one: on these origins the
+   shoulder and wrist offsets very nearly cancel, and a tool point can be
+   brought within about a centimetre of the base axis by a chain that is folded
+   straight through its own forearm. Those are solutions of the equations and
+   not places the arm can go.
 
    The clearance is the tool's own length, which is the single dimension of
    the gripper this repository actually carries -- the mesh is decimated
@@ -156,24 +179,76 @@ function reachable(p, frames) {
   return true;
 }
 
-/* Accepted tool positions held in the pool. Fewer than the high tier draws,
-   which is the opposite of what this said: the structure band at 80k is
-   49,600 points and the envelope takes nearly all of it, so about 43,000
-   draws walk a 17,000-entry pool at a stride under one half and most
-   positions are visited two or three times.
+/* How many joint vectors to solve, and how finely the region they land in is
+   measured.
+ *
+ * Only four joints are drawn, and the two left out are left out because they
+ * cannot change the answer rather than to save time: the base does not move the
+ * tool in the half-plane this measures and the wrist roll does not move it at
+ * all, so drawing them would spend two random numbers a draw on nothing that is
+ * kept. What is kept is not the positions -- there is no pool any more -- but
+ * two extremes per 2 cm row of height, for the tool and for the wrist: the
+ * furthest from the base axis and the nearest to it. That is the boundary,
+ * which is the thing being drawn.
+ *
+ * 40000 draws at a measured 69.6% acceptance is 27829 solutions over the 83
+ * rows the region occupies, and it is the whole cost of this file: profiled in
+ * node, the sampling loop is 128 ms of a 147 ms build, and everything else --
+ * the section, both hatches, the contours, the fan, the floor -- is the
+ * remaining 19. Building all seven formations in one process takes 264 ms and
+ * this station is 84 of them, against 37 for the fill it replaces. It is the
+ * most expensive build on the page and it is paid once, before the first
+ * frame.
+ *
+ * What it buys is checkable, because the same sampler at 1.5 million draws is
+ * the reference: the outer profile at 40000, after the three-tap below, sits a
+ * mean 16.6 mm inside the reference and 34 mm at its worst, which is 1.1% of a
+ * 1.49 m reach and about 8 pixels at this station's standoff. A max over
+ * samples can only ever under-read a boundary; the useful question is by how
+ * much, and this is how much. Drawing 30000 instead moves the mean to 19.3 mm
+ * and the worst row from 34 to 58 and saves about 30 ms of boot, which is where
+ * the 40000 comes from: it is the point either side of which one of those two
+ * gets noticeably worse.
+ *
+ * The three-tap is what makes it a curve rather than a picket fence. Row to row
+ * the raw profile wanders 10.0 mm about its own second difference; smoothed it
+ * wanders 2.5 mm, which is a pixel. Every sheet and every contour is drawn from
+ * the same smoothed profile, so what wobble is left is coherent across all of
+ * them -- the surface is very slightly the wrong shape rather than twenty-one
+ * differently wrong shapes, and only the second of those reads as noise. */
+const DRAWS = 40000;
+const ZC = 0.02;
+const ROWS = Math.ceil(1.9 / ZC);
+/* A row with fewer solutions than this in it is where the sample ran out, not
+   where the arm stops. At 40000 draws the highest row holding eight is centred
+   at 1.65 against the 1.662 a 1.5-million-draw reference reaches, so the top of
+   the figure is drawn 12 mm short of the arm's own reach straight up -- and the
+   alternative is a boundary whose last 10 cm is the position of a single lucky
+   draw. */
+const MIN_N = 8;
 
-   That is fine, and it is worth saying why rather than claiming it does not
-   happen. What is pooled is a *solved* position -- a tool point inside the
-   reachable set, which costs an IK acceptance test to find -- and what is
-   drawn is that position plus a jitter indexed by the draw, not by the
-   entry. Two draws of one solution land 6 mm apart in different directions.
-   So the pool is a budget on the expensive half and the cheap half still
-   fills the volume; sizing it to the tier would triple the boot cost to
-   remove a repetition nobody can see.
-
-   Solving for it costs the boot a few tens of milliseconds, once: 17000
-   accepted out of 24349 draws, a 69.8% acceptance rate. */
-const POOL = 17000;
+/* Twenty-one sheets and a contour every 15 cm.
+ *
+ * Both are legibility numbers and both are solved against the same thing: how
+ * far apart two of these land on the glass. At the key above the frame is 480
+ * pixels to the metre at the volume's own depth on a 1916x953 window and 458 on
+ * a 1440x900 one, and the splat this shader
+ * draws here runs 2 to 7 pixels across, so anything closer together than about
+ * twelve pixels is one grey area again -- which is the failure this formation
+ * exists to correct, arrived at from the other direction.
+ *
+ * The base range is 1.7300 rad, so twenty-one sheets are 4.72 degrees apart:
+ * 0.120 m between neighbours out at the floor rim, 58 pixels. The contours are
+ * 15 cm of height, 71 pixels where the surface is steep, closing to nothing at
+ * the top where it turns over -- which is what a contour map does at a summit,
+ * and is information rather than mush.
+ *
+ * Sheets at the centres of twenty-one equal slices of the base range rather
+ * than at its ends: the first and last would otherwise carry flow 0 and flow 1,
+ * which the substrate's fract puts at the same place in the lap, and the two
+ * ends of the sweep would light together. */
+const SHEETS = 21;
+const RING_DZ = 0.15;
 
 /* The fan, and how far off the executed move its alternates are allowed to
    bow. Seven routes: one that was run and six that were not. Fewer and the
@@ -198,82 +273,302 @@ export function build(ctx) {
     .multiply(upright);
   const floorY = anchor.y + base.y;
 
-  const q = new Array(6);
+  const q = new Array(6).fill(0);
   const frames = Array.from({ length: 6 }, () => new THREE.Matrix4());
   const v = new THREE.Vector3();
   const r = rng(0x1F0C7);
 
-  /* The envelope. Uniform in joint space rather than uniform in the room,
-     which is the whole reason to do it this way round: the density that comes
-     out is the density of solutions, so the cloud is thickest exactly where
-     the arm has the most ways to be. That is a fact about the machine and not
-     a shading decision.
+  /* ── the measurement ────────────────────────────────────────────────────
+     Three loci, from one sample, all of them in the (distance from the base
+     axis, height) half-plane the whole volume is a rotation of:
 
-     Every test below is made in the arm's own frame, before the placement is
-     applied, so a rejected sample costs a comparison rather than a matrix. */
-  const env = new Float32Array(POOL * 3);
-  /* And where in the sweep each accepted solution belongs: its base joint,
-     normalised over the base's own range in the box.
-   *
-   * This is the parameter the volume is reached into on, and the choice is
-   * forced rather than picked. Of the six joints the base is the only one the
-   * acceptance test above cannot see: every line of `reachable` is either a
-   * height in the arm's frame or a distance between two things in it, and
-   * rotating the whole chain about the base axis changes neither. Nothing is
-   * ever rejected for the value of q[0]. So the accepted pool is uniform in
-   * it -- measured, the deciles of this array come out 1713 1643 1672 1645
-   * 1716 1691 1721 1738 1723 1738 of 17000, flat to within the 2.4% that one
-   * standard deviation of 1700 draws is worth -- and a band advancing at a
-   * constant rate through it covers the volume at a constant rate. Map any
-   * other joint and the sweep stalls wherever that joint's solutions were
-   * being thrown away.
-   *
-   * It is also the joint that means something to look at. q[0] is what
-   * carries the whole arm round the room; the other five decide the shape of
-   * the cross-section it carries. Mapped this way the lit matter is a plane
-   * of solutions slewing about the base axis, which is the motion the machine
-   * would actually make to cover its own envelope. Ordered on reach, or on
-   * height, or on nothing at all, the same points arrive as a bubble or as a
-   * dissolve, and a dissolve is what this was trying to stop being.
-   *
-   * The base range is 1.7300 wide -- -0.76 to 0.97 -- and the substrate's
-   * 0.16 is where the band falls to nothing, so it is at half strength 0.08
-   * either side of its centre. That half-strength window is 0.16 of the base
-   * range: 0.277 of rotation, 15.9 degrees. What it holds, measured on the
-   * pool, is 16.0% of it, and the shape of that 16% is the whole argument --
-   * a slab 2.517 wide and 1.643 tall against a volume that is 2.594 and
-   * 1.643, and 0.935 deep against 2.269. Full width, full height, 41% of the
-   * depth. It reads as a plane because it is one.
-   *
-   * The lap does not close, and is not pretended to: the band leaves at 0.97
-   * and comes back at -0.76, a 99 degree jump. That is the same jump the
-   * tool's route makes when it runs off the end of the move and starts again,
-   * and it is what it looks like -- a program repeating, not a wheel turning. */
-  const envF = new Float32Array(POOL);
-  let n = 0;
-  const cen = new THREE.Vector3();
-  let fSum = 0;
-  // Bounded, because rejection sampling has no upper bound of its own and a
-  // boot is not allowed to be unlucky.
-  for (let tries = 0; n < POOL && tries < POOL * 12; tries++) {
-    for (let k = 0; k < 6; k++) q[k] = LO[k] + r() * (HI[k] - LO[k]);
+       tool    -- the workspace itself, a region
+       wrist   -- where the last three joints meet, a region inside it
+       elbow   -- where the upper arm ends, which is a *curve*, because only
+                  the shoulder joint moves it and one joint traces an arc
+
+     That the third is a line and the second an area is the machine's own
+     structure showing through, and it is the reason the inside of this volume
+     is worth drawing at all. */
+  const tHi = new Float32Array(ROWS), tLo = new Float32Array(ROWS).fill(9);
+  const wHi = new Float32Array(ROWS), wLo = new Float32Array(ROWS).fill(9);
+  const tN = new Int32Array(ROWS), wN = new Int32Array(ROWS);
+  let eLo = Math.PI, eHi = -Math.PI, eRad = 0, shoulderZ = 0;
+  let sumR = 0, sumZ = 0, nAcc = 0;
+  for (let i = 0; i < DRAWS; i++) {
+    for (let k = 1; k <= 4; k++) q[k] = LO[k] + r() * (HI[k] - LO[k]);
     linkFrames(q, frames);
     toolPoint(frames, v);
     if (!reachable(v, frames)) continue;
-    v.applyMatrix4(place);
-    env[n * 3] = v.x; env[n * 3 + 1] = v.y; env[n * 3 + 2] = v.z;
-    envF[n] = (q[0] - LO[0]) / (HI[0] - LO[0]);
-    fSum += envF[n];
-    cen.add(v);
-    n++;
+    nAcc++;
+    const rr = Math.hypot(v.x, v.y);
+    sumR += rr; sumZ += v.z;
+    const j = (v.z / ZC) | 0;
+    if (j >= 0 && j < ROWS) {
+      tN[j]++;
+      if (rr > tHi[j]) tHi[j] = rr;
+      if (rr < tLo[j]) tLo[j] = rr;
+    }
+    const e3 = frames[3].elements;
+    const wr = Math.hypot(e3[12], e3[13]), jw = (e3[14] / ZC) | 0;
+    if (jw >= 0 && jw < ROWS) {
+      wN[jw]++;
+      if (wr > wHi[jw]) wHi[jw] = wr;
+      if (wr < wLo[jw]) wLo[jw] = wr;
+    }
+    /* The elbow, in polar about the shoulder. Its radius comes out constant
+       because it is the upper arm, and the height it is measured from is the
+       first joint origin -- read off the chain rather than written down here,
+       so this cannot drift from the kinematics module. */
+    const e2 = frames[2].elements;
+    shoulderZ = frames[0].elements[14];
+    const er = Math.hypot(e2[12], e2[13]), ez = e2[14] - shoulderZ;
+    eRad = Math.hypot(er, ez);
+    const ea = Math.atan2(ez, er);
+    if (ea < eLo) eLo = ea;
+    if (ea > eHi) eHi = ea;
   }
-  const NENV = n;
-  cen.multiplyScalar(1 / Math.max(1, NENV));
-  // Where in the lap the sweeping plane is passing through the middle of the
-  // range that made the volume. 0.504 at this seed, which is 0.5 plus the
-  // noise on 17000 uniform draws, and it is the tick the volume's own frame
-  // is given below.
-  const meanF = fSum / Math.max(1, NENV);
+
+  /* A profile, as a list of (distance, height) pairs from the bottom of the
+     region to the top: the smoothed extreme of every row that holds enough
+     solutions to be a measurement. The floor row is pinned to the clearance
+     height rather than to its own centre, because that row's samples all lie
+     in the two centimetres above the plate and the plate is where the volume
+     is cut off. */
+  function profile(ext, n, up) {
+    const rows = [];
+    for (let j = 0; j < ROWS; j++) if (n[j] >= MIN_N) rows.push(j);
+    if (rows.length < 2) return [];
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const a = ext[rows[Math.max(0, i - 1)]];
+      const b = ext[rows[i]];
+      const c = ext[rows[Math.min(rows.length - 1, i + 1)]];
+      const z = i === 0 ? Math.max(CLEAR, rows[i] * ZC) : (rows[i] + 0.5) * ZC;
+      out.push([(a + 2 * b + c) / 4, z]);
+    }
+    return up ? out : out.reverse();
+  }
+  const toolOut = profile(tHi, tN, true);
+  const wristOut = profile(wHi, wN, true);
+  const wristIn = profile(wLo, wN, false);
+  const topZ = toolOut.length ? toolOut[toolOut.length - 1][1] : CLEAR;
+
+  /* The distance from the axis the boundary stands at, at any height: the
+     profile read as a curve rather than as a list. Everything below asks it
+     something -- where each contour's radius is, how wide the annulus on the
+     floor is, and, thirty-five thousand times, whether a candidate hatch point
+     is inside the section or outside it. */
+  function outerAt(z) {
+    const n = toolOut.length;
+    if (!n) return 0;
+    if (z <= toolOut[0][1]) return toolOut[0][0];
+    if (z >= toolOut[n - 1][1]) return toolOut[n - 1][0];
+    // Bisected rather than walked, because the hatch asks it twice per
+    // candidate and there are eighty-three rows to walk. It is worth about ten
+    // milliseconds of the build and no more: profiled, the sampling loop above
+    // is 128 of the 147 ms this whole function takes, and nothing else in here
+    // is worth optimising until that is.
+    let lo = 1, hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (toolOut[mid][1] < z) lo = mid + 1; else hi = mid;
+    }
+    const t = (z - toolOut[lo - 1][1]) / Math.max(1e-6, toolOut[lo][1] - toolOut[lo - 1][1]);
+    return toolOut[lo - 1][0] + (toolOut[lo][0] - toolOut[lo - 1][0]) * t;
+  }
+
+  /* The hole, which is not the one the header used to claim. It said the
+     volume was hollow because a six-axis arm cannot fold its tool back into
+     its own shoulder, and that is measurably wrong: over a million solutions
+     the tool comes within 2.0 mm of the base axis at 1.17 m of height. What it
+     cannot enter is the capsule the clearance test cuts around the base
+     column -- everything within one tool length of the segment from the plate
+     to the first joint origin -- and the closest any accepted solution gets to
+     that segment is 0.1565, which is the tool length to four figures. So the
+     void is a bulb at the foot of the volume, 15.65 cm of radius, and it ends
+     15.65 cm above the first joint origin. Above that the volume is solid all
+     the way to the axis, and the drawing has to say so.
+
+     Written out of the test's own two terms rather than measured, because it
+     is not an empirical shape: it is a capsule about a segment, and both the
+     segment and the radius are named in `reachable` twelve lines up. */
+  const capsule = [];
+  {
+    const STEPS = 14;
+    capsule.push([SELF, CLEAR], [SELF, shoulderZ]);
+    for (let i = 1; i <= STEPS; i++) {
+      const a = (i / STEPS) * Math.PI / 2;
+      capsule.push([SELF * Math.cos(a), shoulderZ + SELF * Math.sin(a)]);
+    }
+  }
+  function innerAt(z) {
+    if (z <= shoulderZ) return SELF;
+    const d = z - shoulderZ;
+    return d >= SELF ? 0 : Math.sqrt(SELF * SELF - d * d);
+  }
+
+  /* The elbow's arc, at the radius and over the range the sample found. The
+     radius comes back as the upper arm to four figures and the range as 5.1
+     degrees below the horizontal up to exactly straight overhead -- the low
+     end is where the shoulder's box stops, the high end is the arm standing
+     up, past which the elbow crosses the axis and comes back down the same arc
+     on the far side, which in a half-plane is the same points again. */
+  const elbow = [];
+  {
+    const STEPS = 30;
+    for (let i = 0; i <= STEPS; i++) {
+      const a = eLo + (eHi - eLo) * (i / STEPS);
+      elbow.push([eRad * Math.cos(a), shoulderZ + eRad * Math.sin(a)]);
+    }
+  }
+
+  /* The wrist's own region, closed: out along the top of it, back along the
+     bottom. Its inner edge is the thing worth having -- the wrist cannot come
+     nearer the base axis than the forearm's own offset, while the tool bolted
+     to it can be brought onto the axis, so the two regions are nested and not
+     concentric. */
+  const wrist = wristOut.concat(wristIn);
+  if (wrist.length) wrist.push(wrist[0]);
+
+  /* The section itself: the closed outline of the region, on both sides of the
+     axis.
+
+     This is the figure the whole station now hangs on, and it is the oldest
+     drawing there is of a workspace -- the shape you get by cutting the volume
+     with a vertical plane through the axis it is turned about. It is a bell
+     standing on two feet with a rounded notch between them: up the outer
+     profile on one side, across the top where the arm is standing straight up,
+     down the outer profile on the other, in along the plate, round the capsule
+     the tool cannot enter, and back out along the plate to where it started.
+     Every metre of it was measured above.
+
+     Both feet, one figure. The two halves join above the capsule, because the
+     tool can be brought onto the base axis anywhere over 0.34 of height -- so
+     this is one closed curve and not two lobes, and the notch between the feet
+     is the only hole in it.
+
+     One segment of it is a closure rather than a measurement, and it is the top:
+     the figure is shut with a 0.634 m chord at 1.65 of height, and the middle
+     0.14 m of that chord runs through space the arm cannot reach, because up
+     there its solutions stop about 0.07 short of the axis. The rest of the
+     chord is inside the region. It is drawn because at 40000 draws the inner
+     edge of the last few rows is 3 to 15 cm of noise, which is not a shape
+     worth drawing carefully, and a figure left open at the top is not a
+     figure. */
+  const section = [];
+  {
+    // Up the outer profile on one side, across the top, down the other side,
+    // in along the plate, over the capsule, and out along the plate to where it
+    // started. Written in that order because `polyline` joins what it is given:
+    // an outline whose vertices are in any other order draws chords through the
+    // middle of the figure, which is what the first version of this did.
+    for (const p of toolOut) section.push([p[0], p[1]]);
+    for (let i = toolOut.length - 1; i >= 0; i--) section.push([-toolOut[i][0], toolOut[i][1]]);
+    section.push([-SELF, CLEAR]);
+    for (const p of capsule) section.push([-p[0], p[1]]);
+    for (let i = capsule.length - 1; i >= 0; i--) section.push([capsule[i][0], capsule[i][1]]);
+    section.push([outerAt(CLEAR), CLEAR]);
+  }
+
+  /* And the face it cuts, hatched at 45 degrees the way a cut face is hatched.
+     Spacing is 5 cm on the diagonal, which at this station's standoff is 24
+     pixels, so it stays a hatch and does not close up into a fill -- a filled
+     section would be the cotton ball again with an outline drawn round it. The
+     table is walked at a stride in the fill below rather than drawn as a curve,
+     because a hatch is a set of open strokes and `polyline` would join the end
+     of each one to the start of the next. */
+  const hatch = [];
+  {
+    const SPACE = 0.05 * Math.SQRT2, STEP = 0.0055;
+    for (let c = CLEAR - outerAt(CLEAR); c < outerAt(CLEAR) + topZ; c += SPACE) {
+      for (let u = -outerAt(CLEAR); u <= outerAt(CLEAR); u += STEP) {
+        const zz = c - u;
+        if (zz < CLEAR || zz > topZ) continue;
+        const rr = Math.abs(u);
+        if (rr > outerAt(zz) || rr < innerAt(zz)) continue;
+        hatch.push(u + (r() - 0.5) * 0.004, zz + (r() - 0.5) * 0.004);
+      }
+    }
+  }
+  const HN = hatch.length / 2;
+
+  /* The bottom face, which is the other cut in this drawing and the one that is
+     not a choice: the volume is sliced off flat where the arm would have to
+     reach through the plate it is bolted to. On the ground that cut is an
+     annulus between the disc the tool cannot enter and the furthest it can get,
+     and it is hatched with parallel chords 6 cm apart, along the base frame's
+     own zero -- the one direction available that is not the camera's.
+
+     It is also what stops the rest floating. Without a floor the contours are a
+     wireframe balloon at an unknown height; with one the widest of them is
+     standing on something and so is the machine in the middle of it.
+
+     Each chord carries where it is in the base's own working arc, or nothing at
+     all outside it, so the band sweeps the ground as well as the surface. */
+  const ground = [];
+  {
+    const R = outerAt(CLEAR), SPACE = 0.06, STEP = 0.006;
+    for (let y = -R; y <= R; y += SPACE) {
+      for (let x = -R; x <= R; x += STEP) {
+        const d = Math.hypot(x, y);
+        if (d > R || d < SELF) continue;
+        ground.push(x + (r() - 0.5) * 0.004, y + (r() - 0.5) * 0.004);
+      }
+    }
+  }
+  const GN = ground.length / 2;
+
+  /* The contours of the surface the section is turned into: a ring every 15 cm
+     of height, at the distance the profile stands at there. They lie on the
+     boundary by construction -- the surface is a rotation of the profile and
+     these are that profile's own radii.
+
+     Whole rings, and this is the one place the drawing goes outside the box.
+     Every other joint here is held to a working range because a range invented
+     for it would be a specification claim with nothing behind it. The base is
+     different in kind: the cross-section is provably the same at every base
+     angle -- that is the fact this whole formation is built on, measured at
+     8.9e-16 -- so a ring is not a claim that the joint may turn there, it is
+     the section's own statement about what shape it makes when it is turned.
+     What stays bounded is the *working arc*: the sheets, the lit wedge on the
+     ground and the travelling band all live inside the 99.1 degrees the move's
+     own base range widens to.
+
+     Sparse, and much fainter than the section. Drawn at the density they were
+     at first -- one every 5 cm, with a meridian every 13 degrees crossing them
+     -- they turned into a woven ball, which is a legible object and the wrong
+     one: it hid its own floor, hid the machine at its centre, and said nothing
+     about where an arm can reach that a globe does not also say. What they are
+     for is to tell the reader that the flat figure in front of them is turned,
+     and ten of them do that. */
+  const rings = [];
+  for (let z = CLEAR + RING_DZ; z <= topZ; z += RING_DZ) rings.push([outerAt(z), z]);
+
+  /* Where the drawing is put, in the base's own angle.
+   *
+   * A0 is the low end of the working arc, in the half-plane the tool is
+   * actually in: the far side of the axis from the base angle. That is not a
+   * convention -- measured over 419000 solutions, 88.5% of accepted tool points
+   * sit on the far side, because the shoulder's box is nearly all negative and
+   * an arm lifted that way reaches back over its own base. Put the sheets on
+   * the near side and the whole volume would be drawn on the wrong side of the
+   * machine.
+   *
+   * AMID is the middle of that arc, and the section is cut there. It is the
+   * middle of the base range and nothing else, which matters: a cutting plane
+   * chosen to face the camera is a plane that has to be re-chosen every time
+   * the camera moves. It happens to land 6.0 degrees off square to this
+   * station's eye, so the section is read very nearly face on, and that is
+   * luck about where the hero move's four waypoints put the shoulder rather
+   * than anything this file arranged.
+   *
+   * What the section leaves out, said plainly: the tool is also carried off
+   * the plane of the arm by the wrist offsets, a measured 0.4471 m at most and
+   * 0.186 median. The section is the volume cut, not the volume flattened, so
+   * this costs it nothing -- but the sheets either side of it are that
+   * projection, and they are drawn faint for exactly that reason. */
+  const A0 = LO[0] + Math.PI, SPAN = HI[0] - LO[0], AMID = A0 + SPAN * 0.5;
 
   /* The routes. The first is the move the manipulator actually played, so the
      strand that arrives from the previous formation stays exactly where it
@@ -351,87 +646,216 @@ export function build(ctx) {
   for (let i = 0; i < JN; i++) jit[i] = r() * 2 - 1;
   jit[JN] = jit[0]; jit[JN + 1] = jit[1];
 
+  // A half-plane point, at a base angle, in world space.
+  const put3 = (rr, zz, ca, sa) =>
+    new THREE.Vector3(rr * ca, rr * sa, zz).applyMatrix4(place);
+  const curve = (pairs, ca, sa) => pairs.map(p => put3(p[0], p[1], ca, sa));
+
   return function fill(pos, kind, size, count, flow) {
     const { S, P, F } = bands(pos, kind, size, count, flow);
 
-    /* The envelope, in two passes over one pool: the share that runs first,
-       at exactly the count the manipulator gave its body sweep, then the rest.
-       Same solutions, same volume, same jitter -- the only difference between
-       the two passes is that the first carries its sample's base angle and
-       the second carries nothing. First because the manipulator's running
-       matter is first: RUN_SHARE is imported rather than repeated, and taken
-       off a full band in both files, so the two counts are the same integer
-       and the sweep is written onto the indices the body sweep was written
-       onto. What crosses is then one band handing over to another band rather
-       than one lighting up while the other goes out.
+    /* What the whole band is spent on, and what it comes back at.
+     *
+     * Nothing solid stands at this station except the arm the previous one
+     * leaves standing, so the substrate is not held back the way it is over
+     * geometry: uFade settles at 0.62 and world/config.js takes this station's
+     * cloud to 0.5 on top of that, for 0.31. That 0.5 was measured against the
+     * old fill, which saturated at 1.0 -- 0.129 of the frame over 140 -- and a
+     * drawing made of lines does not saturate the same way. Measured on this
+     * one: at a gain of 1.0 the left strip goes from 15.5 to 26.6 of mean and
+     * from 101 to 148 at the 99th percentile, the fraction of the frame over
+     * 140 stays put at 0.017, and the picture is a brighter drawing rather than
+     * a wash. The gain lives in world/config.js and is not this file's to set,
+     * but it was solved against an object that is no longer here.
+     *
+     * Measured off the journey at 1440x900 on the high tier, over the two
+     * strips of frame the reading column does not cover, which is all of this
+     * station a settled reader ever sees: 15.5 of 255 mean on the left and 17.9
+     * on the right, with the left strip's 99th percentile at 101. The same walk
+     * gives Work 23.9 and 29.8, Path 21.6 and 42.3, Measured 17.8 and 21.6,
+     * Contact 11.3 and 17.0, Stack 7.4 and 18.6, Intro 5.9 and 23.6. So this
+     * sits in the middle of the page on the mean and at the top of it on the
+     * peak, which is what line work should do: the lines are bright and the
+     * space between them is empty. The old fill did the reverse.
+     *
+     * The counts, at the high tier's 49600 structure points: 6930 on the
+     * twenty-one sheets, 9387 on the section's hatch and 3661 on its outline,
+     * 4442 on the wrist and 2962 on the elbow and 1184 on the void, 5463 on the
+     * contours, 5294 on the ground hatch and 3512 on its rims, 3720 on the
+     * floor lattice, and 3045 left for the padding to thicken all of it with. */
 
-       The two passes take disjoint parts of the pool, the head and the tail,
-       rather than both walking all of it. Drawn from the same entries, every
-       swept point would have had two or three unswept twins written 6mm off
-       it -- four device pixels, inside a splat this shader draws twelve
-       across at this standoff -- and each twin would have sat dark while it
-       lit, which is most of the contrast the sweep has to spend. Head and
-       tail are both uniform samples of the volume, because the pool is in the
-       order it was solved and that is the order the joint vectors were drawn:
-       splitting it anywhere splits the volume nowhere. */
-    const nRun = S.share(RUN_SHARE);
-    const nEnv = Math.floor((S.room - nRun) * 0.82);
-    const cut = Math.max(1, Math.min(NENV - 1, nRun));
+    /* The sheets, first, at exactly the count the manipulator gave its body
+       sweep. RUN_SHARE is imported rather than repeated, and taken off a full
+       band in both files, so the two counts are the same integer and the sweep
+       is written onto the indices the body sweep was written onto. What crosses
+       is then one band handing over to another band rather than one lighting up
+       while the other goes out: over there a chain of the arm lights at the
+       instant of the move it belongs to, over here a half-plane of solutions
+       lights at the base angle it belongs to, and it is the same matter
+       carrying the same channel.
 
-    /* 0.62 against the 0.85 the rest of the shell is drawn at, and that is
-       the whole exposure argument. The crossing into this station is the
-       brightest moment on the page -- two clouds centred on the same machine,
-       passing through each other -- so a sweep is only allowed here if it
-       pays for itself rather than being added on top.
+       Each sheet is one stroke at one flow value, so the band does not crawl up
+       a sheet, it selects sheets -- the same discipline the manipulator's poses
+       are drawn with, and the reason the lit thing reads as a plane slewing
+       rather than as a texture crawling.
 
-       It does, by construction. Under the band the shader multiplies a point
-       by 1.55 in size and 2.5 in colour, so a 0.62 point at the peak is 0.96
-       across and 3.2 times the light of a settled 0.85 one; off the band it
-       is 0.53 of one, and the band's support is 0.32 of the lap. Integrated
-       over a lap a swept point averages 0.90 of a settled one, and the shell
-       as a whole comes out 1.7% under a shell with no sweep in it.
-
-       Measured, at 1916x953 on the high tier, over the right-hand render half
-       that tools/exposure.js crops to: settled About was 0.0295 of the frame
-       above 140 before the sweep existed and 0.0298 after, p99 164 against
-       166, each the mean of five consecutive settled frames. Level, not 1.7%
-       down, and the gap is the point -- the threshold counts concentration,
-       and what the band does is gather light rather than add it. Intro went
-       0.0227 to 0.0228. The frame caught on arrival, still in the tail of the
-       crossing, is the one that moved, and it moved down: 0.042, 0.086 and
-       0.099 on three runs of the old build against 0.030, 0.031 and 0.030 on
-       three of this one. The old spread is too wide to put a single figure
-       on, which is itself the finding.
-
-       What moves is not the total but where it is: the slab under the band
-       carries about a third more light than the shell around it, and it is
-       the only thing in the frame that is moving, which is worth several
-       times its brightness. */
-    const perRun = cut / Math.max(1, nRun);
-    for (let k = 0; k < nRun; k++) {
-      const e = (k * perRun) | 0, o = e * 3, j = (k * 3 + 2417) & JM;
-      S.put(env[o]     + jit[j]     * 0.006,
-            env[o + 1] + jit[j + 1] * 0.006,
-            env[o + 2] + jit[j + 2] * 0.006, STRUCTURE, 0.62, envF[e]);
+       Faint, at 0.40, because twenty-one of them settled at the weight of the
+       section would be the woven ball again. Under the band the shader takes a
+       sheet to 0.62 across and 2.5 times the colour -- so against the hatch it
+       is passing through, which is 0.60 and unlit, a lit sheet is 3% wider and
+       two and a half times brighter. What the eye has at rest is one measured
+       figure; what moves through it is the machine covering that figure. */
+    const nSheet = S.share(RUN_SHARE), perSheet = Math.floor(nSheet / SHEETS);
+    for (let i = 0; i < SHEETS; i++) {
+      const u = (i + 0.5) / SHEETS;
+      const a = A0 + u * SPAN;
+      polyline(curve(toolOut, Math.cos(a), Math.sin(a)), perSheet, S, STRUCTURE,
+               0.40, 0.004, 0x5C01 + i * 37, [u, u]);
     }
-    const perEnv = (NENV - cut) / Math.max(1, nEnv);
-    for (let k = 0; k < nEnv; k++) {
-      const e = cut + ((k * perEnv) | 0), o = e * 3, j = (k * 3) & JM;
-      S.put(env[o]     + jit[j]     * 0.006,
-            env[o + 1] + jit[j + 1] * 0.006,
-            env[o + 2] + jit[j + 2] * 0.006, STRUCTURE, 0.85);
+
+    /* The section: its cut face, then its outline over the top of that.
+     *
+     * The hatch is written as one walk of a table built once, at a stride that
+     * spends exactly the share it is given, because a hatch is a set of open
+     * strokes rather than one curve and `polyline` would join the end of each
+     * line to the start of the next.
+     *
+     * The outline is the heaviest line in the formation and the only closed one
+     * -- 0.95 against the hatch's 0.60 and the contours' 0.44 -- because it is
+     * the answer to the question the section is asked. Everything else here is
+     * where the arm could be; this is where it stops. Drawn over the hatch
+     * rather than under it, and at 3661 points along 8.5 m of curve, which is
+     * one every 2.3 mm: at this standoff that is a continuous line and not a
+     * dotted one, and the boundary is the one thing here that cannot be dotted. */
+    const cMid = Math.cos(AMID), sMid = Math.sin(AMID);
+    const nHatch = S.share(0.22);
+    {
+      const stride = HN / Math.max(1, nHatch);
+      for (let k = 0; k < nHatch; k++) {
+        const h = ((k * stride) | 0) * 2;
+        if (h + 1 >= hatch.length) break;
+        S.v(put3(hatch[h], hatch[h + 1], cMid, sMid), STRUCTURE, 0.60);
+      }
     }
+    polyline(curve(section, cMid, sMid), S.share(0.11), S, STRUCTURE, 0.95, 0.003, 0x0B1E);
+
+    /* And what is inside it: where the wrist can be, where the elbow can be.
+     *
+     * This is the half of a workspace drawing that the outer boundary cannot
+     * carry. The boundary says how far; these say what the machine is. The
+     * wrist's is an area that stops short of the base axis -- measured, it never
+     * comes nearer than 0.1742, which is the forearm's own offset to four
+     * figures, while the tool bolted to it reaches the axis, so the two regions
+     * are nested and not concentric -- and the elbow's is a *line*, a circular
+     * arc 0.6127 from the shoulder, which is the upper arm, because one joint
+     * moves it and one joint traces an arc. A reader who sees a line inside two areas has been told
+     * where the degrees of freedom went.
+     *
+     * Both sides of the axis, because the section has two sides. The elbow
+     * carries the larger splat: it is a line among areas and a line drawn
+     * thinner than what surrounds it disappears into it. */
+    const nWrist = Math.floor(S.share(0.15) / 2);
+    const nElbow = Math.floor(S.share(0.10) / 2);
+    const nVoid = Math.floor(S.share(0.04) / 2);
+    for (let side = -1; side <= 1; side += 2) {
+      const flip = pairs => pairs.map(p => [side * p[0], p[1]]);
+      polyline(curve(flip(wrist), cMid, sMid), nWrist, S, STRUCTURE, 0.54, 0.004, 0x3117 + side * 91);
+      polyline(curve(flip(elbow), cMid, sMid), nElbow, S, STRUCTURE, 0.66, 0.004, 0x9E01 + side * 53);
+      polyline(curve(flip(capsule), cMid, sMid), nVoid, S, STRUCTURE, 0.56, 0.003, 0x2C0D + side * 17);
+    }
+
+    /* The contours, running. A ring carries its own azimuth as flow over the
+       working arc and nothing outside it, so what lights is the ring's crossing
+       with the half-plane the sheets are lit at: the surface and the sheet
+       under it move as one thing. Lit any other way they would be two.
+
+       They run past RUN_SHARE, which is a deliberate cost and a small one. A
+       point that carries flow at this end of the morph and not at the other is
+       weighted by the mix -- so these are at 0.99 of full band the whole time
+       anybody is reading this station, and at half strength for the half second
+       of the crossing itself. The alternative is a surface whose contours stand
+       dead still while a sheet sweeps through them. */
+    let ringLen = 0;
+    for (const g of rings) ringLen += g[0];
+    const nRing = S.share(0.26);
+    const arc = (rr, zz, from, to, steps) => {
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const a = from + (to - from) * (i / steps);
+        pts.push(put3(rr, zz, Math.cos(a), Math.sin(a)));
+      }
+      return pts;
+    };
+    for (const g of rings) {
+      const n = Math.floor(nRing * g[0] / Math.max(1e-6, ringLen));
+      const seed = 0x77A1 + Math.round(g[1] * 1000);
+      polyline(arc(g[0], g[1], A0, A0 + SPAN, 32), Math.round(n * SPAN / (2 * Math.PI)),
+               S, STRUCTURE, 0.44, 0.004, seed, true);
+      polyline(arc(g[0], g[1], A0 + SPAN, A0 + 2 * Math.PI, 72),
+               Math.round(n * (2 * Math.PI - SPAN) / (2 * Math.PI)),
+               S, STRUCTURE, 0.35, 0.004, seed + 7);
+    }
+
+    /* The ground: the hatched annulus, then the two rims that bound it and the
+       two radii that end the working arc on it.
+
+       The hatch carries the sweep the same way the contours do -- a chord's
+       flow is where it sits in the base range, and nothing outside it -- so the
+       band crosses the floor as a lit wedge turning about the base. That is the
+       one part of this drawing that looks like what the machine is doing rather
+       than like what it can do.
+
+       The rims are the heaviest lines here after the section's outline, because
+       they are the only two edges in the whole formation that a hand could
+       touch: the circle the tool traces on the plate at full stretch, and the
+       disc at the middle of it the tool cannot enter at all. */
+    const nGround = S.share(0.34);
+    {
+      const stride = GN / Math.max(1, nGround);
+      const TAU = Math.PI * 2;
+      const p = new THREE.Vector3();
+      for (let k = 0; k < nGround; k++) {
+        const h = ((k * stride) | 0) * 2;
+        if (h + 1 >= ground.length) break;
+        const d = ((Math.atan2(ground[h + 1], ground[h]) - A0) % TAU + TAU) % TAU;
+        p.set(ground[h], ground[h + 1], CLEAR).applyMatrix4(place);
+        S.put(p.x, p.y, p.z, STRUCTURE, 0.52, d <= SPAN ? d / SPAN : undefined);
+      }
+    }
+    const nFoot = S.share(0.30);
+    {
+      const rim = (rr, n, sz, seed) => {
+        const pts = [];
+        for (let i = 0; i <= 96; i++) {
+          const a = A0 + 2 * Math.PI * (i / 96);
+          pts.push(put3(rr, CLEAR, Math.cos(a), Math.sin(a)));
+        }
+        polyline(pts, n, S, STRUCTURE, sz, 0.003, seed);
+      };
+      rim(outerAt(CLEAR), Math.floor(nFoot * 0.60), 0.72, 0x4401);
+      rim(SELF, Math.floor(nFoot * 0.14), 0.64, 0x4402);
+      for (let e = 0; e < 2; e++) {
+        const a = A0 + SPAN * e, ca = Math.cos(a), sa = Math.sin(a);
+        polyline([put3(SELF, CLEAR, ca, sa), put3(outerAt(CLEAR), CLEAR, ca, sa)],
+                 Math.floor(nFoot * 0.20), S, STRUCTURE, 0.58, 0.003, 0x4403 + e);
+      }
+    }
+
     // Fainter and jittered wider, so a lattice node reads as a soft mark: the
     // floor is what the volume stands over, not part of the measurement of
     // where the arm can go.
-    const nFl = S.share(0.86), perFl = NFL / Math.max(1, nFl);
+    const nFl = S.share(0.55), perFl = NFL / Math.max(1, nFl);
     for (let k = 0; k < nFl; k++) {
       const o = ((k * perFl) | 0) * 3, j = (k * 3 + 977) & JM;
       S.put(FL[o]     + jit[j]     * 0.024,
             FL[o + 1] + jit[j + 1] * 0.006,
-            FL[o + 2] + jit[j + 2] * 0.024, STRUCTURE, 0.60);
+            FL[o + 2] + jit[j + 2] * 0.024, STRUCTURE, 0.38);
     }
-    S.pad(0.02);
+    // Small, because what is left over is spent thickening lines rather than
+    // scattering matter beside them: at 0.006 a leftover lands inside its own
+    // stroke and the curve is drawn denser, which is the only thing this
+    // formation wants more of.
+    S.pad(0.006);
 
     /* The executed move keeps the front of the band and a little more size,
        because it is the strand that arrived and the one that leaves for the
@@ -468,17 +892,20 @@ export function build(ctx) {
     const each = Math.floor(F.room / (joints.length + 2));
     for (let k = 0; k < joints.length; k++)
       runTriad(joints[k], each, F, 0.11, 1.1, k / joints.length);
-    /* The volume's own frame, at its centre of mass, on the world axes: a
-       reachable set is a region rather than a body and has no orientation to
-       borrow. Longer than the joint triads because it measures all of them.
+    /* The volume's own frame, on the world axes: a reachable set is a region
+       rather than a body and has no orientation to borrow. Longer than the
+       joint triads because it measures all of them.
 
-       It ticks once a lap, whole, at the phase the sweeping plane is passing
-       through the middle of the base range that generated the volume --
-       measured at 0.504, which is 0.5 and the noise on 17000 draws. A frame
-       is a claim about one place, so it does not get a band crawling through
-       it; it gets the beat the sweep passes its own centre on. */
+       At the mean of the accepted solutions -- 0.674 m from the axis and 0.740
+       above the plate -- put on the plane the section is cut in, which is the
+       one place a mean over a rotation can honestly be put: anywhere else it
+       would be a claim about an azimuth, and the mean has none. It ticks once a
+       lap, whole, as the sweep passes that plane. A frame is a claim about one
+       place, so it does not get a band crawling through it; it gets the beat
+       the sweep passes its own centre on. */
+    const cen = put3(sumR / Math.max(1, nAcc), sumZ / Math.max(1, nAcc), cMid, sMid);
     runTriad(new THREE.Matrix4().makeTranslation(cen.x, cen.y, cen.z),
-             F.share(0.92), F, 0.30, 1.2, meanF);
+             F.share(0.92), F, 0.30, 1.2, 0.5);
     F.pad(0.01);
   };
 }
