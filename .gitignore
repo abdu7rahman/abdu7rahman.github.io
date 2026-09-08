@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Probe output. tools/journey.js writes a run of full-size renders here
+# every time it walks the page; they are evidence for one commit, not an
+# asset the site serves.
+tmp-journey/

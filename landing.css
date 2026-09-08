@@ -20,6 +20,50 @@
      all moved to style.css when demo.html started reading them too: one set
      of values, two dark documents. This block stays so the file still
      declares where its tokens come from. */
+
+  /* ── the type scale ─────────────────────────────────────────────────
+     Counted before it was written. index.html was rendering at thirteen
+     distinct sizes -- 10.5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 24, 28 and
+     the hero's clamp -- and four of those pairs were a single pixel apart
+     doing the same job: 10.5 and 12 both labelled a table, 15 and 16 both set
+     secondary prose, 18 and 19 both set a sub-head. A reader cannot tell
+     those apart and a stylesheet cannot tell you which one to reach for, so
+     they are not a scale, they are the residue of thirteen separate
+     decisions. Ten steps below, and every size on this page is one of them.
+
+     The steps are not one ratio, deliberately. Below the 17px body they go up
+     in whole pixels, because a geometric ratio at label sizes lands between
+     device pixels and the hinter rounds it straight back onto its neighbour:
+     12 x 1.06 is 12.72, which rasterises as 13 at every scale factor a
+     desktop reports. Above the body they are geometric -- 1.12, then 1.26 and
+     1.25 -- because up there the step has to be visible across a whole
+     heading rather than across a four-character label.
+
+     Sizes are px rather than rem on purpose: style.css sets the document to
+     17px and every measure on this page (62ch of prose, 1180px of benchmark
+     table) was chosen against that, so a reader's root-size preference
+     rescaling the type would rescale the column out from under the tables. */
+  --t-micro: 11px;   /* the sub-label inside a table row header */
+  --t-label: 12px;   /* dt, thead th, the run metadata line */
+  --t-ui:    13px;   /* the bar, chips, legends, tabular numerals */
+  --t-cap:   14px;   /* captions and figure notes */
+  --t-minor: 15px;   /* secondary prose: the stack, the timeline, callouts */
+  --t-body:  17px;   /* running prose, and what style.css sets the page in */
+  --t-sub:   19px;   /* a figure or timeline heading */
+  --t-lede:  21px;   /* the one lede, under the one display line */
+  --t-head:  24px;   /* a project title, a stat's value */
+  --t-sec:   30px;   /* a section heading */
+
+  /* Leading, tied to what the size is for rather than to the size itself.
+     Chrome is one line and gets 1; a label wraps at most twice and gets 1.45;
+     running prose gets 1.5, which at 17px is the 25.5px style.css already
+     sets the body in; headings tighten as they grow because the eye tracks a
+     large line without help and a loose one comes apart into words. */
+  --lh-flat:  1;
+  --lh-tight: 1.15;
+  --lh-head:  1.25;
+  --lh-cap:   1.45;
+  --lh-read:  1.5;
 }
 
 /* The cursor's shape and behaviour are in style.css, because demo.html draws
@@ -28,37 +72,6 @@
    rather than remapping the shared tokens the way demo.css does. */
 body.home { --cur-ink: var(--landing-accent); }
 
-/* The handle on the robot's tool. RViz draws its interactive markers as rings
-   on the thing they move, and this is the same idea in the page's own
-   vocabulary: the cursor ring, parked on the gripper, waiting to be taken
-   hold of. Positioned by hero-arm.js from the projected tool point, so it
-   tracks the arm through the scroll scrub as well as through a drag. */
-.hero__grip {
-  /* Fixed, and above the states: hero-arm.js places it from the canvas's own
-     viewport rect, and staged the states sit over the canvas. */
-  position: fixed; top: 0; left: 0; z-index: 62;
-  width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0;
-  border: 1.5px solid var(--landing-accent); border-radius: 50%;
-  background: rgba(255, 138, 92, .10);
-  cursor: grab; touch-action: none;
-  transition: width var(--dur-hover) var(--ease), height var(--dur-hover) var(--ease),
-              margin var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease),
-              box-shadow var(--dur-hover) var(--ease);
-}
-/* The dot in the middle is the tool point itself: the ring can be as big as it
-   needs to be to catch a finger without the thing it marks becoming vague. */
-.hero__grip::after {
-  content: ""; position: absolute; left: 50%; top: 50%;
-  width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px;
-  border-radius: 50%; background: var(--landing-accent);
-}
-.hero__grip:hover, .hero__grip:focus-visible {
-  width: 34px; height: 34px; margin: -17px 0 0 -17px;
-  background: rgba(255, 138, 92, .16);
-  box-shadow: 0 0 22px -4px rgba(255, 138, 92, .55);
-}
-.hero__grip:focus-visible { outline: 2px solid var(--landing-fg); outline-offset: 3px; }
-.hero__grip.is-held { cursor: grabbing; background: rgba(255, 138, 92, .24); }
 
 /* Magnets and tilt both animate transform, so they need a transition for the
    return trip -- immersive.js only clears the inline style. */
@@ -81,16 +94,11 @@ body.home .proj { transition: transform var(--dur-move) var(--ease),
    which is the same guarantee the reveals make. */
 @keyframes bar-drop  { from { transform: translateY(-100%); } to { transform: none; } }
 @keyframes soft-in   { from { opacity: 0; } to { opacity: 1; } }
-@keyframes robot-in  { from { opacity: 0; transform: translateY(16px) scale(.985); }
-                       to   { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: no-preference) {
   body.home .rail { animation: bar-drop 620ms var(--ease) both; }
   /* The weather comes up under everything over a second and a bit -- slow
      enough that you never catch it starting, which is the point of it. */
   body.home .bg-field { animation: soft-in 1250ms linear both; }
-  /* And the robot last, once the type it sits beside has finished arriving. */
-  body.home .hero__arm { animation: robot-in 820ms var(--ease) both; animation-delay: 380ms; }
-  body.home .hero__grip { animation: soft-in 500ms linear both; animation-delay: 1000ms; }
 }
 
 /* The world's canvas: fixed behind everything, never in the way of anything.
@@ -191,6 +199,103 @@ body.home .path__what p, body.home .path__roles, body.home .closing {
 }
 body.home .sec__note { color: var(--landing-mut); }
 
+/* ── the page, set on the scale ────────────────────────────────────────
+   Only the sizes that were off it. Everything already landing on a step --
+   12px labels, 13px chrome, 14px captions, 15px secondary prose, 21px lede,
+   24px titles -- is not restated here, because a rule that sets a value to
+   what it already was is a rule somebody has to check later.
+
+   These are written through `body.home` so they outrank style.css's own
+   (one class beats none) and reach nothing on demo.html, which never sets
+   the class and never loads this file. */
+
+/* 16px, one step below the body it sits in. A project's description is the
+   card's running prose; the About paragraphs, the Measured lede and the
+   contact rows are all 17, and there is no reason a card's prose should be a
+   pixel smaller than the same sentence in a section. It cost 3 characters a
+   line: 509px of measure carried 59 at 16px and 56 at 17. */
+body.home .proj__desc { font-size: var(--t-body); line-height: var(--lh-read); }
+
+/* 18 and 19 were doing one job. A benchmark's title and a timeline entry's
+   title are the same rank -- the heading of a block inside a section -- and
+   the two sizes came from the two blocks being written months apart. */
+body.home .path__what h3 { font-size: var(--t-sub); line-height: var(--lh-head); }
+body.home .bench__cap h3 { font-size: var(--t-sub); line-height: var(--lh-head); }
+/* The closing line is a lede for the contact list, so it is set like one:
+   the same 19 as a block heading, at prose leading rather than heading
+   leading, because it is a sentence and not a title. */
+body.home .closing { font-size: var(--t-sub); line-height: var(--lh-read); }
+
+/* 10.5px was the smallest thing on the page by a pixel and a half, and it is
+   the citation under a table's row header -- "Zhao et al., RSS 2023" -- which
+   is the line most likely to be read by somebody checking the claim. 11 is
+   the floor of the scale and it is where this belongs. The tracking goes
+   with it: +.04em was doing the work of a size that was too small, and at 11
+   the label holds together without being opened up. */
+body.home .bench__table tbody th .sub {
+  font-size: var(--t-micro); line-height: var(--lh-cap); letter-spacing: .01em;
+}
+
+/* 28 -> 30. A section heading and a project title were four pixels apart --
+   28 against 24 -- which at the same weight and the same family is not a
+   rank, it is a rounding error. 30 puts the section a clear 1.25 above the
+   title, which is the same step the title already has over the 19 below it.
+   Measured at 1916: "Measured" set in the display face occupies 129px of the
+   257px label column at 30px against 120px at 28, so nothing wraps that did
+   not wrap before. */
+body.home .sec__label h2 { font-size: var(--t-sec); line-height: var(--lh-tight); }
+
+/* Leading, where the same role was reading at two different ones. About's
+   paragraphs were 1.5 and the Measured lede -- the same size, the same
+   colour, the same job -- was 1.47, which is a pixel of difference nobody
+   can name and everybody can feel when the two states cross-fade over each
+   other. Both are 1.5 now, which is 25.5px at 17. */
+body.home .lead { line-height: var(--lh-read); }
+
+/* The lede's measure. 34ch was set when the hero was one centred column on a
+   scrolling page and 34 characters was a deliberate, poster-like line. In the
+   panel the hero column is 820px wide and the name runs 515px of it, so a
+   397px lede under it is a 209px-tall ragged strip beside 400px of empty
+   column -- the one paragraph on the page set to less than half its column.
+   46ch is 537px at 21px, which takes the same 316 characters from seven lines
+   to five and puts the lede's right edge under the name's rather than a
+   third of the way back from it. */
+body.home .hero__lede { max-width: 46ch; }
+
+/* The section note is bounded by its own column, so it does not need a
+   measure of its own as well. 22ch at 14px is 171px inside a label column
+   that is 257px wide on Work and Measured -- the note wrapped to three lines
+   with 86px of the column left empty beside it. The column is the measure. */
+body.home .sec__note { max-width: none; }
+
+/* The one place a size is a fraction of the viewport rather than a step, and
+   it stays that way: the display line is the page's only piece of type whose
+   job is to be as large as the window allows. */
+
+/* ── the type that was still in the light palette ──────────────────────
+   Three rules in style.css set colour on bare element or single-class
+   selectors that nothing scoped to body.home ever reached, so they were
+   still painting --ink-3 (#6e6e73) on a near-black page. Measured against
+   the staged panel's composite over a fully lit world (#191818, the surface
+   tools/check_contrast.py gates on) that is 3.49:1, under the 4.5:1 floor
+   muted text has to clear; over the scrolling document's scrim it is 2.17:1.
+   --landing-mut reads 7.48:1 and 4.65:1 on the same two surfaces.
+
+   The gate cannot catch this on its own -- it checks that the tokens pair,
+   not which token a rule reached for -- so it was found by walking the
+   rendered page for computed colours that belong to the light palette. That
+   walk now comes back with none. */
+body.home .bench__table thead th,
+body.home .bench__table tbody th .sub { color: var(--landing-mut); }
+/* !important because style.css's own is: the roles line had to beat the
+   .path__what p rule above it and won that with a hammer, so it can only be
+   answered with one. */
+body.home .path__roles { color: var(--landing-mut) !important; }
+/* --ink-2 on the panel is 1.77:1 -- the visit count was legible on a white
+   footer and invisible on this one. It ships hidden and only appears once a
+   real number lands, which is exactly why nobody had seen it. */
+body.home .foot__count [data-count] { color: var(--landing-fg); }
+
 /* ── nav ───────────────────────────────────────────────────────────── */
 body.home .rail {
   --rail-edge: var(--landing-rule);
@@ -200,8 +305,71 @@ body.home .rail {
 body.home .rail::after { display: none; }
 body.home .mark__initials { color: var(--landing-fg); font-family: var(--font-display); }
 body.home .rail__nav a, body.home .icolink { color: var(--landing-mut); }
-body.home .rail__nav a[aria-current="true"] { color: var(--landing-fg); background: rgba(255, 255, 255, .08); }
-body.home .rail__nav a:hover, body.home .icolink:hover { color: var(--landing-fg); background: rgba(255, 255, 255, .06); }
+
+/* Where you are, against where the pointer is.
+
+   These two states were a 2% difference in one alpha: current was
+   rgba(255,255,255,.08) and hover was rgba(255,255,255,.06), both over the
+   same text colour. Composited over the bar's fill on a fully lit world that
+   is #464544 against #424140 -- a luminance step of 0.015, which is not a
+   difference a reader can see and certainly not one they can read a meaning
+   out of. So hovering any item in the strip made it look like the item you
+   were on, in a bar whose only job is to say which one that is.
+
+   They are different in kind now rather than in degree. Hover is a surface
+   appearing under the pointer and nothing else; current is a mark, in the
+   accent, that a pointer can never produce. That is the same distinction the
+   page already draws everywhere else -- the accent is the index on a project
+   card, the tag over a section heading, the term in the stack table -- so
+   "you are here" is said in the vocabulary the rest of the page uses for
+   "this is the one being named". */
+body.home .rail__nav a {
+  position: relative;
+  /* Four heights in one bar: the pills came out 27px, the two icon links 32
+     and the call to action 32, all vertically centred in 52, so the strip of
+     things you can press had a step in it that nothing in the layout
+     explains. The pills join the other two at 32 -- 13px of label between 9
+     and 10 of padding -- which is also 8px more target than WCAG 2.2 asks of
+     a standalone control, and leaves room under the label for the mark. */
+  padding-block: 9px 10px;
+  /* 12.5px below 860 was the one size on this page that is not a step on the
+     scale, and it was there to fit seven labels into a narrow bar. It does
+     not have to be: at 13px the seven labels measure 276px of glyphs, 426 with
+     their padding and gaps, against the 581px the bar has left at 860 once
+     the mark, the icon links and the call to action are placed. The
+     horizontal tightening in that breakpoint still applies and still helps. */
+  font-size: var(--t-ui);
+}
+body.home .rail__nav a:hover { color: var(--landing-fg); background: rgba(255, 255, 255, .07); }
+body.home .icolink:hover { color: var(--landing-fg); background: rgba(255, 255, 255, .07); }
+body.home .rail__nav a[aria-current="true"] { color: var(--landing-fg); background: none; }
+/* Inset to the label, not run to the pill's ends: the pill is a hit target
+   and the rule belongs to the word. 1.5px because 1px in the accent over the
+   bar reads as a stray antialiasing artefact at this length and 2px reads as
+   a border. */
+body.home .rail__nav a[aria-current="true"]::after {
+  content: "";
+  position: absolute; left: 11px; right: 11px; bottom: 6px; height: 1.5px;
+  background: var(--landing-accent);
+  border-radius: 1px;
+}
+/* Hovering the current item lights its surface like any other; the mark is
+   what stays constant through it. */
+body.home .rail__nav a[aria-current="true"]:hover { background: rgba(255, 255, 255, .07); }
+
+/* The bar is 52px tall and the pills are 27, so a ring at style.css's 3px
+   offset is 33px of ring inside 52px of bar with 25px of it overhanging the
+   fill's top and bottom edges. 2px keeps the whole ring on the bar, and the
+   pill radius means the browser draws it as a pill rather than a rectangle. */
+body.home .rail__nav a:focus-visible,
+body.home .icolink:focus-visible,
+body.home .rail__cta:focus-visible,
+body.home .mark:focus-visible { outline-offset: 2px; }
+/* Focus is not hover and must not have to be inferred from the ring alone --
+   a reader tabbing the bar gets the same surface a pointer would, so the item
+   under the ring reads as picked up rather than merely outlined. */
+body.home .rail__nav a:focus-visible,
+body.home .icolink:focus-visible { color: var(--landing-fg); background: rgba(255, 255, 255, .07); }
 
 /* style.css draws the read-position bar in --signal, which is the light
    page's red and the one piece of chrome the dark repaint missed: it only
@@ -227,7 +395,14 @@ body.home :focus-visible { outline-color: var(--landing-accent); }
 body.home .skip {
   background: var(--landing-card);
   color: var(--landing-fg);
-  border: 1px solid var(--landing-rule);
+  /* Not --landing-rule. That token is held inside the hairline band the gate
+     checks -- 1.19:1 against the card colour -- which is correct for a line
+     between two rows of a table and is not a shape. The comment above this
+     rule asks for a shape and the value under it did not give one. A 36%
+     cream edge reads 3.25:1 on the card, the same figure the paging buttons
+     are drawn at, so every hard-edged control on this page has one boundary
+     weight rather than each having its own. */
+  border: 1px solid rgba(252, 249, 243, .36);
 }
 
 /* The nav CTA: the hero's own "run the robots" action, surfaced a second
@@ -239,11 +414,22 @@ body.home .skip {
   padding: 7px 15px; margin-left: 4px;
   border-radius: var(--r-pill);
   background: var(--landing-accent); color: #1a0e08;
-  font: 500 13px/1 var(--sans); letter-spacing: -.01em;
+  font: 500 var(--t-ui)/var(--lh-flat) var(--sans); letter-spacing: -.01em;
   text-decoration: none; white-space: nowrap;
-  transition: opacity var(--dur-hover) var(--ease);
+  /* transform is in here because immersive.js's magnet writes one inline and
+     only ever clears it, so the return trip needs a transition to come home
+     on -- and because the press below is a transform. */
+  transition: background var(--dur-hover) var(--ease),
+              transform var(--dur-press) var(--ease);
 }
-.rail__cta:hover { opacity: .86; }
+/* Brightened, not faded. Fading the one solid element on the page to 86%
+   answers a pointer by taking light away from it, which is backwards, and on
+   a near-black bar it also drags the label's 8.1:1 down with the fill. #ff9f78
+   is the accent lifted, which is exactly what .btn--solid already does on
+   hover twenty lines below -- one hover behaviour for the two places the same
+   button appears, rather than two. */
+.rail__cta:hover { background: #ff9f78; }
+.rail__cta:active { background: var(--landing-accent); transform: scale(.985); }
 .rail__cta .ico { width: 14px; height: 14px; }
 /* Below the width where the bar fits, the label goes and the button stays: a
    round play button next to the section strip, still the same link, still
@@ -258,31 +444,14 @@ body.home .skip {
 /* ── hero ──────────────────────────────────────────────────────────── */
 body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
 
-/* The robot, drawn by hero-arm.js. It sits in the right half and the type
-   moves to the left of it, which is the arrangement the page was pointed at:
-   an object lit in the fog with the sentence beside it rather than a block of
-   centred text on an empty field. Below 900px there is no room for two
-   columns, so the type goes back to the middle and the object steps out
-   rather than shrinking into a smudge behind it. */
-/* Absolute inside the hero rather than fixed to the window. Fixed meant the
-   robot outlived its own section and had to be faded out before another
-   section's prose reached it, which in turn needed a hero tall enough to give
-   it room -- and the tail of that hero was empty page. Bounded by the hero, it
-   simply scrolls away with the section it belongs to, and none of that
-   applies. */
-.hero__arm {
-  position: absolute; top: 0; right: 0;
-  width: 54%; height: 100%;
-  z-index: 0; pointer-events: none;
-}
-@media (max-width: 900px) {
-  .hero__arm { display: none; }
-}
 @media (min-width: 901px) {
-  /* Tall enough that scrolling the hero is a scrub rather than a flicker.
-     The content stays at the top; the extra height is the runway the robot's
-     move plays out over, and it ends before any other section's prose can
-     reach the half of the window the robot occupies. */
+  /* A full viewport, because the hero is the one section that is a shot
+     rather than a page: the world behind it needs the whole frame to stand
+     the machine up in, and type centred in that frame is the composition.
+     It used to be taller than the window on purpose -- runway for a robot
+     drawn into the right half by a script -- and that script and that robot
+     are both gone, replaced by the world's own canvas, which is fixed and
+     takes no height from anything. */
   body.home .hero { min-height: 100vh; align-content: center; }
   body.home .hero { text-align: left; }
   body.home .hero__eyebrow,
@@ -299,6 +468,15 @@ body.home .hero { padding-bottom: clamp(56px, 9vh, 100px); position: relative; }
   /* Four facts across seven columns is too tight; two rows of two reads. */
   body.home .hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   body.home .hero__actions { justify-content: flex-start; }
+  /* The values were still centring under their labels. style.css sets the
+     facts row as a flex with `justify-content: center`, which is right for the
+     centred hero it was drawn for; here the hero turns left at 901px and the
+     labels turned with it while the values did not, so "Now" sat at x=96 and
+     "Advanced Robotics & AI intern, Siemens" started at x=176 -- eighty pixels
+     of hanging indent, in four columns, under a name set flush left. The dd is
+     still a flex, because the "Based" row puts a pin icon before its text and
+     that is what aligns the two. */
+  body.home .hero__meta dd { justify-content: flex-start; }
 }
 
 
@@ -313,7 +491,7 @@ body.home .btn--solid:hover { background: #ff9f78; border-color: #ff9f78; }
 
 /* ── about ─────────────────────────────────────────────────────────── */
 #about .sec__body { max-width: 62ch; }
-#about p { font-size: 1.0625rem; line-height: 1.5; color: var(--landing-mut); margin-top: 18px; }
+#about p { font-size: var(--t-body); line-height: var(--lh-read); color: var(--landing-mut); margin-top: 20px; }
 #about p:first-child { margin-top: 0; }
 #about strong { color: var(--landing-fg); font-weight: 600; }
 
@@ -352,7 +530,13 @@ body.home .bench__meta, body.home .bench__table thead th {
 }
 body.home a.inline, body.home .stack dt, body.home .path__what .at,
 body.home .demo, body.home code { color: var(--landing-accent); }
-body.home code { background: rgba(255, 138, 92, .12); }
+/* .12 -> .08. Every <code> on this page sits inside a band, and a band with
+   the world running through it composites to #323231 in the worst case the
+   contrast gate measures against. The accent reads 5.53:1 on that bare; the
+   wash lifts the surface under it and took it to 4.48:1, a hundredth under
+   the 4.5 the gate holds link text to everywhere else. At .08 the mark is
+   still plainly a mark and the pair reads 4.84:1. */
+body.home code { background: rgba(255, 138, 92, .08); }
 body.home a.inline { border-color: rgba(255, 138, 92, .28); }
 body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-accent); }
 
@@ -398,23 +582,66 @@ body.home a.inline:hover, body.home .demo:hover { border-color: var(--landing-ac
 .carousel:not(.is-active) .carousel__nav,
 .carousel:not(.is-active) .carousel__pos { display: none; }
 
+/* One control, not three things at the two ends of a row.
+
+   `space-between` put prev at the card's left edge and next at its right, 739
+   pixels apart at 1916 with the readout stranded in the middle. Paging ten
+   cards means using both of those in turn, and a control you use in
+   alternation has to be reachable without crossing the thing it is paging.
+   Grouped at the left, under the card's own left edge, the round trip is
+   54px instead of 739 and the readout sits between the two arrows where it
+   describes them rather than floating on its own axis. */
 .carousel__nav {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 18px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 14px;
+  margin-top: 20px;
 }
 .carousel__btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border-radius: var(--r-pill);
-  border: 1px solid var(--landing-rule); background: transparent;
+  /* --landing-rule is a hairline token, held at 1.33:1 on the page so that a
+     rule between two rows is felt and not seen. That is the right value for a
+     rule and the wrong one for the edge of a button: at 1.19:1 against the
+     staged panel it put the only control in this section at a fifth of the
+     contrast its own boundary needs, so on a panel over a live render the
+     paging arrows read as two dark smudges. A 36% cream edge composites to
+     #6b6967 and reads 3.24:1 -- just over the 3:1 WCAG 2.2 asks of the
+     boundary of a control you have to find before you can press it, and 3.15
+     and 3.25 on the page background and a card, so it holds on all three
+     surfaces this button can sit on rather than only the one it was checked
+     against. */
+  border: 1px solid rgba(252, 249, 243, .36); background: transparent;
   color: var(--landing-fg); cursor: var(--cur-hand);
-  transition: border-color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
+  transition: border-color var(--dur-hover) var(--ease),
+              background var(--dur-hover) var(--ease),
+              color var(--dur-hover) var(--ease),
+              transform var(--dur-press) var(--ease);
 }
 .carousel__btn:hover { border-color: var(--landing-accent); background: rgba(255, 138, 92, .10); }
-.carousel__btn:disabled { opacity: .3; cursor: default; }
-.carousel__btn:disabled:hover { border-color: var(--landing-rule); background: transparent; }
+/* The press was missing on the one control a reader uses ten times in a row,
+   while every .btn on the page had it. Same 0.985 as style.css's. */
+.carousel__btn:active { transform: scale(.985); }
+/* Not opacity. At the ends of the run one arrow is always disabled, and .3 of
+   a 40px ring on a dark panel is a control that has vanished rather than one
+   that is unavailable -- the reader is left to work out whether it went away
+   or was never there. The shape stays at full strength and the glyph goes
+   muted, which is what "no further this way" looks like. */
+.carousel__btn:disabled {
+  cursor: default;
+  border-color: rgba(252, 249, 243, .14);   /* 1.51:1 -- present, plainly off */
+  color: var(--landing-mut);
+}
+.carousel__btn:disabled:hover { border-color: rgba(252, 249, 243, .14); background: transparent; }
 .carousel__btn .ico { width: 18px; height: 18px; }
+/* The readout was the accent -- the one colour this page reserves for
+   something you can act on -- which made the position of the carousel the
+   loudest thing in the lower half of Work, louder than the two buttons that
+   actually move it and louder than the 03 / 07 saying where you are in the
+   whole page. It is a readout. It is set like the page's other readout: mono,
+   tabular, muted, tracked open so the four digits and the slash read as a
+   fraction rather than as a word. */
 .carousel__pos {
-  font: 400 13px/1 var(--mono); letter-spacing: 0; color: var(--landing-accent);
+  font: 400 var(--t-ui)/var(--lh-flat) var(--mono);
+  letter-spacing: .08em; color: var(--landing-mut);
   font-variant-numeric: tabular-nums;
 }
 
@@ -496,7 +723,19 @@ body.home .proj__title a:hover { color: var(--landing-accent); }
 body.home .chips li { color: var(--landing-mut); border-color: var(--landing-rule); }
 body.home .proj__stats dt { color: var(--landing-mut); }
 body.home .proj__stats dd { color: var(--landing-fg); }
-body.home .proj__stats .unit { color: var(--landing-mut); }
+/* The unit inherits its dd's 600, so "%" was set at the same weight as the
+   60.4 in front of it and a third of the size -- which at 13px mono is a
+   blot rather than a unit. 400 is what a unit is: the number is the claim and
+   the unit says what it is a number of. */
+body.home .proj__stats .unit { color: var(--landing-mut); font-weight: 400; }
+/* align-items: center was drawn for a one-line callout. This one runs to six
+   lines at 1916, and centring hung the "Interactive" tag and the arrow at
+   y=210 in a block whose text starts at 133 -- both floating at the middle of
+   a paragraph, attached to nothing. Aligned to the top they sit on the first
+   line, which is the line they are about. The 2px is the tag's own border and
+   padding against the body text's cap height, measured. */
+body.home .tryit { align-items: start; }
+body.home .tryit__tag, body.home .tryit .ico--link { margin-top: 2px; }
 body.home .tryit { background: rgba(255, 138, 92, .08); border-color: var(--landing-accent); color: var(--landing-fg); }
 body.home .tryit:hover { background: var(--landing-card); }
 body.home .tryit__tag { color: var(--landing-accent); border-color: var(--landing-accent); }
@@ -603,10 +842,39 @@ body.home .nudge__b--go { background: var(--landing-accent); border-color: var(-
   body.home .proj { border-color: var(--landing-rule); }
   body.home::before { display: none; }
   body.home .hero__name { text-shadow: none; }
+  /* The edges drawn as a literal cream alpha rather than out of a token do
+     not follow --landing-rule up when it moves, so they are named here. At
+     .58 the button's boundary composites to #9d9a97 and reads 6.33:1 against
+     the panel, against 3.24 at the default .36 -- which is the difference
+     this preference is asking for. */
+  body.home .carousel__btn { border-color: rgba(252, 249, 243, .58); }
+  body.home .carousel__btn:disabled { border-color: rgba(252, 249, 243, .30); }
+  body.home .skip { border-color: rgba(252, 249, 243, .58); }
+  /* The current section's mark and the position scale are both 1.5-2px of
+     colour, which is where a contrast preference bites hardest. The mark
+     thickens rather than changing hue -- it is the accent because the accent
+     is what this page names things with -- and the scale's unlit segments
+     come up to match the muted text beside them. */
+  body.home .rail__nav a[aria-current="true"]::after { height: 2.5px; bottom: 5px; }
+  body.home .stage-count::before {
+    background-image:
+      linear-gradient(var(--landing-accent), var(--landing-accent)),
+      repeating-linear-gradient(to right,
+        rgba(252, 249, 243, .5) 0 10px, transparent 10px 14px);
+  }
+  /* A hover surface at 7% of white is inside the noise at this preference. */
+  body.home .rail__nav a:hover, body.home .icolink:hover,
+  body.home .rail__nav a:focus-visible, body.home .icolink:focus-visible,
+  body.home .rail__nav a[aria-current="true"]:hover { background: rgba(255, 255, 255, .16); }
 }
 @media print {
   body.home::before { display: none; }
-  .carousel__nav, .carousel__pos, .rail__cta { display: none !important; }
+  /* .stage-count joins them. It is hidden by `body:not(.is-staged)`, which is
+     the case for anything printed from a phone or with reduced motion on --
+     but a desktop reader printing from the staged page is exactly the reader
+     who has one, and "03 / 07" over the top of a paper page means nothing:
+     paper has its own page numbers and there are no states on it. */
+  .carousel__nav, .carousel__pos, .rail__cta, .stage-count { display: none !important; }
   .carousel.is-active .carousel__track { display: block; }
   .carousel.is-active .proj { flex: none; opacity: 1; transform: none; }
   /* the inline height carousel.js set would clip nine cards off the page */
@@ -746,13 +1014,38 @@ body.home.is-staged .hero { padding-block: 0; min-height: 0; }
    width -- which is what the tables were short of. */
 body.home.is-staged .grid { margin-inline: 0; max-width: none; }
 
+/* The section label starts on the section's first line, which it was not.
+
+   `.sec__label` is sticky at `top: 44px`, and 44 was measured against the
+   window under a 52px bar back when the page scrolled. Inside a state the
+   scroll container is the panel, whose own top padding is 57px at a 953px
+   window -- and the rectangle a sticky box is held inside is the scrollport
+   inset by that padding, so `top: 44px` is 44px below where the reading
+   column already begins. Read out of the page at 1916 with transitions
+   disabled: the label's top was 153px and the body's first line 109px, on
+   every one of the six sections, and setting `top: 0` put both at 109.
+
+   0 rather than deleting the stickiness. On Work and Measured the panel
+   scrolls for two and a half thousand pixels, and the section's number and
+   name staying with the reader through that is the good half of the original
+   rule; it just has to stick to the top of the reading area rather than to a
+   line 44px under it. The panel's mask fades its top 34px, and 0 lands the
+   label 57px down, so nothing sticks into the fade. */
+body.home.is-staged .sec__label { top: 0; }
+
 /* The footer is not a state, so it would otherwise lie in the flow underneath
    all of them. Pinned instead, as a strip that stays put while everything else
    changes -- which is what a footer carrying a live visit count should have
    been doing anyway. */
 body.home.is-staged .foot {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
-  margin: 0; padding: 12px clamp(22px, 5vw, 40px);
+  /* clamp(24px, 3vw, 56px), not clamp(22px, 5vw, 40px): the panel's own
+     inline padding, so that once .grid adds its 40 the byline starts at the
+     same x as the section tag above it. It was 80px against the content's 96
+     at 1916 -- sixteen pixels, which is exactly the amount that reads as
+     nothing having been aligned rather than as a decision. The two clamps
+     agree at every width, because they are added to the same second clamp. */
+  margin: 0; padding: 12px clamp(24px, 3vw, 56px);
   border-top: 1px solid var(--landing-rule);
   /* Solid for as far as the strip's own text runs, then gone. A footer that
      fades where content is still passing under it does not occlude, it
@@ -762,23 +1055,120 @@ body.home.is-staged .foot {
   pointer-events: none;
 }
 body.home.is-staged .foot a { pointer-events: auto; }
+/* 90px of strip for 13px of type. .foot .grid carries padding-block: 26px,
+   which is right for a footer that ends a scrolling document and is 52px of
+   nothing on one pinned across the bottom of every state. At 14 the strip is
+   66px, which gives the panel's reserved 105px of bottom padding 39px of real
+   clearance over it instead of 15 -- so the last line of a long state stops
+   arriving against the rule. */
+body.home.is-staged .foot .grid { padding-block: 14px; }
 
 /* Where you are, in the vocabulary the rest of the page already uses for
    exact readouts. Bottom right, in the part of the frame the panel does not
-   reach, so it sits in the world rather than on the text. */
+   reach, so it sits in the world rather than on the text.
+
+   Staged, this is the whole of the page's position indicator: the bar says
+   which section is live and this says it is the third of seven, and between
+   them they are the only thing telling a reader there is more page. It was
+   12px of muted mono in the corner. Two things are wrong with that and one
+   of them is not size. A fraction states a position but does not show one --
+   "03 / 07" has to be read and converted before it means "not far in" -- and
+   the numerals sat directly on the render, where a bright patch of world can
+   pass behind them at any moment.
+
+   So it becomes a scale with a mark on it, over a backing of its own. */
 .stage-count {
-  position: fixed; right: clamp(22px, 5vw, 40px); bottom: 18px; z-index: 41;
+  position: fixed; right: clamp(22px, 5vw, 40px); bottom: 16px; z-index: 41;
   margin: 0; pointer-events: none;
-  font: 400 12px/1 var(--mono, ui-monospace, monospace);
-  letter-spacing: .06em;
+  /* A block with a right-aligned line in it, and not a grid. A grid was the
+     obvious way to stack the scale over the numerals and it is wrong here for
+     a reason worth writing down: grid blockifies every element child, and
+     states.js writes "<b>03</b> / 07", so the <b> became a grid item of its
+     own and the readout came out as "03" on one row and "/ 07" on the next.
+     Measured 64px tall against the 42 it should be. The bar is a ::before
+     with a bottom margin instead, which leaves the numerals a single inline
+     run on one line. */
+  text-align: right;
+  /* The backing is the page's own, run to the left and dissolved before it
+     reaches anything -- the same move the footer and the panel make, rather
+     than a chip with an edge parked on the render. 44px of solid under the
+     readout, then 76px of falloff, measured so the fade starts outside the
+     94px scale below. */
+  padding: 10px clamp(22px, 5vw, 40px) 8px 96px;
+  margin-right: calc(-1 * clamp(22px, 5vw, 40px));
+  background: linear-gradient(to left,
+    rgba(10, 10, 10, .82) 0%, rgba(10, 10, 10, .82) 46%, rgba(10, 10, 10, 0) 100%);
+  font: 400 var(--t-ui)/var(--lh-flat) var(--mono, ui-monospace, monospace);
+  letter-spacing: .08em;
   color: var(--landing-mut);
+  font-variant-numeric: tabular-nums;
 }
+/* Seven segments and six gaps, drawn once: 7 x 10px of segment and 6 x 4px of
+   gap is 94px across, which is a segment per state and reads as a position
+   rather than as a fraction that has to be converted into one. The numerals
+   under it measure 62px at 13px mono with .08em of tracking, so the bar
+   overhangs them by 32px to the left and the two share a right edge -- which
+   is the edge that matters, because it is the one the frame gives them.
+
+   The lit segment is a second background layer positioned by [data-state],
+   an attribute states.js already sets on <body> on every change. No new
+   markup, no second element to keep in step, and a reader whose browser never
+   ran the script never sees the element at all. */
+.stage-count::before {
+  content: "";
+  display: block; width: 94px; height: 2px; margin: 0 0 9px auto;
+  background-image:
+    linear-gradient(var(--landing-accent), var(--landing-accent)),
+    repeating-linear-gradient(to right,
+      rgba(252, 249, 243, .26) 0 10px, transparent 10px 14px);
+  background-size: 10px 2px, auto;
+  background-repeat: no-repeat, repeat-x;
+  background-position: 0 0, 0 0;
+  transition: background-position var(--dur-move) var(--ease-in-out);
+}
+body[data-state="intro"]    .stage-count::before { background-position:  0px 0, 0 0; }
+body[data-state="about"]    .stage-count::before { background-position: 14px 0, 0 0; }
+body[data-state="work"]     .stage-count::before { background-position: 28px 0, 0 0; }
+body[data-state="measured"] .stage-count::before { background-position: 42px 0, 0 0; }
+body[data-state="stack"]    .stage-count::before { background-position: 56px 0, 0 0; }
+body[data-state="path"]     .stage-count::before { background-position: 70px 0, 0 0; }
+body[data-state="contact"]  .stage-count::before { background-position: 84px 0, 0 0; }
+/* The live number is the one thing here at full strength; the total behind
+   the slash is context and stays muted. */
 .stage-count b { font-weight: 400; color: var(--landing-fg); }
 body:not(.is-staged) .stage-count { display: none; }
 
-/* The carousel sizes its viewport from an element it measured while the page
-   was a document. Inside a state it has a height of its own to answer to. */
-body.home.is-staged .carousel__viewport { height: auto !important; }
+/* The nudge feedback.js raises is fixed to the same corner at bottom: 16px,
+   which put a 348px card straight over the readout -- and .stage-count's
+   z-index of 41 against the nudge's 40 meant the numerals drew on top of the
+   card's own text rather than being covered by it, which is the worst of the
+   two ways that could have gone. Lifted clear: the readout's block measures
+   42px and sits 16px off the bottom, so 68px puts the card's lower edge 10px
+   above its top and the two stack instead of colliding. */
+body.home.is-staged .nudge { bottom: max(68px, calc(env(safe-area-inset-bottom) + 68px)); }
+
+/* The carousel's viewport keeps the height carousel.js measured, staged as
+   well as unstaged, and the override that used to throw it away is gone.
+
+   The worry it was written for -- that the height was measured while the page
+   was still a document and would be stale inside a state -- does not survive
+   contact with the file it is worried about: carousel.js re-runs place() from
+   a ResizeObserver on every slide, from window resize and from fonts.ready,
+   and staging changes the card's width, so the observer fires and the height
+   is re-measured before anything is painted. Read out of the live page at
+   1916: the inline height is 246px and the active card is 246px tall.
+
+   What `height: auto` did instead was hand the viewport to the flex track,
+   whose height is that of the tallest of the ten cards -- 594px unscaled --
+   so on card 01 the paging controls sat 366 pixels below the card they page,
+   with a third of a screen of nothing between them. Reading a card and then
+   hunting for the arrows that turn it is the carousel not working.
+
+   There is deliberately no declaration under this comment. carousel.js writes
+   the height inline, an inline declaration already outranks every author rule
+   that is not !important, and the only way this file could take part at all
+   was the !important that caused the problem. The comment stays so the next
+   person to reach for one finds out why it is not here. */
 
 
 /* How wide the reading column is, which is not the same for all of them. It
@@ -872,3 +1262,44 @@ body.home.is-staged #main > .sec,
 body.home.is-staged #main > .hero { scrollbar-width: none; }
 body.home.is-staged #main > .sec::-webkit-scrollbar,
 body.home.is-staged #main > .hero::-webkit-scrollbar { width: 0; height: 0; }
+
+
+/* ── keyboarding a state ───────────────────────────────────────────────
+   Tab is how this page is read by anyone who is not using a mouse, and in a
+   staged panel the browser's own answer to Tab -- scroll the focused thing
+   into view -- puts it at the very edge of the scrollport, which here is the
+   worst place it could be. The panel fades its top and bottom 34px behind a
+   mask and pins a 66px footer over the bottom, so a link scrolled flush to
+   either end arrives half dissolved or underneath the byline, with its focus
+   ring going the same way. Measured on Measured, the longest state: the last
+   citation link in the garment-folding table landed 12px above the footer's
+   top edge and its ring was inside the fade.
+
+   scroll-padding is the standard answer and costs nothing to anyone else --
+   it only ever changes where a scroll *stops*. 48px at the top clears the
+   34px fade with room for a 2px ring at 3px offset; 96px at the bottom clears
+   the 66px footer by the same margin. Both are on one line because
+   tools/check_contrast.py finds the panel's backing by looking for
+   `is-staged #main > .sec,` followed by a newline, and a second rule written
+   in that shape is a rule it can read a wrong answer out of. */
+body.home.is-staged #main > .sec, body.home.is-staged #main > .hero { scroll-padding-block: 48px 96px; }
+
+/* The ring is style.css's 2px at 3px offset, in this page's accent, and that
+   is right nearly everywhere. Three places it is not.
+
+   On a card, the ring is drawn over the card's own 1px border at a 3px gap,
+   which at 8.5:1 against a 16:1 surface reads as a second border rather than
+   as a ring; 4px separates the two. On the paging buttons the ring has to
+   clear a 40px pill inside a 40px row, and 2px keeps it from touching the
+   button beside it. And on the two solid accent buttons an accent ring is the
+   fill's own colour at a 3px remove -- legible against the dark behind it,
+   but it reads as a halo on the button rather than a ring around it, so those
+   take the cream instead, at 16.9:1 on the panel. */
+body.home .proj a:focus-visible, body.home .tryit:focus-visible { outline-offset: 4px; }
+body.home .carousel__btn:focus-visible { outline-offset: 2px; }
+body.home .btn--solid:focus-visible, body.home .rail__cta:focus-visible { outline-color: var(--landing-fg); }
+/* A state that has just been jumped to takes focus at the section element
+   itself -- main.js focuses the target of an in-page link -- and that element
+   is the whole panel. A 1292px ring around the frame is not information, and
+   the panel is already the only thing on screen. */
+body.home.is-staged #main > .sec:focus, body.home.is-staged #main > .hero:focus { outline: none; }
