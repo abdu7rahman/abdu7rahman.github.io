@@ -16,7 +16,17 @@
  * ring. A ring puts four fifths of the band behind the reader's head, which
  * costs the whole page's budget to render nothing; drawn as an arc whose ends
  * run off both edges of the frame it reads as a ring anyway, because that is
- * all you would ever see of one.
+ * all you would ever see of one. It does run off them, but only once the
+ * reading column has been paid for: world/framing.js shears the projection
+ * 0.286 to the right at this width, which takes the arc's right end to 1.05
+ * in NDC and puts its left end at -0.48, behind the opaque part of the panel.
+ *
+ * What the band stands on is new. world/solids/contact.js used to keep its
+ * floor 3.11 metres down, where it was invisible; it is at the frame's own
+ * feet now and it ends at this file's own R1, so the horizon is one thing
+ * with two halves -- the ground running out, and the haze lying on the last
+ * of it. That is the whole reason the band grew a height: a horizon needs a
+ * surface to be the edge of.
  */
 import * as THREE from "three";
 import { bands, triad, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
@@ -43,13 +53,29 @@ export const VIEW = { pos: [0.0, 0.60, 2.90], look: [0.0, 0.40, -0.35], fov: 34 
    lens and reads as a dot. */
 const ARM = 1.10, YAW = Math.PI * 0.75;
 
-/* The horizon, in metres from the anchor, and the half-angle it is drawn
-   through. Nothing at all between the frame and seven metres: the emptiness
-   is the composition. The sweep runs a little wider than the lens holds --
-   the visible half-angle narrows as the radius grows, so the far rim is what
-   spills first, and letting it spill is the difference between a horizon and
-   a disc lying on the floor with an edge you can see. */
-const R0 = 7.0, R1 = 13.0, SWEEP = 0.62;
+/* The horizon: how far out it stands, the half-angle it is drawn through, and
+   how high it banks off the floor. Nothing at all between the frame and seven
+   metres: the emptiness is the composition. The sweep runs a little wider
+   than the lens holds -- the visible half-angle narrows as the radius grows,
+   so the far rim is what spills first, and letting it spill is the difference
+   between a horizon and a disc lying on the floor with an edge you can see.
+
+   The bank is new and it is what makes the band a horizon rather than a rule
+   drawn across the middle of the picture. It used to be 0.10 of thickness
+   centred on the anchor, which at ten metres out is sixteen rows of a 953-row
+   frame: too thin to be weather and too even to be anything else, and half of
+   it is now under the solid floor and depth-rejected in any case.
+
+   0.18, and it was 0.34 first, which is the useful half of that. Twelve
+   thousand points are a fixed amount of light and a band is as bright as the
+   light divided by the area it covers: at 0.34 the same points spread over
+   fifty-three rows at ten metres and the haze measured 7 of 255 where the
+   0.10 slab it replaced had measured 12. Higher is not more, it is thinner.
+   0.18 covers twenty-eight rows, which is wide enough to be weather and
+   narrow enough to still be a line. Squared, because r*r puts three quarters
+   of the band in its lower half: a horizon is dense where it sits and thin
+   where it lifts, and a uniform column would read as a wall. */
+const R0 = 7.0, R1 = 13.0, SWEEP = 0.62, BANK = 0.18;
 const HORIZON = 12000;
 
 /* What is left of the route. Short, and it stops: the strand that has been a
@@ -71,8 +97,9 @@ export function build(ctx) {
   for (let i = 0; i < HORIZON; i++) {
     const rad = R0 + (R1 - R0) * r();
     const th = (r() * 2 - 1) * SWEEP;
+    const up = r();
     ring[i * 3]     = anchor.x + rad * Math.sin(th);
-    ring[i * 3 + 1] = anchor.y + (r() - 0.5) * 0.10;
+    ring[i * 3 + 1] = anchor.y + BANK * up * up;
     ring[i * 3 + 2] = anchor.z - rad * Math.cos(th);
   }
 
@@ -110,9 +137,23 @@ export function build(ctx) {
     /* Half the band placed and the other half left to pad. Scattering the
        remainder over what is already there keeps the horizon a horizon: a
        second feature out here would be one more thing to look at instead of
-       the type this section is actually for, and a third of a metre of
-       scatter at ten metres out is under two degrees, so it thickens the haze
-       without giving it a shape. */
+       the type this section is actually for, so it thickens the haze without
+       giving it a shape.
+
+       0.18 of scatter, not the 0.35 it was. The old figure was argued from
+       the horizontal -- a third of a metre at ten metres out is under two
+       degrees -- and the padding is isotropic, so it also spent half of that
+       vertically, which is fourteen rows of a 953-row frame in each
+       direction. That was free when the band was a 0.10 slab with nothing
+       under it. It is not free now: the bottom of the bank is where the haze
+       meets the floor, it is the only hard edge the horizon has, and 0.35
+       would smear it across twice its own height. Below the floor is not a
+       problem, it is a depth cue -- the ground occludes it.
+
+       The 0.03 of vertical jitter on the placed half stays for the same
+       reason: the few points it takes under -0.028 are rejected by the
+       floor's own depth, which is exactly what a bank of haze sitting on a
+       surface should do. */
     const nRing = S.share(0.5), perRing = HORIZON / Math.max(1, nRing);
     for (let k = 0; k < nRing; k++) {
       const o = ((k * perRing) | 0) * 3, j = (k * 3) & JM;
@@ -120,7 +161,7 @@ export function build(ctx) {
             ring[o + 1] + jit[j + 1] * 0.03,
             ring[o + 2] + jit[j + 2] * 0.09, STRUCTURE, 0.5);
     }
-    S.pad(0.35);
+    S.pad(0.18);
 
     /* The stub runs, and only the stub. Everything else at this station is
        deliberately still -- the frame does not turn and the horizon does not

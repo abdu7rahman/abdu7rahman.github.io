@@ -100,10 +100,11 @@ const NV = 20, NW = 17;
  * the two halves of it here are the two halves of one decision.
  *
  * The first half sweeps the window. A candidate's flow is the fraction of its
- * own horizon, and since every one of the 246 arcs that survive the disc is
- * integrated with the same 0.1 s tick over the same 2.0 s -- 21 poses each,
- * no exceptions, because a candidate that hits the disc is dropped rather
- * than truncated -- that fraction *is* simulated time. The band is the
+ * own horizon, and every one of the 245 arcs the bundle is drawn from -- 246
+ * survive the disc, and the one that won is drawn as the commitment instead
+ * -- is integrated with the same 0.1 s tick over the same 2.0 s, 21 poses
+ * each, no exceptions, because a candidate that hits the disc is dropped
+ * rather than truncated. So that fraction *is* simulated time. The band is the
  * isochrone of the forward simulation: where the body would be at that
  * instant under every command in the window at once. It is not a ring. At the
  * end of the horizon the slowest candidate has covered 0.05 m and the fastest
@@ -122,7 +123,7 @@ const NV = 20, NW = 17;
  * reaching its horizon and searching again, so the loop needs no seam.
  *
  * 0.16 of a lap is 0.32 of a candidate's horizon, which puts 0.64 s of
- * simulated time inside the front on either side. Wide, deliberately: 246
+ * simulated time inside the front on either side. Wide, deliberately: 245
  * arcs converge on one origin, and a hairline drawn across them would be
  * invisible for the first third of the horizon and a dotted line for the
  * rest. What is wanted is a wave with a bright leading edge. */
@@ -165,6 +166,33 @@ const W_GOAL = 1.0, W_HEAD = 0.22, W_SLOW = 0.30;
    and a half times over -- half the bundle drawn twice on top of itself, in a
    picture whose whole subject is how densely the window was sampled. */
 const POOL = 60000;
+
+/* How the pool is spread along a candidate's own horizon, and it is the whole
+   difference between a bundle and a spray.
+ *
+ * A fan of unicycle rollouts does not diverge evenly. Two commands one grid
+ * step apart in omega separate laterally as half of v * domega * t squared,
+ * so the gap between neighbours goes as the square of the horizon: measured
+ * across the 246 survivors, the median nearest-neighbour distance at the same
+ * moment of simulated time is 0.4 mm a tenth of the way through, 3.7 mm a
+ * quarter, 16.6 mm at the half, 30.6 mm at three quarters and 40.1 mm at the
+ * end -- 0.2 of a pixel to 20 pixels at this station's 508 to the metre.
+ *
+ * Spread the points evenly along each arc and the drawn density therefore
+ * goes as one over that: binned by radius, the old scheme put 10.1 points on
+ * every square screen pixel inside the first five centimetres and 0.004 out
+ * past 80, a range of 2500 to one. That is not a bundle whose middle is
+ * bright, it is a white disc with a few threads leaving it, and it is exactly
+ * what this station rendered as.
+ *
+ * So the density along the arc is made to follow the separation: dN/du goes
+ * as NEAR + u*u, which is flat on the page rather than flat along the wire.
+ * The same binning comes back 1.63 to 0.015, a range of 109 -- twenty-three
+ * times flatter -- and 2.7% of a candidate's points now sit inside the first
+ * tenth of its horizon where 10% used to. NEAR is the floor under it, and it
+ * has to be there: at zero the body would have no matter on it at all and the
+ * isochrone would have nothing to leave from. */
+const NEAR = 0.12;
 
 /* Where the robot is standing when it has to decide, relative to the anchor,
    and which way it is facing. Set back towards the reader and pointing away,
@@ -239,14 +267,55 @@ export function build(ctx) {
   for (const c of cost) { if (c < lo) lo = c; if (c > hi) hi = c; }
   const range = Math.max(1e-6, hi - lo);
   const weight = cost.map(c => 0.28 + 0.72 * (1 - (c - lo) / range));
-  let wsum = 0;
-  for (const w of weight) wsum += w;
 
-  /* The pool: every surviving candidate resampled into its share of the
-     points. Uniform in step index is uniform in arc length here, because the
-     command is held constant and the body therefore covers the same distance
-     every tick -- which is the one simplification a constant-velocity rollout
-     is allowed to make. */
+  /* Who is in the pool, and the one that won is not.
+
+     It used to be, and it was therefore drawn twice: once as candidate 232 of
+     the bundle, in cream, at the largest splat and the heaviest share the
+     cost weighting hands out, and then again as the accent strand laid along
+     exactly the same points. The second drawing was the one that matters --
+     it is the commitment -- and it was competing with a brighter copy of
+     itself in the wrong colour. Taking it out of the pool is not a trick to
+     make it stand out; it is the honest reading of what the controller did.
+     A rollout that has been committed to is not a candidate any more, and the
+     gap it leaves in the grey is the shape of the decision. */
+  const pool = [];
+  for (let j = 0; j < traj.length; j++) if (j !== best) pool.push(j);
+
+  /* What each of them gets: its cost weight times its own speed, because
+     speed is arc length here -- every survivor runs the same 2.0 s, so a
+     candidate covers v * HORIZON of ground and the window spans 0.05 to 1.00
+     metres of it. Weight alone was the whole rule and it is a factor of
+     twenty wrong at the ends: the slowest candidate was given 124 points for
+     25 pixels of arc and the fastest 444 for 508, which is 5060 points to the
+     metre against 198. Twenty times over-drawn, and all of it piled at the
+     body where every candidate is already lying on top of every other. With
+     speed in the sum the range closes to 240 and 877 to the metre, and what
+     is left of it is the cost, which is the part anybody is meant to read. */
+  let spend = 0;
+  for (const j of pool) spend += weight[j] * cmd[j].v;
+
+  /* u along a candidate, drawn from the density at the top of this file by
+     inverting its integral. u*u*u/3 + NEAR*u is monotone and its derivative
+     never falls below NEAR, so Newton from the NEAR = 0 answer converges
+     hard: three passes leave a worst residual of 1.1e-5 of the range over the
+     whole unit interval and two leave 1.8e-3. Cheap enough to run per point
+     at build -- 60000 of them, once -- and exact enough that the taper is the
+     one that was solved for rather than one near it. */
+  const KU = 1 / 3 + NEAR;
+  function along(xi) {
+    const K = xi * KU;
+    let u = Math.cbrt(3 * K);
+    for (let i = 0; i < 3; i++) u -= (u * u * u / 3 + NEAR * u - K) / (u * u + NEAR);
+    return u < 0 ? 0 : u > 1 ? 1 : u;
+  }
+
+  /* The pool: every surviving candidate but one, resampled into its share of
+     the points. Uniform in step index is uniform in arc length here, because
+     the command is held constant and the body therefore covers the same
+     distance every tick -- which is the one simplification a constant-velocity
+     rollout is allowed to make, and it is what lets the taper above be
+     applied to the step index and still mean what it says about the page. */
   const P3 = new Float32Array(POOL * 3);
   const PS = new Float32Array(POOL);
   // Where along its own horizon each pooled point sits, mapped onto the half
@@ -254,10 +323,11 @@ export function build(ctx) {
   // is already computed to place the point at all.
   const PF = new Float32Array(POOL);
   let n = 0;
-  for (let j = 0; j < traj.length && n < POOL; j++) {
+  for (let q = 0; q < pool.length && n < POOL; q++) {
+    const j = pool[q];
     const pts = traj[j];
-    const share = j === traj.length - 1 ? POOL - n
-                : Math.min(POOL - n, Math.round(POOL * weight[j] / wsum));
+    const share = q === pool.length - 1 ? POOL - n
+                : Math.min(POOL - n, Math.round(POOL * weight[j] * cmd[j].v / spend));
     const wN = (weight[j] - 0.28) / 0.72;      // 1 is the cheapest candidate
     /* Splat size, and it has to be read against this station's own camera
        rather than against the material's defaults. The substrate sizes a point
@@ -273,13 +343,15 @@ export function build(ctx) {
        is drawn at the scale it was sampled at. */
     const sz = 0.10 + 0.13 * wN;
     for (let k = 0; k < share; k++) {
-      const t = share < 2 ? 0 : (k / (share - 1)) * (pts.length - 1);
+      // How far through its own horizon this point is: 0 at the body, 1 at
+      // the end of the 2.0 s, and drawn from the taper rather than from an
+      // even walk. The parameter still reads as both arc length and simulated
+      // time -- what changed is how many points land at each value of it, not
+      // what the value means.
+      const u = along(share < 2 ? 0 : k / (share - 1));
+      const t = u * (pts.length - 1);
       const i0 = Math.min(pts.length - 2, t | 0), f = t - i0;
       const a = pts[i0], b = pts[i0 + 1];
-      // How far through its own horizon this point is: 0 at the body, 1 at
-      // the end of the 2.0 s. Uniform in step index, so it is uniform in both
-      // arc length and simulated time, which is why it can be read as either.
-      const u = t / Math.max(1, pts.length - 1);
       /* Cost spent as height as well as as density. A dynamic window is a
          planar thing and drawing it planar is honest and unreadable: thirty
          seven thousand additive points on one mathematical plane is a sheet of
