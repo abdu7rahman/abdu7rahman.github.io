@@ -74,6 +74,21 @@ export const FinishShader = {
        soup. Ten pixels still separates the near rim of a costmap from its far
        corner, which is all this is for. */
     uMaxCoC:  { value: 0.0055 }, // ceiling on the blur, in UV
+    /* Ambient occlusion, off the depth buffer this pass already has bound for
+       the circle of confusion. Nothing in this world casts a shadow: there is
+       one key, a wrap and a kicker in the surface material and no shadow map
+       anywhere, so a block standing on the costmap and a block hovering a
+       centimetre above it render identically. That is the single reason every
+       station reads as objects floating in a void rather than matter sitting
+       in a room, and it cannot be fixed in the surface shader because a
+       fragment there cannot see its neighbours.
+
+       Screen space can. uAo is how dark a fully enclosed crevice goes; uAoR
+       is the radius it looks over, in metres of world at the fragment's own
+       depth, so a corner subtends the same darkening whether the camera is
+       two metres from it or nine. */
+    uAo:      { value: 0.62 },
+    uAoR:     { value: 0.075 },
     uBloom:   { value: 0.22 },
     uThresh:  { value: 0.78 },
     // Under one, because the world is lit in radiance now and the shoulder
@@ -103,6 +118,7 @@ export const FinishShader = {
     uniform sampler2D tDiffuse, tDepth;
     uniform float uTime, uRush, uGrain, uVig;
     uniform float uNear, uFar, uFocus, uAperture, uMaxCoC, uBloom, uThresh, uExposure;
+    uniform float uAo, uAoR;
     uniform float uStreak, uField;
     uniform vec2 uMotion, uTexel;
     varying vec2 vUv;
@@ -292,6 +308,43 @@ export const FinishShader = {
          at zero. Doing it correctly means blurring three times, which is
          three times the read for a lens defect nobody asked to see. The
          velocity is spent on the streak and on grain instead.  */
+
+      /* The occlusion, spent before the tonemap because that is where light
+         is still light: darkening after ACES darkens a display value and
+         crushes the shadow end, darkening before it removes the light and
+         lets the curve do what it does.
+
+         Eight taps, not sixteen. The disc above is spent twice already and
+         this is a low-frequency term -- what it is looking for is whether a
+         fragment sits in a corner, which does not need the sampling density
+         an out-of-focus highlight does. It reuses the disc's own ang, so the pattern is
+         the same per-pixel rotation the disc uses and the noise it leaves is
+         the noise already there rather than a second, differently shaped one
+         laid over it.
+
+         The radius is a world length divided by depth. In UV that is
+         uAoR / (2 tan(fov/2) z), and the y half-tangent here is 0.404 at the
+         44 degrees most stations sit at, so the constant is uAoR / (0.808 z):
+         at Work's six metres, 0.075 of a metre comes out at 0.0155 in UV,
+         which is 30 pixels across a 1916 frame and 15 down. x is scaled by
+         the texel ratio so the disc is round in pixels and not in UV.
+
+         Only nearer neighbours occlude, and only within half a metre. Without
+         the range test the far wall of the corridor would occlude the near
+         one and every silhouette would grow a dark halo, which is the classic
+         way this effect announces itself as an effect. */
+      float aoR = uAoR / (0.808 * max(z, 0.35));
+      vec2 aoS = vec2(uTexel.y / uTexel.x, 1.0) * aoR;
+      float ao = 0.0;
+      for (int i = 0; i < 8; i++) {
+        float f = (float(i) + 0.5) / 8.0;
+        float a = ang + f * 6.2831853 * 3.0;
+        float zs = viewZ(vUv + vec2(cos(a), sin(a)) * sqrt(f) * aoS);
+        float diff = z - zs;
+        ao += step(0.012, diff) * (1.0 - smoothstep(0.0, 0.5, diff));
+      }
+      ao = clamp(ao / 8.0, 0.0, 1.0);
+      col *= 1.0 - ao * uAo;
 
       col = aces(col * uExposure);
 
