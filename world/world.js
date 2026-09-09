@@ -411,9 +411,13 @@ export async function boot(mount, formationModules) {
        shoulder pan is +0.52 at the first and -0.05 at the last, so wrapping
        from the end back to the start is a 33-degree snap in one frame. Played
        out and back it is continuous at both ends and it is also what the move
-       actually is -- a cycle a machine repeats, not a clip. 14 seconds for the
-       round trip: the four poses are a reach, and a reach that takes two
-       seconds reads as a demo running at 2x. */
+       actually is -- a cycle a machine repeats, not a clip. 14 seconds for one
+       traverse, so 28 for the round trip: phase advances dt/ARM_CYCLE and
+       folds at 1, so a full out-and-back is two phase units and not one. This
+       said "14 seconds for the round trip" and it was the odd one out -- the
+       cell in solids/hero.js quotes every one of its own durations off the
+       28-second clock, correctly. The four poses are a reach, and a reach
+       that takes two seconds reads as a demo running at 2x. */
     if (arm && arm.solid) {
       armPhase = (armPhase + dt / ARM_CYCLE) % 2;
       const local = armPhase < 1 ? armPhase : 2 - armPhase;

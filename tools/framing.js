@@ -197,9 +197,26 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const roster = w.scene.children.map((c, k) =>
         `${k}:${c.type}${c.visible ? '' : '(hidden)'}`).join(' ');
       const panel = window.__stage.panel();
-      const pw = panel ? panel.getBoundingClientRect().width : 0;
-      // The backing is opaque to 86% of the panel and gone by 100%.
-      const opaque = pw * 0.86 / window.innerWidth;
+      /* Where the backing is actually opaque, in NDC, read off the element
+         rather than assumed.
+
+         Two assumptions in one line here stopped being true on the same day.
+         It computed pw * 0.86 / innerWidth, which is a width expressed as a
+         fraction of the window -- correct only while the panel began at the
+         window's left edge, which it did until the reading column was biased
+         inward. And the .86 was the old gradient's opaque stop; the backing
+         now runs full strength from one gutter to the other and fades over
+         the gutter at both ends, so the opaque span is the padding box.
+
+         Measured at 1440 the old sum reported the panel ending at NDC -0.19
+         while it actually spans -0.754 to +0.632, so every BEHIND-PANEL verdict
+         this tool printed was against a boundary that was not there. */
+      const r = panel ? panel.getBoundingClientRect() : null;
+      const cs = panel ? getComputedStyle(panel) : null;
+      const winW = window.innerWidth;
+      const oL = r ? (r.left + parseFloat(cs.paddingLeft || 0)) / winW : 0;
+      const oR = r ? (r.right - parseFloat(cs.paddingRight || 0)) / winW : 0;
+      const pw = r ? r.width : 0;
       const look = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
       return {
         id: panel ? panel.id : '?', groups, roster,
@@ -209,7 +226,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         p: +w.scroll.p.toFixed(4), station: w.station, mix: +w.mix.toFixed(3),
         range: w.stations[w.station] && w.stations[w.station].range,
         settle: w.stations[w.station] && w.stations[w.station].settle,
-        panelNdc: +(opaque * 2 - 1).toFixed(3), opaque: +opaque.toFixed(3)
+        panelNdc: [+(oL * 2 - 1).toFixed(3), +(oR * 2 - 1).toFixed(3)],
+        opaque: +((oR - oL)).toFixed(3)
       };
     }));
   }
@@ -217,7 +235,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   console.log(`viewport ${W}x${H}  aspect ${(W / H).toFixed(3)}`);
   for (const r of rows) {
-    console.log(`${r.id.padEnd(9)} fov=${String(r.fov).padEnd(4)} panel<=${r.panelNdc.toFixed(2)}` +
+    console.log(`${r.id.padEnd(9)} fov=${String(r.fov).padEnd(4)} ` +
+                `panel ${r.panelNdc[0].toFixed(2)}..${r.panelNdc[1].toFixed(2)}` +
                 `  p=${r.p} st=${r.station} mix=${r.mix}\n    scene: ${r.roster}`);
     for (const g of r.groups) {
       if (g.ndc.behind === 8) {
@@ -228,7 +247,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         continue;
       }
       const clipR = g.ndc.max[0] > 1, clipL = g.ndc.min[0] < -1;
-      const hidden = g.ndc.max[0] < r.panelNdc;
+      /* Inside the opaque span at both ends, not merely left of one edge.
+         The old test asked whether a group ended before the panel started,
+         which is the right question for a panel pinned to the left of the
+         frame and the wrong one for a column with clear frame on both sides
+         of it -- it flagged everything in the left margin, which is the half
+         of the render that was hardest to fill, and flagged nothing actually
+         buried under the type. */
+      const hidden = g.ndc.min[0] > r.panelNdc[0] && g.ndc.max[0] < r.panelNdc[1];
       console.log(`    ${g.name.padEnd(14)} x=[${g.ndc.min[0].toFixed(2)}, ${g.ndc.max[0].toFixed(2)}]` +
         ` y=[${g.ndc.min[1].toFixed(2)}, ${g.ndc.max[1].toFixed(2)}] meshes=${g.meshes}` +
         ` W=[${g.world.min.map(v => v.toFixed(2)).join(',')}]..[${g.world.max.map(v => v.toFixed(2)).join(',')}]` +
