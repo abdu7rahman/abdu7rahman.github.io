@@ -1,5 +1,5 @@
 import { P } from "../lib/palette.js";
-import { AISLE, BAY_D, EAVES } from "../lib/plan.js";
+import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
 
 /* A test cell off the lane: a plinth, a back wall, a screen carrying whatever
  * that rig is running, and a lamp aimed at the work rather than at the room.
@@ -12,7 +12,7 @@ import { AISLE, BAY_D, EAVES } from "../lib/plan.js";
  */
 export default function Bay({ stop, children }) {
   const s = stop.side;                    // -1 left of the lane, +1 right
-  const x = s * (AISLE / 2 + BAY_D / 2);
+  const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
 
   return (

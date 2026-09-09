@@ -16,6 +16,13 @@ export const PITCH = 7.2;
 export const AISLE = 6.4;          // clear width between the guarding lines
 export const EAVES = 8.4;          // underside of the truss
 export const BAY_D = 7.6;          // how far a bay runs back from the aisle
+/* Where the work actually stands in a cell, which is not the middle of it.
+   Centred, a 1.4 m robot sits 7.0 m off the lane and reads about 90 px tall
+   from the aisle -- physically right and compositionally useless. A cell is
+   worked at its front anyway: the bench goes against the guarding and the
+   depth behind it is where the racks and the spares live. 4.9 m puts the
+   machine near enough to read and still inside its own fence. */
+export const WORK = AISLE / 2 + 1.7;
 
 /* Seven rigs and six rooms, in the order you meet them walking in.
  *

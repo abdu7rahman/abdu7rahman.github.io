@@ -1,22 +1,25 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { P } from "../lib/palette.js";
-import { AISLE, BAY_D } from "../lib/plan.js";
+import UR12e from "./UR12e.jsx";
+import { WORK } from "../lib/plan.js";
 
-/* What stands in a cell: a screen on a stand, and a placeholder machine.
+/* What stands in a cell: a screen on a stand and the machine it is driving.
  *
  * The screen is emissive and unlit rather than a material with a light on it,
  * because a monitor is a source. It is the brightest thing in its bay by a
  * wide margin, which is correct -- in a dark building the running plot is
  * what your eye goes to, and that is exactly where the work is.
  *
- * The machine is a stand-in. The real ones are the UR12e already baked in
- * this repo and the TurtleBot and Go2 the demos drive, and wiring each rig to
- * its own is the next piece of work rather than this file's job.
+ * Every cell shows a UR12e for now. Three of them should not: drive, race and
+ * cost are a TurtleBot and a Go2, and those meshes are not in this repository
+ * yet. Standing the wrong machine in a cell is a lie a reader who knows what
+ * a robot is will catch immediately, so it is written down here rather than
+ * left to be noticed.
  */
 export default function Rig({ stop }) {
   const s = stop.side;
-  const x = s * (AISLE / 2 + BAY_D / 2);
+  const x = s * WORK;
   const screen = useRef();
 
   useFrame(({ clock }) => {
@@ -54,21 +57,13 @@ export default function Rig({ stop }) {
         <meshStandardMaterial color={P.steel} roughness={0.6} metalness={0.5} />
       </mesh>
 
-      {/* Placeholder machine: a column and two links, enough to read as a
-          manipulator standing on the bench at this distance. */}
-      <group position={[x + s * 0.45, 0.9, -0.2]}>
-        <mesh position={[0, 0.18, 0]} castShadow>
-          <cylinderGeometry args={[0.17, 0.2, 0.36, 16]} />
-          <meshStandardMaterial color={P.machine} roughness={0.42} metalness={0.55} />
-        </mesh>
-        <mesh position={[0, 0.68, 0]} rotation-z={0.5} castShadow>
-          <capsuleGeometry args={[0.085, 0.66, 4, 12]} />
-          <meshStandardMaterial color={P.machine} roughness={0.42} metalness={0.55} />
-        </mesh>
-        <mesh position={[0.42, 1.12, 0]} rotation-z={-0.9} castShadow>
-          <capsuleGeometry args={[0.07, 0.5, 4, 12]} />
-          <meshStandardMaterial color={P.machine} roughness={0.42} metalness={0.55} />
-        </mesh>
+      {/* The machine. Universal Robots' own triangles, articulated by the
+          measured kinematics -- the same module the document site's arm and
+          its reachable-set formation solve against. Each cell is offset in
+          the cycle so the building is not seven arms moving in unison, which
+          reads as an animation rather than as seven rigs running. */}
+      <group position={[x + s * 0.35, 0.9, -0.2]}>
+        <UR12e phase={(stop.at * 0.37) % 2} />
         {/* The e-stop, which is the smallest and most necessary orange in the
             building. */}
         <mesh position={[0.14, 0.1, 0.2]}>

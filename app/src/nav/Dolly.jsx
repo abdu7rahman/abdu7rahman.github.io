@@ -25,7 +25,7 @@ export default function Dolly() {
   const eye = useRef(new THREE.Vector3(0, 1.62, 4));
 
   useFrame((_, dt) => {
-    const k = 1 - Math.pow(0.001, Math.min(0.05, dt));
+    const k = 1 - Math.pow(0.0006, Math.min(0.1, dt));
 
     // Where the dolly is: down the lane, breathing very slightly so a held
     // shot is never mechanically dead.

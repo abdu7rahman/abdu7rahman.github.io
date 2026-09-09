@@ -10,6 +10,14 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  /* The kinematics are imported from world/, not copied into app/.
+     world/kinematics.js is the measured UR12e -- link frames, poseAt,
+     toolPoint -- and it is what the document site's arm, its reachable-set
+     formation and the hero cell all solve against. A second copy in here
+     would be a second thing to drift, which is the failure this repository
+     has hit more than any other. Vite refuses to serve outside its root by
+     default, so the parent is allowed explicitly. */
+  server: { fs: { allow: [".", ".."] } },
   build: {
     outDir: "dist",
     emptyOutDir: true,

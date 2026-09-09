@@ -24,8 +24,21 @@ export function useTravel() {
       const max = Math.max(1, doc.scrollHeight - window.innerHeight);
       target.current = (window.scrollY / max) * RUN;
     };
-    const tick = () => {
-      setZ(v => v + (target.current - v) * 0.12);
+    /* Eased against the clock, not against the frame.
+    
+       A fixed fraction per frame is a different time constant on every
+       machine: at 60 Hz 0.12 closes the gap in about a fifth of a second, and
+       on a device drawing 4 frames a second it takes six. The second case is
+       not hypothetical -- it is a phone under load, and it is every headless
+       render this project is checked with, where the camera was still halfway
+       to its mark when the shutter went. 1 - 0.0015^dt is the same curve
+       expressed per second, so the settle takes the same wall time wherever
+       it runs. */
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      const k = 1 - Math.pow(0.0015, dt);
+      setZ(v => v + (target.current - v) * k);
       raf.current = requestAnimationFrame(tick);
     };
     read();
