@@ -507,8 +507,30 @@ export async function boot(mount, formationModules) {
       if (sol.group.visible !== live) sol.group.visible = live;
       if (!live) continue;
       const st = STATIONS[k];
-      const span = Math.max(1e-6, st.range[1] - st.range[0]);
-      const local = Math.min(1, Math.max(0, (p - st.range[0]) / span));
+      /* How far through its own reading the station is, measured across the
+         window it is actually settled in rather than across everything it
+         owns.
+
+         These are not the same interval and the difference is most of the
+         effect. measureBands sets settle to range narrowed by the transit
+         half-width at each boundary, so the settled window is strictly inside
+         the range -- and a reader only ever occupies the settled part, because
+         the rest of the range is the crossing into and out of it. Computed off
+         range, local therefore started somewhere above 0 when the state
+         arrived and stopped somewhere below 1 when it left, and never spent a
+         frame at either end while anybody was reading.
+
+         Path found it: six bays, one per timeline entry, and focus is
+         local * 5, so scrolling the whole section walked focus to 2.72 of 5.
+         Bays three, four and five lit during the exit crossing, when the
+         reader has already gone. Measured has the same shape at five tables.
+         Off settle it sweeps 0 to 1 across the reading and clamps at the ends
+         through the crossings, which is what every consumer of it already
+         assumed it did. */
+      const s0 = st.settle ? st.settle[0] : st.range[0];
+      const s1 = st.settle ? st.settle[1] : st.range[1];
+      const span = Math.max(1e-6, s1 - s0);
+      const local = Math.min(1, Math.max(0, (p - s0) / span));
       const n = FOCUS_OF[st.id];
       // The carousel wins where there is one, because it is what the reader
       // is actually driving; `local` is the fallback for a station you read
