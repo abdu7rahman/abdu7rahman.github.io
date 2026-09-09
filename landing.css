@@ -995,14 +995,29 @@ body.home.is-staged #main > .hero {
      12% of a 1300px panel is 156px against a 54px inset -- a hundred pixels
      of every line set on a fade. Pinned to --gutter the fade is precisely the
      padding, so the first glyph starts where the backing reaches full
-     strength. .94 is the figure the contrast gate reads out of this
-     declaration, and it takes the strongest stop, so the two zeroes at the
-     edges are margin as far as it is concerned -- which is what they are. */
+     strength. The strongest stop is the figure the contrast gate reads out of
+     this declaration, so the two zeroes at the edges are margin as far as it
+     is concerned -- which is what they are.
+
+     .82, and it was .94, which let 6% of the world through. That made the
+     half of the frame the reading sits on a black rectangle, which is most of
+     the way back to a document with a picture beside it -- and the world is
+     the point of this page.
+
+     .82 is where the sweep lands rather than where taste does. The floors are
+     7:1 for prose and 4.5 for muted labels and links, measured against a
+     world lit to full white, which is the worst case the gate models. Prose
+     alone would allow .685. What binds is the muted label, which needs .785,
+     and the accent just under it at .777. .82 clears both with room -- 11.65
+     for prose, 5.17 muted, 5.27 links -- and lets 18% of the render through
+     instead of 6%. Three points lower would buy another three points of world
+     and leave the muted label 3% above its floor, which is not headroom, it
+     is a rounding error on a display whose gamma nobody controls. */
   background:
     linear-gradient(to right,
       rgba(10, 10, 10, 0) 0,
-      rgba(10, 10, 10, .94) var(--gutter),
-      rgba(10, 10, 10, .94) calc(100% - var(--gutter)),
+      rgba(10, 10, 10, .82) var(--gutter),
+      rgba(10, 10, 10, .82) calc(100% - var(--gutter)),
       rgba(10, 10, 10, 0) 100%);
   opacity: 0; pointer-events: none;
   /* In depth, not up and down. The world behind this panel is a corridor the

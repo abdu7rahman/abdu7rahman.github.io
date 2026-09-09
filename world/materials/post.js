@@ -107,8 +107,26 @@ export const FinishShader = {
 
        The range work was right and stays: a lit face at 140 against a face
        turned away at 29 is 4.8 to 1, the same ratio the surface material was
-       reweighted to produce. What changes is where that ratio sits. */
-    uExposure:{ value: 1.15 },
+       reweighted to produce. What changes is where that ratio sits.
+
+       1.32 now, and the reason it moved is that the earlier fix was measured
+       on the wrong half of the frame. 1.15 was solved when the reading column
+       was flush left and opaque, so "the picture" meant the strip of world
+       beside it and the strip was bright enough. The column is centred now
+       and its backing is .82 rather than .94, which means most of the frame
+       is world seen through type or world in two margins, and measured across
+       all seven settled stations that frame runs a mean luma of 14.5 to 25.1
+       with a median of 10 to 21 -- Stack at 14.5, Contact at 17.5, Measured
+       at 18.6. Half the render sitting under 21 of 255 is the same fault as
+       before at a smaller scale.
+
+       15% rather than another doubling, deliberately. This has been
+       over-corrected three times in this file's history by solving for a
+       station's brightest region and blowing out its endpoint, so the step is
+       sized to move the median without touching the top: the fraction of the
+       frame above 140 is type and rim, it was 0.02, and it is the number to
+       watch rather than the mean. */
+    uExposure:{ value: 1.32 },
     uTexel:   { value: new THREE.Vector2(1 / 1280, 1 / 720) }
   },
   vertexShader: /* glsl */`
