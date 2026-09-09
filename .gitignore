@@ -9,3 +9,9 @@ __pycache__/
 # runs on disk at once, and the next probe that wants somewhere to put 20 MB
 # of PNGs should not have to come back here first.
 tmp-*/
+
+# The lab's toolchain and build output. The source is app/src; the bundle is
+# rebuilt from it, and node_modules is 206 MB of somebody else's code.
+app/node_modules/
+app/dist/
+app/shot-*.png

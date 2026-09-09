@@ -86,7 +86,17 @@ def scan(text):
 
 
 def main(argv):
-    paths = [pathlib.Path(a) for a in argv] or sorted(pathlib.Path('world').rglob('*.js'))
+    # Both trees. world/ is the vanilla site's renderer; app/src is the lab's.
+    # The trap this gate exists for does not care which framework is holding
+    # the template literal, and the second tree was written by somebody who
+    # had warned five other people about it and then did it anyway on the
+    # first shader file.
+    roots = [pathlib.Path('world'), pathlib.Path('app/src')]
+    found = sorted(q for r in roots if r.is_dir()
+                   for q in r.rglob('*.js') if 'node_modules' not in q.parts)
+    found += sorted(q for r in roots if r.is_dir()
+                    for q in r.rglob('*.jsx') if 'node_modules' not in q.parts)
+    paths = [pathlib.Path(a) for a in argv] or found
     fails = 0
     checked = 0
     for p in paths:
