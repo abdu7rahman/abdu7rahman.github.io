@@ -8,10 +8,13 @@
  *
  * Around it: the swept trajectory its tool actually traces, the corridor of
  * tool points reachable either side of that trajectory, the body that carries
- * the tool along it, a coordinate frame on every joint, and a floor for it all
- * to stand on. Nothing here is decorative geometry standing in for robotics;
- * every position comes out of the same forward kinematics the mesh is posed
- * by.
+ * the tool along it, a coordinate frame on every joint, the workcell it is
+ * bolted into drawn as edges, and a floor for all of it to stand on. Nothing
+ * here is decorative geometry standing in for robotics; every position comes
+ * out of the same forward kinematics the mesh is posed by, and the cell comes
+ * out of world/solids/hero.js -- the same list of boxes the solid is built
+ * from, so the thing that erodes and the thing that arrives are one list read
+ * twice rather than two descriptions held equal by discipline.
  *
  * And it executes. Until the substrate grew a flow channel this station was a
  * diorama of a machine mid-move: a ribbon of trajectory lying in space with
@@ -25,14 +28,27 @@
  */
 import * as THREE from "three";
 import { bands, polyline, sampleSoup, rng, STRUCTURE, PATH, FRAME } from "./lib.js";
-import { linkFrames, toolPoint, poseAt, POSES } from "../kinematics.js";
+import { linkFrames, toolPoint, poseAt } from "../kinematics.js";
+import { cellFrame } from "../solids/hero.js";
 
 /* Offsets from the station anchor; the caller adds it. Solved rather than
-   nudged: upright, the arm's bounding box over the whole pose sequence is
-   1.27 x 0.83 x 0.99 centred 0.44 behind and 0.42 above its base plate. At 42
-   degrees vertical a 2.3m standoff puts that 0.83 of height at just under
-   two-thirds of the frame, and looking a little left of the arm leaves the
-   left of the frame to the type, which has always owned it. */
+   nudged: measured off Universal Robots' own triangles at 61 poses across the
+   move, the machine's shell spans 1.268 x 0.831 x 0.989, centred 0.444 behind
+   and 0.416 above its base plate. The eye stands 2.310 from that centre, where
+   a 42 degree vertical lens is 1.773 of frame height, so the machine fills
+   0.469 of the frame -- just under half, which the comment here used to call
+   just under two-thirds. The aim is 0.206 to the left of the machine's own
+   centre, so the arm sits right of the middle of the shot.
+
+   That key has not moved this pass and the reason is worth stating, because
+   the complaint it answers was that the composition ran off the right edge.
+   It did. The fix was not the camera: the workcell had all of its hardware in
+   the right third and nothing at all in the left, and it is the cell that has
+   been opened out -- the walking beam turned round to run away from the
+   machine, the guarding and the aisle built out past both edges of the frame.
+   Moving the eye would have cost the About crossing, which is composed against
+   this key and half a step in from it, and it would have shrunk the one real
+   machine on the page to fix a problem that was never about the machine. */
 export const VIEW = { pos: [0.24, 0.06, 2.30], look: [0.50, -0.12, 0.04], fov: 42 };
 
 /* This station used to cover two states and declare a key for each. It does
@@ -196,19 +212,82 @@ export function build(ctx) {
     new THREE.Matrix4().makeTranslation(base.x, base.y, base.z)
       .multiply(upright).multiply(f));
 
+  /* The cell, as edges.
+   *
+   * The solid standing at this station erodes into this cloud on the way out
+   * of it, on the same noise field the cloud is released on, and until now
+   * there was nothing here for most of it to erode into: the substrate held
+   * the machine and a patch of floor, so the arm came apart into a cloud of
+   * itself and the workcell around it came apart into nothing at all. That is
+   * the one thing the crossing is not allowed to be. world/solids/hero.js
+   * exports the fixed hardware as boxes and this is those boxes.
+   *
+   * Edges and not surfaces. A box drawn as twelve lines is a box; a box drawn
+   * as a filled volume of points is a smudge, and twenty-two of them is the
+   * grey cotton ball About spent a rebuild getting rid of. Twelve per box, less the
+   * eight that are degenerate when a box is flat -- the floor plate arrives as
+   * a rectangle rather than a slab for exactly that reason.
+   *
+   * Weighted by length rather than per edge, for the same reason sampleSoup is
+   * weighted by area: per edge, the floor plate's own 7.36 m and a 22 mm
+   * saddle land the same number of points, and the saddle becomes a bright dot
+   * while the plate becomes a dotted line. By length it is 143.28 m of cell
+   * over 256 edges at one density, whatever the piece.
+   *
+   * No flow. A cell is a place, and a place does not run. */
+  const seg = [], segLen = [];
+  let cellLen = 0;
+  for (const b of cellFrame()) {
+    const [cx, cy, cz, sx, sy, sz] = b;
+    const x0 = cx - sx * 0.5, x1 = cx + sx * 0.5;
+    const z0 = cz - sz * 0.5, z1 = cz + sz * 0.5;
+    const ys = sy > 1e-4 ? [cy - sy * 0.5, cy + sy * 0.5] : [cy + sy * 0.5];
+    const edges = [];
+    for (const y of ys) {
+      edges.push([x0, y, z0, x1, y, z0], [x1, y, z0, x1, y, z1],
+                 [x1, y, z1, x0, y, z1], [x0, y, z1, x0, y, z0]);
+    }
+    if (ys.length === 2)
+      for (const [x, z] of [[x0, z0], [x1, z0], [x1, z1], [x0, z1]])
+        edges.push([x, ys[0], z, x, ys[1], z]);
+    for (const e of edges) {
+      const L = Math.hypot(e[3] - e[0], e[4] - e[1], e[5] - e[2]);
+      if (L < 1e-4) continue;
+      seg.push([new THREE.Vector3(anchor.x + e[0], anchor.y + e[1], anchor.z + e[2]),
+                new THREE.Vector3(anchor.x + e[3], anchor.y + e[4], anchor.z + e[5])]);
+      segLen.push(L);
+      cellLen += L;
+    }
+  }
+
   /* The floor. Denser under the arm and thinning outwards, because a lattice
      of even density reads as graph paper and a lattice that falls off reads
      as a room the light does not reach the edges of. It does not run: a floor
-     that pulses is a dance floor. */
+     that pulses is a dance floor.
+
+     It used to be 31 by 31 sites centred on the machine, which put it 0.875 to
+     3.175 in x -- a metre past where the right-hand guarding now stands and a
+     metre short of the left -- back when the solid's own deck was 2.45 across
+     and the lattice was the larger of the two. It is laid out on the cell now:
+     -2.05 to 2.15 and -2.30 to 1.46, which is the guarded floor, the metre
+     outboard of the left-hand fence the finished totes leave through, and the
+     aisle behind it. Deliberately not the solid's floor plate, which is 7.36
+     across because it has to run out of a frame this lattice has no reason to
+     reach the edges of; the falloff is measured against the furthest corner of
+     this rectangle from the base axis, 3.855, and 659 of its 868 sites survive
+     it. Same 135 mm pitch: it is the one thing about this feature that was
+     never wrong. */
   const floor = [];
-  const step = 0.135, half = 15;
-  for (let ix = -half; ix <= half; ix++) {
-    for (let iz = -half; iz <= half; iz++) {
-      const x = anchor.x + base.x + ix * step;
-      const z = anchor.z + base.z + iz * step;
-      const d = Math.hypot(ix, iz) / half;
+  const step = 0.135;
+  const CELL = { x0: -2.05, x1: 2.15, z0: -2.30, z1: 1.46 };
+  let rmax = 0;
+  for (const cx of [CELL.x0, CELL.x1]) for (const cz of [CELL.z0, CELL.z1])
+    rmax = Math.max(rmax, Math.hypot(cx - base.x, cz - base.z));
+  for (let x = CELL.x0 + step * 0.5; x < CELL.x1; x += step) {
+    for (let z = CELL.z0 + step * 0.5; z < CELL.z1; z += step) {
+      const d = Math.hypot(x - base.x, z - base.z) / rmax;
       if (r() > 1.0 - d * d * 0.86) continue;
-      floor.push(x, base.y + anchor.y, z);
+      floor.push(anchor.x + x, base.y + anchor.y, anchor.z + z);
     }
   }
 
@@ -247,6 +326,25 @@ export function build(ctx) {
     // is the one feature on the page that is a machine rather than something
     // a machine is doing.
     if (soup) sampleSoup(soup, S.share(0.68), S, STRUCTURE, 0.95, 0x1234);
+
+    /* The cell, out of what the shell leaves. 0.62 of it, and the cost is
+       padding rather than machine: at the high tier the structure band has
+       13650 slots left at this point, of which the floor lattice takes 659 and
+       the remaining 12991 were scattered back over what had already been
+       written. 8463 of those go on the cell now -- 59.1 points a metre, one
+       every 16.9 mm, which at the 367 px to the metre the guarding stands at
+       is 6.2 px and a line rather than a row of dots -- and the pad is left
+       with 4528. Nothing is taken off the arm.
+
+       Smaller than the shell's own splat, at 0.5 against 0.95. The cell is
+       what the machine is standing in and the reader should be able to see the
+       machine through it. */
+    {
+      const nCell = S.share(0.62);
+      for (let i = 0; i < seg.length; i++)
+        polyline(seg[i], Math.floor(nCell * segLen[i] / cellLen),
+                 S, STRUCTURE, 0.5, 0.004, 0xC1 + i * 131);
+    }
     for (let i = 0; i + 2 < floor.length && S.room > (count * 0.02); i += 3)
       S.put(floor[i], floor[i + 1], floor[i + 2], STRUCTURE, 0.55);
     S.pad(0.02);
