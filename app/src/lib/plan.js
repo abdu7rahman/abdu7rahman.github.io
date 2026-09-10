@@ -40,8 +40,11 @@ export const WORK = AISLE / 2 + 1.7;
  * field, a lap -- so the camera has to get above it and take in the whole
  * 2.7 m of it, or the map is a band of colour seen edge on. A machine rig's
  * subject is the 0.6 m of arm standing on the bench, which wants the
- * opposite: in close, near eye height, on a longer lens. One shot cannot be
- * both, and guessing from the machine would be guessing.
+ * opposite: in close, near eye height, on a longer lens. An envelope rig's
+ * subject is bigger than its machine -- the reach bay draws a 2.6 m
+ * workspace around a 0.6 m arm -- so it steps back rather than leaning in.
+ * One shot cannot be all three, and guessing from the machine would be
+ * guessing.
  */
 export const STOPS = [
   { id: "entry",    kind: "room", side:  0, at: 0,   title: "High bay",
@@ -60,7 +63,7 @@ export const STOPS = [
   { id: "work",     kind: "room", side:  1, at: 3.0, title: "Archive",
     lede: "Ten systems worth showing. Everything else lives on GitHub." },
 
-  { id: "reach",    kind: "rig",  side: -1, at: 3.8, title: "Reach", frame: "machine",
+  { id: "reach",    kind: "rig",  side: -1, at: 3.8, title: "Reach", frame: "envelope",
     sub: "UR12e workspace",
     note: "The arm's reachable set, solved rather than drawn." },
   { id: "foresee",  kind: "rig",  side:  1, at: 4.4, title: "Replan", frame: "machine",

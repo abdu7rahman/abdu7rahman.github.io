@@ -112,7 +112,14 @@ const FOV_LANE = 52;
  */
 const SHOT = {
   course:  { x: 1.70, y: 2.40, aim: 0.95, fov: 48 },
-  machine: { x: 2.15, y: 1.85, aim: 1.12, fov: 42 }
+  machine: { x: 2.15, y: 1.85, aim: 1.12, fov: 42 },
+  /* And one for a cell whose subject is bigger than its machine. The reach
+     bay draws the arm's whole workspace, which is 2.6 m across on a bench
+     2.6 m deep; framed for the 0.6 m of arm standing in the middle of it the
+     envelope is mostly off screen. So this shot steps back to the centre
+     line instead of leaning in -- 4.1 m of throw on a 46 -- which is what
+     anybody does when the thing they are looking at got bigger. */
+  envelope: { x: 0.20, y: 1.95, aim: 1.45, fov: 46 }
 };
 const EYE_Y = 1.62;
 
