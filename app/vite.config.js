@@ -18,6 +18,13 @@ export default defineConfig({
      has hit more than any other. Vite refuses to serve outside its root by
      default, so the parent is allowed explicitly. */
   server: { fs: { allow: [".", ".."] } },
+  /* One three, not two. world/kinematics.js sits outside the app root and
+     resolving "three" from there gave a second copy -- three prints
+     "Multiple instances of Three.js being imported" when that happens, and
+     the failure mode is silent and confusing: instanceof stops working
+     across the boundary, so a matrix built by one copy is not a Matrix4 to
+     the other. */
+  resolve: { dedupe: ["three"] },
   build: {
     outDir: "dist",
     emptyOutDir: true,

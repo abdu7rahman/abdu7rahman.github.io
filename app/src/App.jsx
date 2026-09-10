@@ -7,6 +7,7 @@ import Guarding from "./lab/Guarding.jsx";
 import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
+import Probe from "./nav/Probe.jsx";
 import Readout from "./nav/Readout.jsx";
 import { P, KEY } from "./lib/palette.js";
 import { STOPS, RUN } from "./lib/plan.js";
@@ -16,8 +17,14 @@ export default function App() {
     <>
       {/* The document is as long as the building, so the browser's own
           scrollbar is the travel control and every input that drives it --
-          wheel, keyboard, a flick on a phone -- works without being taught. */}
-      <div style={{ height: `${RUN * 34}px` }} aria-hidden="true" />
+          wheel, keyboard, a flick on a phone -- works without being taught.
+
+          pointerEvents none, and that is not a detail. This div is the full
+          height of the page and sits over a fixed canvas, so with the default
+          it is the element under the cursor everywhere -- the canvas receives
+          no pointer events at all and nothing in the building can be hovered
+          or picked. It still scrolls: scrolling is not a pointer event. */}
+      <div style={{ height: `${RUN * 34}px`, pointerEvents: "none" }} aria-hidden="true" />
 
       <Canvas
         shadows
@@ -56,6 +63,7 @@ export default function App() {
             <Bay key={s.id} stop={s}><Rig stop={s} /></Bay>
           ))}
           <Dolly />
+          <Probe />
         </Suspense>
       </Canvas>
 
