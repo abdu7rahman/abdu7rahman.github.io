@@ -112,4 +112,10 @@ export const BELIEF_FRAG = /* glsl */`
     float dist = length(uEye - vW);
     col = mix(col, uAir, smoothstep(uFogNear, uFogFar, dist));
     gl_FragColor = vec4(col, inside);
+
+    // Same two lines as the slab, for the same reason -- see the note at the
+    // end of shaders/floor.js. Both chunks leave alpha alone, which matters
+    // here because this layer is blended by it.
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }`;

@@ -98,14 +98,38 @@ export function detect() {
      be driven from a script is exactly the one the software check sends to
      the tier with no post in it. */
   let forced = false;
+  let quality;
   try {
-    const want = new URLSearchParams(location.search).get("lab");
+    const q = new URLSearchParams(location.search);
+    const want = q.get("lab");
     if (want && TIERS[want]) { tier = want; forced = true; }
-  } catch (e) { /* no location, no override */ }
+    quality = TIERS[tier];
+    /* One switch on top of the tier, for the post chain alone.
+    
+       Not a convenience. The grade is the one part of this building whose
+       two paths can silently disagree -- with post the scene is rendered
+       into a target, which compiles every program with no tone curve and a
+       linear output, and without it three's output stage does the curve and
+       the encode instead. A material that ends up in a different space in
+       one of those than the other looks fine in whichever one its author was
+       looking at, and the last time that happened the daylight shafts failed
+       to compile under the target and simply were not in the frame.
+    
+       So the two have to be comparable in the same browser on the same
+       frame, which is what this is for. Currently, at the entrance:
+       shaft p50 180 both ways, lit lane 92 with and 94 without, whole frame
+       21 with and 25 without -- the differences being the contrast, the
+       vignette and the bloom, which is all this pass is supposed to add. */
+    const wantPost = q.get("post");
+    if (wantPost === "0" || wantPost === "1") {
+      quality = { ...quality, post: wantPost === "1" };
+      forced = true;
+    }
+  } catch (e) { quality = TIERS[tier]; /* no location, no override */ }
 
   cached = {
     tier, forced, soft, webgl2, coarse, narrow, cores, mem, renderer,
-    quality: TIERS[tier]
+    quality
   };
   return cached;
 }

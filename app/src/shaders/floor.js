@@ -101,4 +101,27 @@ export const FLOOR_FRAG = /* glsl */`
     float d = length(uEye - vW);
     col = mix(col, uAir, smoothstep(uFogNear, uFogFar, d));
     gl_FragColor = vec4(col, 1.0);
+
+    /* The slab joins the pipeline here, and it did not used to.
+    
+       Everything above is linear: uSlab, uHazard, uAir and the rest are
+       THREE.Color uniforms, which convert sRGB to linear on construction,
+       and a lambert term times a linear albedo is a linear radiance. What
+       was missing was the other end -- the curve and the encode that every
+       standard material in the building gets from three's output stage and
+       that a custom shader gets none of. Without them this wrote radiance
+       straight to an sRGB framebuffer, which is a factor of four to five too
+       dark in the mid tones, and the slab was compensated by lifting its
+       palette entry instead: floor went to #736f6b to make a floor that
+       should be about #333230 come out right.
+    
+       That compensation is what made the post pass impossible. A render
+       target is linear, so three's output stage does nothing there, and a
+       buffer where the slab is display-referred and the walls are linear
+       cannot be graded by any single curve -- measured, one exposure that
+       fixed the slab crushed the daylight and vice versa. With these two
+       lines the whole buffer is one space: linear on the way into the post
+       chain, display-referred once, at the end, wherever that end is. */
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }`;

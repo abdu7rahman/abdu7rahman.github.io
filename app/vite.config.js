@@ -37,6 +37,14 @@ export default defineConfig({
     // Not "assets": that directory already exists and holds the baked
     // robots and the social card. Keeping the bundle separate means a
     // build can never be confused for content.
+    //
+    // Because emptyOutDir is off, nothing here removes the previous
+    // bundle -- Vite writes a new content-hashed name and leaves the old
+    // one on disk, and eight dead 1.2 MB bundles had already been
+    // committed before anybody noticed. package.json's prebuild script
+    // clears this directory, which is safe precisely because it is
+    // Vite's and nothing else writes into it. Build with npm run build,
+    // not npx vite build, or the prebuild does not fire.
     assetsDir: "build",
     target: "es2022"
   }

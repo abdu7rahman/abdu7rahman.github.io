@@ -114,30 +114,11 @@ export const GRADE_FRAG = /* glsl */`
   uniform float uBloom;
   uniform float uContrast;
   uniform float uPivot;
-  uniform float uExposure;
   uniform float uGrain;
   uniform float uVig;
   varying vec2 vUv;
 
   float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-
-  /* Narkowicz's fit to the ACES curve, and it replaces three's own rather
-     than sitting on top of it.
-
-     three applies its tone map in the output stage of every material it
-     wrote, and only when it is drawing to the screen -- rendering into a
-     target, which is what this pass makes it do, silently turns it off. So
-     the exposure that used to live on the renderer had to come here or it
-     would have vanished, and the pass material is marked toneMapped false so
-     three does not put a second curve on top of this one on the way out.
-
-     Done once over the composited frame is also the only place it can be
-     done correctly now: the floor and the costmap reveal are raw
-     ShaderMaterials that three never tone mapped at all, so before this pass
-     the slab and the steel were on two different curves. */
-  vec3 aces(vec3 x){
-    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
-  }
 
   void main() {
     vec2 c = vUv - 0.5;
@@ -166,25 +147,49 @@ export const GRADE_FRAG = /* glsl */`
       texture2D(tDiffuse, vUv - off).b
     );
 
-    // The scatter, added in radiance. Additive on a near-black frame is
-    // exactly the image this is for, and it is added before the curve so the
-    // shoulder has something to roll off rather than being handed a display
-    // value that is already at the top of its range.
+    // The scatter, added in radiance -- which it now genuinely is. Both
+    // buffers are linear here, so a lamp face at 8.0 and a white-painted
+    // rail at 0.5 are sixteen stops of separation to the bright pass rather
+    // than the 0.9-against-1.0 they collapse to once a curve has been over
+    // them. Added before the curve so the shoulder has something to roll
+    // off, instead of being handed a display value already at the top.
     col += texture2D(tBloom, vUv).rgb * uBloom;
+    gl_FragColor = vec4(max(col, vec3(0.0)), 1.0);
 
-    /* Contrast about a pivot, in linear, before the curve.
+    /* The curve is three's, called here rather than reimplemented.
+    
+       This pass used to carry its own ACES and its own exposure, on the
+       reasoning that rendering into a target turns three's off. That much is
+       true -- WebGLPrograms passes NoToneMapping for any program compiled
+       while a target is bound -- but a second copy of the curve is still the
+       wrong answer, because then the no-post path and the post path are two
+       different curves maintained in two places, and they drifted: measured
+       on one patch of lit lane, the same floor read 51 of 255 through
+       three's output stage and 161 through this pass's.
+    
+       So the include, not a copy. This material is drawn to the canvas, so
+       the define is set and the chunk expands to three's own toneMapping()
+       at three's own toneMappingExposure -- the identical transform the
+       building gets when there is no post at all. The scene arrives here
+       linear because every material in it now ends on these same two chunks:
+       the standard ones from three, the slab, the costmap and the daylight
+       from their own source. One buffer, one space, one curve. */
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
 
-       This is the term the brief is actually about: harder light, not more of
-       it. A gain multiplies everything and moves the median, which is the
-       definition of brighter. A power about a pivot leaves the pivot exactly
-       where it is and pushes everything else away from it, which is the
-       definition of harder -- what is above the pivot goes up, what is below
-       goes down, and the pivot is chosen to sit on the surface the frame is
-       mostly made of so that most of the picture does not move at all. */
-    col = max(col, vec3(0.0));
-    col = uPivot * pow(col / uPivot, vec3(uContrast));
-
-    col = aces(col * uExposure);
+    /* Everything below is display-referred on purpose, and each of the three
+       has its own reason for being on this side of the curve rather than the
+       other.
+    
+       Contrast about a pivot: harder light, not more of it. A gain
+       multiplies everything and moves the median, which is the definition of
+       brighter. A power about a pivot leaves the pivot where it is and
+       pushes everything else away from it -- what is above goes up, what is
+       below goes down. The pivot has to be read in the space it is quoted
+       in, and 0.34 is a display value chosen to sit on the surface the frame
+       is mostly made of; in linear the same surface is 0.034 and the number
+       would mean something else entirely. */
+    gl_FragColor.rgb = uPivot * pow(max(gl_FragColor.rgb, 0.0) / uPivot, vec3(uContrast));
 
     /* Grain, in front of the falloff rather than behind it, which is not
        where the physics puts it -- on film the emulsion sits behind the lens,
@@ -201,27 +206,26 @@ export const GRADE_FRAG = /* glsl */`
        Per channel, because film grain is three emulsions and one grey wobble
        over the top of everything reads as video noise. Heavier in the
        shadows, which is where it lives on film and where this image mostly
-       is. */
+       is. Display side, because an amplitude of 0.028 is a barely-visible
+       wobble there and a fifth of the whole floor value in linear. */
     vec2 gp = vUv * vec2(1024.0, 1024.0) + fract(uTime) * 91.7;
     vec3 g = vec3(hash(gp), hash(gp + 17.3), hash(gp + 41.9)) - 0.5;
-    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col += g * uGrain * mix(1.4, 0.5, smoothstep(0.0, 0.5, luma));
+    float luma = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    gl_FragColor.rgb += g * uGrain * mix(1.4, 0.5, smoothstep(0.0, 0.5, luma));
 
     /* The falloff, on this side of the curve on purpose.
 
        In front of the curve is where the optics put it and it is the wrong
-       place: the fit above is concave, so darkening the corner before it
-       lands the corner on the steep part of the curve and the curve hands
-       most of the light back. Vignetting after the curve takes the display
-       value down by the factor it says it does.
+       place: ACES is concave, so darkening the corner before it lands the
+       corner on the steep part of the curve and the curve hands most of the
+       light back. Vignetting after takes the display value down by the
+       factor it says it does.
 
        Not an Instagram vignette: full strength everywhere inside r = 0.3 --
        which on a 1440 by 900 frame is a 540 pixel radius, so the whole
        reading panel and the whole aisle are untouched -- and a smoothstep
        rather than a power law, because a smoothstep has zero derivative at
        both ends and leaves no ring. */
-    col *= mix(1.0, smoothstep(1.02, 0.30, sqrt(0.5 * r2) * 1.4142), uVig);
-
-    gl_FragColor = vec4(col, 1.0);
-    #include <colorspace_fragment>
+    gl_FragColor.rgb *= mix(1.0, smoothstep(1.02, 0.30, sqrt(0.5 * r2) * 1.4142), uVig);
+    gl_FragColor.a = 1.0;
   }`;

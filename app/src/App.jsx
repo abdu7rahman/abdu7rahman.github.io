@@ -10,6 +10,8 @@ import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
 import Probe from "./nav/Probe.jsx";
+import Grade from "./lab/Grade.jsx";
+import { detect } from "./lib/capability.js";
 import Screens from "./bays/Screens.jsx";
 import Rooms from "./halls/Rooms.jsx";
 import Readout from "./nav/Readout.jsx";
@@ -75,6 +77,9 @@ export default function App() {
           <Screens />
           <Dolly />
           <Probe />
+          {/* The finish. Off on the low tier, where the fill it costs is the
+              whole budget. */}
+          {detect().quality.post && <Grade />}
         </Suspense>
       </Canvas>
 

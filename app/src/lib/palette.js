@@ -15,17 +15,22 @@
  * recognisably one thing.
  */
 export const P = {
-  /* Concrete, and these two are much lighter than the render they produce.
-     THREE.Color converts sRGB to linear on construction, so what the shader
-     receives is not the number written here: #232327 arrives as 0.0168, and
-     multiplied by the key it lands at 0.015, which after the tonemap is a
-     black floor. That is a factor of eight, it is invisible in the source,
-     and it has now cost this project a wasted pass twice -- once in the
-     document site's surface material and once here.
-     #6e6e78 arrives as 0.156, which under the key and the tonemap is the
-     mid grey a poured slab under high-bay light actually reads as. */
-  floor:    "#736f6b",
-  floorLit: "#98938c",
+  /* Concrete, and these two were the last thing in the building still being
+     compensated rather than corrected.
+     THREE.Color converts sRGB to linear on construction, so the number
+     written here is not the number the shader receives: #232327 arrives as
+     0.0168. That caught this project twice, and the fix taken both times was
+     to lift the entry until the render looked right -- which worked, and hid
+     the actual fault, which was that shaders/floor.js wrote its radiance
+     straight out with no tone curve and no sRGB encode while every standard
+     material beside it got both from three. Two errors of roughly inverse
+     size, and the slab looked correct only because they cancelled.
+     They no longer have to: floor.js ends on the two chunk includes now, so
+     these are ordinary albedos again and were re-derived rather than
+     re-guessed. #736f6b and #98938c, scaled in linear by the 0.418 that puts
+     a lit lane back at 95 of 255 through the real pipeline, are these. */
+  floor:    "#4c4946",
+  floorLit: "#65625d",
   /* Painted steel: guarding, racks, plinths, the shell. */
   steel:    "#3a3d42",
   steelDk:  "#212327",

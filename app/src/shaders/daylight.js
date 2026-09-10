@@ -15,10 +15,25 @@
  * by eye. That is why the rooflight run is on the left of the roof: from
  * anywhere else the shaft misses the aisle.
  *
- * These write gl_FragColor through toneMapping() and linearToOutputTexel(),
- * which three declares in the fragment prefix for every ShaderMaterial. A
- * custom shader gets neither for free, and one that skips them lands in a
- * different response curve from every standard material next to it.
+ * Both end on the two chunk includes rather than on calls, and the
+ * difference is not style. A custom shader gets no curve and no encode for
+ * free, and one that skips them lands in a different response from every
+ * standard material next to it -- so these two lines have to be here. But
+ * calling toneMapping() directly compiles only while three has declared it,
+ * and three declares it per program from the target being drawn into:
+ * WebGLPrograms takes renderer.toneMapping when the target is the canvas and
+ * NoToneMapping otherwise, and with NoToneMapping it emits neither the
+ * define nor the function. So the direct call built fine for a year and then
+ * failed the day a post pass rendered the scene into a target -- "no
+ * matching overloaded function found", the material dead, the shafts and the
+ * pools simply absent. Measured at the entrance: the shaft region read p50
+ * 180 of 255 without the pass and p50 2 with it, which looked exactly like a
+ * colour-space fault and was a compile error.
+ *
+ * <tonemapping_fragment> is the same call wrapped in the #if that three
+ * writes the define for, so it becomes nothing when there is no curve to
+ * apply instead of becoming a broken program. Identical output on the canvas
+ * path, and it survives a render target.
  */
 
 /* One aperture, swept along the sun into a solid, and the exact length of
@@ -105,8 +120,8 @@ export const SHAFT_FRAG = /* glsl */`
     I *= 1.0 - smoothstep(uFogNear, uFogFar, d);
 
     gl_FragColor = vec4(uSky * I, 1.0);
-    gl_FragColor.rgb = toneMapping(gl_FragColor.rgb);
-    gl_FragColor = linearToOutputTexel(gl_FragColor);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }`;
 
 /* The slab under all of it: where the daylight lands, drawn analytically on
@@ -208,7 +223,7 @@ export function poolFrag(mouths) {
     col *= 1.0 - smoothstep(uFogNear, uFogFar, d);
 
     gl_FragColor = vec4(col, 1.0);
-    gl_FragColor.rgb = toneMapping(gl_FragColor.rgb);
-    gl_FragColor = linearToOutputTexel(gl_FragColor);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }`;
 }
