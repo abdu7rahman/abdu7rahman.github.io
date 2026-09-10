@@ -33,7 +33,14 @@ canvas { display: block; touch-action: pan-y; }
    21 of 255: the label at #9e9ea6 is 6.9:1 on that, the station number at
    #7d7e86 is 4.5:1, and the one you are standing in is ink at 17.8:1. Two
    readable weights and an unmistakable third, rather than one weight and an
-   opacity ramp that put the quiet end below threshold. */
+   opacity ramp that put the quiet end below threshold.
+
+   Everything written over this building sits on one of these now -- the
+   index, the cell caption, the live hint, the corner block. The rule that
+   produced them all: type on a render is type on whatever the camera
+   happens to be pointing at, and in here that is a lit slab or a hazard
+   rail or a doorway open to the sky. The same #9e9ea6 that is 6.9:1 on the
+   plate is 2.5:1 straight on the floor. */
 .index {
   position: fixed; left: clamp(14px, 2vw, 34px); top: 50%;
   transform: translateY(-50%); z-index: 5;
@@ -98,9 +105,38 @@ canvas { display: block; touch-action: pan-y; }
   font: 400 15px/1.55 var(--ui);
 }
 
+/* The corner block: the way out to the written site, and the visit count.
+   Bottom left, which is the one part of the frame nothing else uses -- the
+   index is centred on the left edge, the caption is centred at the foot and
+   the reading column is on the right. */
+.edge {
+  position: fixed; left: clamp(14px, 2vw, 34px); bottom: 14px; z-index: 5;
+  pointer-events: none;
+  padding: 9px 14px 10px 11px;
+  background: linear-gradient(to bottom, rgba(9,9,10,.88), rgba(9,9,10,.82));
+  border-left: 2px solid var(--steel);
+  font: 600 10px/1.6 var(--mono); letter-spacing: .10em; text-transform: uppercase;
+}
+.edge a {
+  pointer-events: auto;
+  color: #9e9ea6; text-decoration: none;
+  border-bottom: 1px solid var(--steel);
+  padding-bottom: 1px;
+}
+.edge a:hover { color: var(--ink); border-bottom-color: var(--hazard); }
+.edge a:focus-visible {
+  outline: 2px solid var(--hazard); outline-offset: 3px; border-radius: 2px;
+}
+.edge p { margin: 7px 0 0; color: #7d7e86; }
+.edge p[hidden] { display: none; }
+
 @media (max-width: 820px) {
   .index { display: none; }
   .plate { width: 92vw; bottom: 22px; }
+  /* The index goes at this width and the corner block does not: on a phone
+     the way out to the document is the more useful of the two, not the
+     less. */
+  .edge { bottom: auto; top: 12px; left: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .plate { animation: none; }

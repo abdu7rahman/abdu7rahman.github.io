@@ -51,6 +51,12 @@ async function session() {
   return body + '.' + b64(new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(body))));
 }
 
+/* The page under test is written.html, not index.html.
+ *
+ * index.html is the lab. The feedback form is a document control and it only
+ * exists on the document, so this file follows it there rather than
+ * asserting against a page that never had one.
+ */
 (async () => {
   await new Promise(r => srv.listen(0, r));
   const BASE = 'http://localhost:' + srv.address().port;
@@ -71,7 +77,7 @@ async function session() {
         'access-control-allow-headers': 'content-type',
         'access-control-allow-methods': 'POST, OPTIONS' } });
     });
-    await p.goto(BASE + '/index.html', { waitUntil: 'load' });
+    await p.goto(BASE + '/written.html', { waitUntil: 'load' });
     return { c, p, posted };
   }
 
@@ -116,7 +122,7 @@ async function session() {
     ok('with the message, name and contact',
        !!sent.body && sent.name === 'Ada' && sent.contact === 'ada@example.com', JSON.stringify(sent));
     ok('an empty honeypot', sent.website === '', JSON.stringify(sent.website));
-    ok('and the page it came from', sent.path === '/index.html', JSON.stringify(sent.path));
+    ok('and the page it came from', sent.path === '/written.html', JSON.stringify(sent.path));
     ok('the form thanks you afterwards', (await p.textContent('.say')).indexOf('Thank you') >= 0);
     await c.close();
   }

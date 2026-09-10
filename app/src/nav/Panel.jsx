@@ -116,6 +116,12 @@ export default function Panel({ id }) {
           {CONTENT.contact.map((c, i) => (
             <li key={i}><a href={c.href}>{c.label}</a></li>
           ))}
+          {/* The same work as a document. Baked from it, in fact --
+              tools/bake_content.py reads written.html to produce every panel
+              in this building -- so it is the canonical copy and belongs in
+              the list of ways to reach the author's work, not hidden behind
+              a corner link. */}
+          <li><a href="/written.html">The same work, written</a></li>
           <li className="where">Berkeley, California</li>
         </ul>
       </div>

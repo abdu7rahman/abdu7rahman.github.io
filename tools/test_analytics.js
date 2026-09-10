@@ -33,6 +33,16 @@ const srv = http.createServer((rq, rs) => {
   });
 });
 
+/* The page under test is written.html, not index.html.
+ *
+ * index.html is the lab now. It loads the same beacon -- the front door was
+ * the one page nobody was counting until it did -- but the section
+ * instrumentation this file is mostly about lives on the document: the
+ * engaged-time observer keys off [data-demo], and the building has none. So
+ * the deep cases run against the page that has the sections, and one case
+ * below checks the beacon fires from the lab as well, which is the
+ * regression that put this comment here.
+ */
 (async () => {
   await new Promise(r => srv.listen(0, r));
   const BASE = 'http://localhost:' + srv.address().port;
@@ -69,10 +79,15 @@ const srv = http.createServer((rq, rs) => {
   console.log('\nA. a page view, and nothing else');
   {
     const c = await br.newContext();
-    const { p, sent } = await open(c, BASE + '/index.html');
+    const { p, sent } = await open(c, BASE + '/written.html');
     await p.waitForTimeout(1800);
     ok('one pageview is sent', kinds(sent) === 'pageview', kinds(sent));
-    ok('with the path, not the full URL', sent[0] && sent[0].path === '/', JSON.stringify(sent[0]));
+    // '/written.html', not '/'. The literal used to be '/' because the page
+    // under test was index.html and analytics.js normalises a directory
+    // index away; the document moved and the normalisation did not. What is
+    // being checked is unchanged: a path, never the origin or the query.
+    ok('with the path, not the full URL',
+       sent[0] && sent[0].path === '/written.html', JSON.stringify(sent[0]));
     ok('and a session id', sent[0] && typeof sent[0].session === 'string' && sent[0].session.length > 8);
     // An exact key set, so a field added to the payload has to be looked at
     // here rather than slipping in. ref is a host and a short path, never a
@@ -83,6 +98,30 @@ const srv = http.createServer((rq, rs) => {
     ok('no cookie is set', (await c.cookies()).length === 0, JSON.stringify(await c.cookies()));
     const ls = await p.evaluate(() => { try { return Object.keys(localStorage).join(); } catch (e) { return 'blocked'; } });
     ok('nothing durable is written', ls === '' || ls === 'visit-seen', ls);
+    await c.close();
+  }
+
+  console.log('\nA1. the lab reports too');
+  {
+    /* The regression this section exists for: index.html became the lab and
+       the beacon did not come with it, so the page the site's own URL leads
+       to was the one page sending nothing. Only the arrival is checked here
+       -- the engaged-time and section cases stay on the document, because
+       the building has no [data-demo] sections to observe. */
+    const c = await br.newContext();
+    const { p, sent } = await open(c, BASE + '/index.html');
+    /* Longer than every other wait in this file, and not arbitrarily. The
+       beacon is flushed by a one second timer, and a timer cannot fire while
+       the main thread is busy -- which on this page it is, for several
+       seconds, compiling shaders against a software rasteriser. Traced
+       before this number was chosen: the request went out, it just went out
+       after the 2.2 s the document pages are given. */
+    await p.waitForTimeout(9000);
+    const pv = sent.find(e => e.kind === 'pageview');
+    ok('the front door sends a pageview', !!pv, kinds(sent));
+    // Normalised to '/', because that is the URL a reader actually has.
+    ok('as the site root', pv && pv.path === '/', JSON.stringify(pv && pv.path));
+    ok('no cookie there either', (await c.cookies()).length === 0);
     await c.close();
   }
 
@@ -107,7 +146,7 @@ const srv = http.createServer((rq, rs) => {
         if (body) { try { JSON.parse(body).forEach(e => sent.push(e)); } catch (e) {} }
         route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
       });
-      await p.goto(BASE + '/index.html', { waitUntil: 'load', referer });
+      await p.goto(BASE + '/written.html', { waitUntil: 'load', referer });
       await p.waitForTimeout(1800);
       const pv = sent.find(e => e.kind === 'pageview');
       ok(label, pv && pv.ref === want, JSON.stringify(pv && pv.ref) + ' want ' + JSON.stringify(want));
@@ -125,7 +164,7 @@ const srv = http.createServer((rq, rs) => {
         if (body) { try { JSON.parse(body).forEach(e => sent.push(e)); } catch (e) {} }
         route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
       });
-      await p.goto(BASE + '/index.html', { waitUntil: 'load', referer: BASE + '/demo.html' });
+      await p.goto(BASE + '/written.html', { waitUntil: 'load', referer: BASE + '/demo.html' });
       await p.waitForTimeout(1800);
       const pv = sent.find(e => e.kind === 'pageview');
       ok('an internal referrer counts as none', pv && !pv.ref, JSON.stringify(pv && pv.ref));
@@ -135,7 +174,7 @@ const srv = http.createServer((rq, rs) => {
     // Only the pageview carries it.
     {
       const c = await br.newContext();
-      const { p, sent } = await open(c, BASE + '/index.html');
+      const { p, sent } = await open(c, BASE + '/written.html');
       await p.waitForTimeout(1800);
       ok('other events do not repeat it',
         sent.filter(e => e.kind !== 'pageview').every(e => e.ref === undefined),
@@ -147,7 +186,7 @@ const srv = http.createServer((rq, rs) => {
   console.log('\nB. the collector is inert until it is configured');
   {
     const c = await br.newContext();
-    const { p, sent } = await open(c, BASE + '/index.html', { rewrite: false });
+    const { p, sent } = await open(c, BASE + '/written.html', { rewrite: false });
     await p.waitForTimeout(1800);
     ok('an empty endpoint sends nothing', sent.length === 0, kinds(sent));
     await c.close();
@@ -163,7 +202,7 @@ const srv = http.createServer((rq, rs) => {
     const sent = [];
     await p.addInitScript(init);
     await p.route('**/collector.test/**', r => { sent.push(1); r.fulfill({ status: 204 }); });
-    await p.goto(BASE + '/index.html', { waitUntil: 'load' });
+    await p.goto(BASE + '/written.html', { waitUntil: 'load' });
     await p.waitForTimeout(1800);
     ok(name + ' sends nothing at all', sent.length === 0, String(sent.length));
     await c.close();
@@ -204,7 +243,7 @@ const srv = http.createServer((rq, rs) => {
   console.log('\nE. links out, by host only');
   {
     const c = await br.newContext();
-    const { p, sent } = await open(c, BASE + '/index.html');
+    const { p, sent } = await open(c, BASE + '/written.html');
     // Block the navigation itself: the click handler still runs, and the page
     // stays alive long enough to assert on what it sent.
     await p.route('**://github.com/**', r => r.abort());
@@ -246,7 +285,7 @@ const srv = http.createServer((rq, rs) => {
           return real(url, data);
         };
       });
-      const { p, sent } = await open(c, BASE + '/index.html');
+      const { p, sent } = await open(c, BASE + '/written.html');
       await p.waitForTimeout(1400);
       // Let the click and its handler run, but not the PDF load, so the page
       // survives long enough to be asserted on.
@@ -272,7 +311,7 @@ const srv = http.createServer((rq, rs) => {
   console.log('\nF. leaving the page reports how long it was read');
   {
     const c = await br.newContext();
-    const { p, sent } = await open(c, BASE + '/index.html');
+    const { p, sent } = await open(c, BASE + '/written.html');
     await p.waitForTimeout(2600);
     await p.evaluate(() => window.dispatchEvent(new Event('pagehide')));
     await p.waitForTimeout(500);

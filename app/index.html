@@ -5,14 +5,66 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mohammed Abdul Rahman &mdash; robotics engineer</title>
 <meta name="description" content="Motion planning, manipulation and physical AI. A robotics high bay you can walk through, with seven rigs running real code in the browser.">
+<meta name="author" content="Mohammed Abdul Rahman">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="canonical" href="https://abdu7rahman.github.io/">
+<!-- The card, which this page is the one that needs it: written.html carried
+     the whole set while the page people actually share carried none of it,
+     so every link to the site root scraped as a bare URL. Absolute, because
+     a scraper resolves these without a document base. assets/og.png is built
+     by tools/gen_og.js from the same tokens as style.css. -->
+<meta property="og:title" content="Mohammed Abdul Rahman &mdash; robotics engineer">
+<meta property="og:description" content="Motion planning, manipulation and physical AI. A robotics high bay you can walk through, with seven rigs running real code in the browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mohammed Abdul Rahman">
+<meta property="og:url" content="https://abdu7rahman.github.io/">
+<meta property="og:image" content="https://abdu7rahman.github.io/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mohammed Abdul Rahman, robotics engineer. Motion planning, manipulation, and the bringup that makes them run. Four of these repos execute in your browser.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- The written site is the same content as a document, and it is the
+     canonical copy: tools/bake_content.py generates the lab's panels from
+     it. Declared here so a reader who wants the page rather than the
+     building can find it, and so a crawler knows the two are one thing. -->
+<link rel="alternate" type="text/html" href="/written.html" title="The same work, written">
 </head>
 <body>
 <div id="root"></div>
+
+<!-- The two pieces of chrome that are not React's, and are here rather than
+     in the app for one reason each.
+
+     The written link, because a reader who wants the document should not
+     have to walk sixty-six metres to the office to find out it exists, and
+     because on a phone the building is the expensive way to read a table.
+
+     The visit count, because visits.js is a deferred classic script and runs
+     before the module that mounts the app -- so an element React renders is
+     an element the counter finds missing and gives up on. Static markup is
+     the only thing that is there when it looks. It stays hidden unless a
+     real number arrives; that rule is the script's and it is the right one. -->
+<footer class="edge">
+  <a href="/written.html">Read it as a document</a>
+  <p id="visits" hidden><span data-count></span> visits</p>
+</footer>
+
 <noscript>
+  <!-- This used to point at /index.html, which is this page: a reader with no
+       JavaScript was sent to the document they were already failing to
+       load. -->
   <p>This is a WebGL facility and it needs JavaScript. The written version of
-     everything in it is at <a href="/index.html">the document site</a>.</p>
+     everything in it is at <a href="/written.html">the document site</a>.</p>
 </noscript>
+<!-- Root-absolute, so Vite treats them as public assets and leaves them
+     alone rather than trying to pull them into the bundle. They ran on
+     written.html and nowhere else, which meant the front door was the one
+     page nobody was counting. -->
+<script src="/analytics.js" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
+<script src="/visits.js" defer></script>
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
