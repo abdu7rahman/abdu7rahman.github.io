@@ -89,7 +89,10 @@ canvas { display: block; touch-action: pan-y; }
                      to   { opacity: 1; transform: none; } }
 .plate--room h1 { font-size: clamp(26px, 3.4vw, 40px); }
 .plate--room .lede { margin-left: 0; max-width: 46ch; }
-.plate--room.plate--wide, .plate--room:has(.panel--wide) { width: min(64vw, 860px); }
+/* Set from the component, which already knows which rooms are wide, rather
+   than sniffed with :has(). One less thing to support and one less way for
+   the width to disagree with the content. */
+.plate--room.plate--wide { width: min(64vw, 860px); }
 
 .panel {
   margin-top: 18px; padding: 18px 20px 22px;
@@ -147,7 +150,19 @@ canvas { display: block; touch-action: pan-y; }
 .panel .where { color: #9a9aa0; }
 
 @media (max-width: 980px) {
-  .plate--room, .plate--room:has(.panel--wide) {
+  .plate--room, .plate--room.plate--wide {
     left: 12px; right: 12px; width: auto; top: 76px; bottom: 12px;
   }
+}
+
+/* Focus has to be visible on a dark building, and the default ring is not.
+   Keyed to the hazard colour so it reads as the same system as everything
+   else that wants attention in here. */
+.index button:focus-visible, .panel a:focus-visible {
+  outline: 2px solid var(--hazard); outline-offset: 3px; border-radius: 2px;
+}
+/* A reader who asked for less motion gets the building held still: the
+   plates stop sliding in and the smooth scroll is dropped in Readout too. */
+@media (prefers-reduced-motion: reduce) {
+  .plate--room { animation: none; }
 }
