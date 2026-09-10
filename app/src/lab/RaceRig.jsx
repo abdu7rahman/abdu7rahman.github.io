@@ -1,10 +1,11 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
-import { purePursuit, stanley, MPPI, nearest } from "./demos/controllers.js";
+import { purePursuit, stanley, MPPI, nearest, ahead } from "./demos/controllers.js";
 import { Local } from "./demos/dwa.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
+import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -75,8 +76,10 @@ export default function RaceRig({ stop }) {
           // fairest thing to hand it -- anything further and it is being
           // asked to do global planning it does not claim to do.
           const [i] = nearest(path, st[0], st[1]);
-          const j = Math.min(path.length - 1, i + 22);
-          const [v, w] = dwa.plan(st, path[j], []);
+          // Wrapped, for the reason on ahead(): clamping pinned this goal to
+          // the last node for the final stretch of every lap, which put the
+          // target on top of the robot and stopped it.
+          const [v, w] = dwa.plan(st, ahead(path, i, 0.58), []);
           return [v, w];
         } },
       { name: "mppi", col: "#9b8cff",
@@ -86,8 +89,9 @@ export default function RaceRig({ stop }) {
   }, []);
 
   const poses = useRef(kit.runners.map((_, i) => {
-    // Spaced back along the plan from the same start, so nobody begins in
-    // front. The heading is the plan's own tangent there.
+    /* Spaced along the plan from one start, evenly, and on a closed loop
+       there is no front: the four are a lap apart from nobody. The heading
+       is the plan's own tangent where each one stands. */
     const p = kit.path;
     let acc = 0, k = 0;
     while (k < p.length - 2 && acc < i * LEAD) {
@@ -124,9 +128,36 @@ export default function RaceRig({ stop }) {
     return g;
   }, [kit]);
 
+  /* Distance travelled, per machine, which is the only comparison that
+     means anything: every one of them is on the same plan with the same
+     clock and the same ceilings, so the one that has gone furthest is the
+     one that wasted the least. Not distance along the reference -- a
+     controller that wanders would score well on that for wandering. */
+  useEffect(() => register(stop.id, {
+    title: "Four controllers, one plan",
+    actions: [{ label: "Restart", on: () => reset() }],
+    readout: () => kit.runners.map((r, i) =>
+      [r.name, poses.current[i].travel.toFixed(2) + " m"]),
+    hint: "Distance each has actually driven, not distance along the plan."
+  }), [stop.id, kit]);
+
+  function reset() {
+    const p = kit.path;
+    poses.current.forEach((q, i) => {
+      let acc = 0, k = 0;
+      while (k < p.length - 2 && acc < i * LEAD) {
+        acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
+      }
+      q.x = p[k][0]; q.y = p[k][1];
+      q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
+      q.travel = 0; q.turned = 0; q.v = 0; q.w = 0;
+    });
+  }
+
   useFrame(({ camera }, dt) => {
     const d = Math.min(0.1, dt);
     surface.uEye.value.copy(camera.position);
+    if (!isRunning(stop.id)) return;
     acc.current += d;
     const tick = acc.current >= TICK;
     if (tick) acc.current -= TICK;

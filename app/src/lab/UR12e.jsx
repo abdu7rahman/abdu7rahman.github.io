@@ -9,12 +9,18 @@ import { P } from "../lib/palette.js";
 /* The actual machine: Universal Robots' own triangles, articulated by the
  * same measured kinematics the rest of this project solves against.
  *
- * 20,751 triangles baked by tools/bake_arm.py from the pinned UR description
+ * 21,010 triangles baked by tools/bake_arm.py from the pinned UR description
  * meshes, welded at 0.5 mm and decimated to where the joint caps stop reading
  * as cut gems. It is 379 KB of JSON, which is more than everything else in
- * the building put together, so it is fetched once and shared: every cell
- * that shows an arm points at the same geometry and only its link matrices
- * differ.
+ * the building put together, so it is fetched once: the bake is requested a
+ * single time and cached at module scope however many arms are mounted.
+ *
+ * Fetched once, not shared once. Each mounted arm creases and uploads its
+ * own BufferGeometry from that one bake -- four of them across the reach,
+ * replan and assembly bays, which is roughly 5 MB of duplicated vertex
+ * data. A shared-geometry cache would fix it and is not worth writing while
+ * the number is four; it is written down here so the fifth arm is a
+ * decision rather than a surprise.
  *
  * The cycle is the one from the document site -- fourteen seconds a traverse,
  * played out and back because the four waypoints do not close and wrapping

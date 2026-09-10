@@ -49,13 +49,28 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   const title = () => pg.evaluate(() =>
     (document.querySelector('.index li.on .t') || {}).textContent);
 
+  /* Wait for the camera, not for a clock. The document is 8,611 px of
+     scrollbar for 66 m of building and the browser's own smooth scroll
+     crosses it at its own pace; at four frames a second a fixed dwell is
+     either far too long or, as it was, silently too short -- a station click
+     that had not landed yet read as a station click that did nothing. */
+  const settle = async () => {
+    let prev = null, still = 0;
+    for (let i = 0; i < 50 && still < 3; i++) {
+      const z = await pg.evaluate(() => +window.__lab.camera.position.z.toFixed(3));
+      still = (prev !== null && Math.abs(z - prev) < 0.004) ? still + 1 : 0;
+      prev = z;
+      await pg.waitForTimeout(600);
+    }
+  };
+
   console.log('\nA. the canvas gets the pointer at all');
   {
-    // The reading is closed until it is asked for, so ask: the point of the
-    // third check is that an open column takes its own clicks, and there is
-    // nothing to check while it is shut.
-    await pg.click('.ask');
-    await pg.waitForTimeout(1200);
+    // Open, whatever it is: the entrance carries its reading by default and
+    // every other station does not, so a bare click toggles the wrong way
+    // half the time. The point of the third check is that an open column
+    // takes its own clicks.
+    if (!await pg.$('.plate')) { await pg.click('.ask'); await pg.waitForTimeout(1200); }
     const hit = await pg.evaluate(() => {
       const at = (x, y) => { const e = document.elementFromPoint(x, y);
         return e ? e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : '') : 'none'; };
@@ -72,22 +87,40 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     await pg.waitForTimeout(900);
   }
 
-  console.log('\nA1. and it is shut until it is asked for');
+  console.log('\nA1. the entrance reads, a cell waits to be asked');
   {
-    const st = await pg.evaluate(() => ({
+    /* The rule, and it has two halves. The entrance is who this is and what
+       he does, so it carries its reading on arrival -- a portfolio whose
+       front page makes you press a key to find out whose it is has hidden
+       the only thing every visitor wants. A test cell does not: there the
+       reading is a caption over the work it captions. */
+    await pg.reload({ waitUntil: 'load' });
+    await pg.waitForTimeout(14000);
+    const home = await pg.evaluate(() => ({
       plate: !!document.querySelector('.plate'),
+      at: (document.querySelector('.index li.on .t') || {}).textContent,
       ask: (document.querySelector('.ask') || {}).textContent || null
     }));
-    ok('no reading on screen by default', !st.plate, JSON.stringify(st));
-    ok('and something says how to get it', /read/i.test(st.ask || ''), String(st.ask));
+    ok('you land at the entrance', /high bay/i.test(home.at || ''), String(home.at));
+    ok('and its reading is up', home.plate, JSON.stringify(home));
+    ok('with a control that says so', /hide/i.test(home.ask || ''), String(home.ask));
+
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(1200);
+    ok('escape puts it away',
+       !await pg.evaluate(() => !!document.querySelector('.plate')));
     await pg.keyboard.press('r');
-    await pg.waitForTimeout(1000);
-    const on = await pg.evaluate(() => !!document.querySelector('.plate'));
-    ok('the keyboard opens it', on);
+    await pg.waitForTimeout(1200);
+    ok('and the keyboard brings it back',
+       await pg.evaluate(() => !!document.querySelector('.plate')));
+
+    // Once the reader has answered, their answer holds at every station.
     await pg.keyboard.press('Escape');
     await pg.waitForTimeout(1000);
-    const off = await pg.evaluate(() => !!document.querySelector('.plate'));
-    ok('and escape puts it away', !off);
+    await pg.click('.index li:nth-child(3) button');
+    await settle();
+    ok('and it stays away at a cell',
+       !await pg.evaluate(() => !!document.querySelector('.plate')));
   }
 
   console.log('\nB. the floor answers the cursor');
@@ -124,15 +157,15 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   console.log('\nC. the index and the keyboard walk the building');
   {
     const t0 = await title();
-    await pg.click('.index li:nth-child(7) button');
-    await pg.waitForTimeout(7000);
+    await pg.click('.index li:nth-child(9) button');
+    await settle();
     const t1 = await title();
     ok('a station click moves you', t1 && t1 !== t0, t0 + ' -> ' + t1);
     // Off the button first: the handler ignores arrows while focus is on a
     // BUTTON or an A, where the arrows already mean something else.
     await pg.evaluate(() => document.activeElement && document.activeElement.blur());
     await pg.keyboard.press('ArrowDown');
-    await pg.waitForTimeout(7000);
+    await settle();
     const t2 = await title();
     ok('an arrow key moves one stop', t2 && t2 !== t1, t1 + ' -> ' + t2);
   }
@@ -140,19 +173,11 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   console.log('\nD. a cell can be taken');
   {
     await pg.click('.index li:nth-child(7) button');
-    /* Settle before aiming. Under a software rasteriser this page runs at
-       about four frames a second, and a smooth scroll plus the dolly's own
-       easing take many seconds to arrive -- measured, the projected position
-       of a monitor moved 386 px between computing an aim and clicking it, so
-       the click landed on bare floor. That is the probe's latency, not the
-       page's. */
-    let prev = null, still = 0;
-    for (let i = 0; i < 40 && still < 3; i++) {
-      const z = await pg.evaluate(() => +window.__lab.camera.position.z.toFixed(3));
-      still = (prev !== null && Math.abs(z - prev) < 0.004) ? still + 1 : 0;
-      prev = z;
-      await pg.waitForTimeout(700);
-    }
+    /* Settle before aiming, for the reason on settle(): measured, the
+       projected position of a monitor moved 386 px between computing an aim
+       and clicking it, so the click landed on bare floor and this probe
+       called it a product fault. */
+    await settle();
 
     /* Aimed at something R3F will actually deliver a click to, which is the
        only definition of clickable that matters: an object in its own

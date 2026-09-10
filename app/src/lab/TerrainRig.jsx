@@ -1,9 +1,10 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import Go2 from "./Go2.jsx";
 import { Search } from "./demos/astar.js";
 import { heights, COSTS, RELIEF } from "./demos/terrain.js";
+import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -20,10 +21,18 @@ import { WORK } from "../lib/plan.js";
  *
  * The goal is the cursor, which is what the written section says it is.
  */
-const COURSE_X = 2.30, COURSE_Y = 2.70;
+/* One lattice for the mesh and the samples, which it was not.
+ *
+ * CELL was 0.075 and the plane was PlaneGeometry(2.30, 2.70, NX-1, NY-1),
+ * whose vertices are 2.30/30 and 2.70/35 apart -- so the height a cell
+ * carries was drawn 12 mm out in x and 37 mm out in y by the far edge, and
+ * the paths could sink into ground the planner thought was under them. The
+ * course size is derived from the cell now instead of the other way round,
+ * so the two cannot disagree. */
+const NX = 31, NY = 36;
 const CELL = 0.075;
-const NX = Math.round(COURSE_X / CELL);
-const NY = Math.round(COURSE_Y / CELL);
+const COURSE_X = NX * CELL;   // 2.325
+const COURSE_Y = NY * CELL;   // 2.700
 const TUBE_R = 0.009;
 const WALK = 0.34;              // metres per second along the chosen path
 const SHOW = 5.5;               // seconds each cost function leads the walk
@@ -46,7 +55,7 @@ export default function TerrainRig({ stop }) {
     const wall = new Uint8Array(NX * NY);   // no walls here: cost is the map
     const fields = COSTS.map(c => c.build(h, NX, NY));
     return { h, wall, fields, searches: fields.map(f => new Search(NX, NY, wall, f)),
-             paths: COSTS.map(() => []) };
+             paths: COSTS.map(() => []), lastSolve: -1 };
   }, []);
 
   /* The bench top, displaced. A plane with NX by NY segments and its vertex
@@ -54,7 +63,11 @@ export default function TerrainRig({ stop }) {
      texture: real geometry, so it self-shadows under the cell's task light
      and the paths lie on it instead of floating over a flat board. */
   const ground = useMemo(() => {
-    const g = new THREE.PlaneGeometry(COURSE_X, COURSE_Y, NX - 1, NY - 1);
+    // NX by NY vertices, so a vertex is a cell centre and the spacing is
+    // exactly CELL: the plane spans one cell less than the course in each
+    // axis, which is what puts the outer vertices on the outer cell centres.
+    const g = new THREE.PlaneGeometry(COURSE_X - CELL, COURSE_Y - CELL,
+                                      NX - 1, NY - 1);
     const pos = g.attributes.position;
     const col = new Float32Array(pos.count * 3);
     /* Darker than they look. These are albedos and the cell's task light is
@@ -96,9 +109,9 @@ export default function TerrainRig({ stop }) {
       Math.round((goal.current.y + COURSE_Y / 2) / CELL - 0.5)));
     kit.searches.forEach((se, k) => {
       se.start(start[0], start[1], gi, gj);
-      // Run to completion here rather than a few nodes a frame: four searches
-      // over 850 cells is well inside a frame, and a bay about comparing
-      // four answers wants the four to appear together.
+      // Run to completion here rather than a few nodes a frame: four
+      // searches over 1,116 cells is well inside a frame, and a bay about
+      // comparing four answers wants the four to appear together.
       se.step(NX * NY * 4);
       kit.paths[k] = se.found ? se.path.map(([i, j]) => [gx(i), gy(j)]) : [];
       const mesh = tubes.current[k];
@@ -117,8 +130,56 @@ export default function TerrainRig({ stop }) {
 
   const solved = useRef(false);
 
+  /* Which cost the machine is actually walking, chosen rather than cycled.
+     The four paths are all drawn all the time -- that is the comparison --
+     but only one of them is being driven, and being able to say which is
+     the difference between watching four lines and asking a question about
+     one of them. New ground rebuilds the field from a fresh seed, because a
+     cost function that only ever gets one terrain has not been tested. */
+  useEffect(() => register(stop.id, {
+    title: "Four costs, one ground",
+    actions: [{ label: "New ground", on: () => reseed() }],
+    choice: {
+      get: () => walk.current.which,
+      set: (v) => { walk.current.which = v; walk.current.u = 0; walk.current.t = 0; },
+      options: COSTS.map((c, i) => ({ value: i, label: c.label }))
+    },
+    readout: () => {
+      const w = walk.current;
+      return COSTS.map((c, i) => {
+        const path = kit.paths[i];
+        const len = path && path.length > 1 ? pathLength(path).toFixed(2) + " m" : "--";
+        return [(i === w.which ? "> " : "") + c.label, len];
+      });
+    },
+    hint: "Hover the ground to move the goal. Lengths are the paths as planned."
+  }), [stop.id, kit]);
+
+  function reseed() {
+    const h = heights(NX, NY, (Math.random() * 1e9) | 0);
+    kit.h.set(h);
+    kit.fields.forEach((f, k) => f.set(COSTS[k].build(kit.h, NX, NY)));
+    const pos = ground.attributes.position;
+    const col = ground.attributes.color.array;
+    const lo = new THREE.Color("#161310"), hi = new THREE.Color("#3a332b");
+    const c = new THREE.Color();
+    for (let k = 0; k < pos.count; k++) {
+      const i = k % NX, j = NY - 1 - Math.floor(k / NX);
+      const z = kit.h[j * NX + i];
+      pos.setZ(k, z);
+      c.copy(lo).lerp(hi, z / RELIEF);
+      col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+    }
+    pos.needsUpdate = true;
+    ground.attributes.color.needsUpdate = true;
+    ground.computeVertexNormals();
+    walk.current.u = 0;
+    solve();
+  }
+
   useFrame(({ clock }, dt) => {
     const d = Math.min(0.1, dt);
+    if (!isRunning(stop.id)) return;
     held.current += d;
     if (!solved.current && tubes.current[3]) { solve(); solved.current = true; }
 
@@ -127,12 +188,21 @@ export default function TerrainRig({ stop }) {
       // the four answers keep changing and the disagreement is visible.
       const a = clock.elapsedTime * 0.28;
       goal.current.set(0.72 * Math.cos(a), 0.55 + 0.55 * Math.sin(a * 0.7));
-      if (Math.floor(clock.elapsedTime * 2) % 2 === 0) solve();
+      /* On the edge, twice a second, and not on a 50% duty cycle -- which is
+         what the modulo was: it ran four complete A* passes over 1,116 cells
+         and rebuilt four tube geometries on half of every second's frames,
+         thirty times a second, whether or not anybody was in this bay. */
+      const tick = Math.floor(clock.elapsedTime * 2);
+      if (tick !== kit.lastSolve) { kit.lastSolve = tick; solve(); }
     }
 
+    /* The walk loops on its own path rather than stepping to the next cost
+       when it finishes. Which cost is being driven belongs to the reader
+       now; a timer taking it back after five seconds is the cell arguing
+       with somebody who just answered it. */
     const w = walk.current;
     w.t += d;
-    if (w.t > SHOW) { w.t = 0; w.u = 0; w.which = (w.which + 1) % COSTS.length; }
+    if (w.u >= 1 && w.t > SHOW) { w.t = 0; w.u = 0; }
     const path = kit.paths[w.which];
     if (path && path.length > 1 && dog.current) {
       w.u = Math.min(1, w.u + (WALK * d) / Math.max(0.2, pathLength(path)));

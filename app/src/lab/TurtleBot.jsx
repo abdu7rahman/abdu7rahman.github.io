@@ -211,8 +211,20 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint, pos
     if (pose && pose.current) {
       const q = pose.current;
       if (drive.current) {
+        /* No quarter turn here, and that is the difference between this
+           branch and the canned one below.
+        
+           The traverse measures its heading from the bench's y axis, because
+           it drives along setPosition(0, p, 0), so it adds pi/2 to get the
+           baked base_link -- which is +x forward -- pointing along y. Every
+           outside controller in this building integrates x += cos(psi) and
+           y += sin(psi), so its psi is measured from x and is already the
+           model's own forward. Adding the quarter turn to that renders the
+           machine exactly perpendicular to its velocity: all three Burger
+           bays crabbed, and in the local control cell the argmin arc the
+           planner drew left the robot's left flank. */
         drive.current.matrix
-          .makeRotationZ(q.psi + Math.PI / 2)
+          .makeRotationZ(q.psi)
           .setPosition(q.x, q.y, 0);
         drive.current.matrixWorldNeedsUpdate = true;
       }

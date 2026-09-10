@@ -18,6 +18,7 @@ import Rooms from "./halls/Rooms.jsx";
 import Readout from "./nav/Readout.jsx";
 import { P, KEY } from "./lib/palette.js";
 import { STOPS, RUN } from "./lib/plan.js";
+import { PX_PER_M } from "./nav/useTravel.js";
 
 export default function App() {
   /* Read once, at the top, and passed down as numbers rather than looked up
@@ -42,7 +43,7 @@ export default function App() {
           it is the element under the cursor everywhere -- the canvas receives
           no pointer events at all and nothing in the building can be hovered
           or picked. It still scrolls: scrolling is not a pointer event. */}
-      <div style={{ height: `${RUN * 34}px`, pointerEvents: "none" }} aria-hidden="true" />
+      <div style={{ height: `${RUN * PX_PER_M}px`, pointerEvents: "none" }} aria-hidden="true" />
 
       <Canvas
         shadows={quality.shadows}

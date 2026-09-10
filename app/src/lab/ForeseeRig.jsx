@@ -1,9 +1,10 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
 import { lerpQ, clear, replan } from "./demos/via.js";
+import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -23,7 +24,7 @@ import { WORK } from "../lib/plan.js";
  */
 const TICK = 1 / 30;
 const SPEED = 0.55;          // fraction of the plan traversed per second
-const OBS_R = 0.20;          // metres; the sphere drawn is this size
+const OBS_R = 0.20;          // metres, and the console scales from it
 const TUBE_R = 0.011;        // the drawn plan, in metres
 
 /* The two ends of the move, and they are wider apart than the baked hero
@@ -67,7 +68,8 @@ export default function ForeseeRig({ stop }) {
     };
     return { frames, scratch, fk, rand: seeded(0x1F2E3D4C),
              a: Float32Array.from(ENDS[0]), b: Float32Array.from(ENDS[1]),
-             via: null, u: 0, dead: false, hold: 0, acc: 0, dir: 1 };
+             via: null, u: 0, dead: false, hold: 0, acc: 0, dir: 1,
+             r: OBS_R };
   }, []);
 
   const q = useRef(Float32Array.from(ENDS[0]));
@@ -106,8 +108,38 @@ export default function ForeseeRig({ stop }) {
     tube.current.geometry = next;
   }
 
+  /* The obstacle's size is the control, because it is the thing the planner
+     is arguing with. Small and every straight line is clear and the cell
+     never does what it is named after; large and nothing sampled is clear
+     and the arm holds, which is the other end of the same behaviour and
+     worth being able to see on purpose. */
+  useEffect(() => register(stop.id, {
+    title: "Cancel and replan",
+    actions: [{ label: "Reset", on: () => {
+      kit.a = Float32Array.from(ENDS[0]); kit.b = Float32Array.from(ENDS[1]);
+      kit.via = null; kit.u = 0; kit.dead = false; kit.dir = 1;
+      q.current.set(ENDS[0]); painted.current = false;
+    } }],
+    choice: {
+      get: () => kit.r,
+      set: (v) => { kit.r = v; },
+      options: [
+        { value: 0.13, label: "Small" },
+        { value: 0.20, label: "Medium" },
+        { value: 0.30, label: "Large" }
+      ]
+    },
+    readout: () => [
+      ["plan", kit.dead ? "blocked" : kit.via ? "detoured" : "direct"],
+      ["obstacle", (kit.r * 2).toFixed(2) + " m"],
+      ["along", (kit.u * 100).toFixed(0) + "%"]
+    ],
+    hint: "Move the cursor across the cell to put your hand in the way."
+  }), [stop.id, kit]);
+
   useFrame(({ clock }, dt) => {
     const d = Math.min(0.1, dt);
+    if (!isRunning(stop.id)) return;
     if (!painted.current && tube.current) { paintPlan(); painted.current = true; }
     held.current += d;
 
@@ -119,7 +151,10 @@ export default function ForeseeRig({ stop }) {
       obs.current.set(0.30 + 0.26 * Math.cos(t), 0.30 * Math.sin(t * 0.8),
                       0.62 + 0.20 * Math.sin(t));
     }
-    if (ball.current) ball.current.position.copy(obs.current);
+    if (ball.current) {
+      ball.current.position.copy(obs.current);
+      ball.current.scale.setScalar(kit.r / OBS_R);
+    }
 
     kit.acc += d;
     if (kit.acc >= TICK) {
@@ -133,9 +168,14 @@ export default function ForeseeRig({ stop }) {
         : [[from, kit.b]];
       let ok = true;
       for (const [p0, p1] of rest)
-        if (!clear(p0, p1, obs.current, OBS_R, kit.fk, kit.scratch)) { ok = false; break; }
+        if (!clear(p0, p1, obs.current, kit.r, kit.fk, kit.scratch)) { ok = false; break; }
 
       if (!ok && !kit.dead) { kit.dead = true; kit.hold = 0; }
+      /* And back the other way. The obstacle moves, so a plan that was dead
+         can become live again -- and nothing cleared the flag, so the arm
+         went on holding and went on paying for a replan it no longer needed
+         until the sampler happened to find a detour around empty air. */
+      if (ok && kit.dead) { kit.dead = false; kit.hold = 0; }
 
       if (kit.dead) {
         kit.hold += TICK;
@@ -143,7 +183,7 @@ export default function ForeseeRig({ stop }) {
         // that cancels and re-accelerates inside one frame is a controller
         // nobody can see cancel.
         if (kit.hold > 0.22) {
-          const via = replan(from, kit.b, obs.current, OBS_R + 0.02,
+          const via = replan(from, kit.b, obs.current, kit.r + 0.02,
                              kit.fk, kit.scratch, kit.rand);
           if (via) {
             kit.a = from; kit.via = via; kit.u = 0; kit.dead = false;
@@ -151,6 +191,16 @@ export default function ForeseeRig({ stop }) {
           }
         }
       }
+    }
+
+    /* The colour, written before the early return and not after it.
+    
+       It was the last statement in the callback and the callback returns
+       above it while dead, so the one state it exists to show was the one
+       state it never showed: the tube bent and never went red. */
+    if (mat.current) {
+      mat.current.color.set(kit.dead ? "#d94b2b" : P.hazard);
+      mat.current.emissive.set(kit.dead ? "#d94b2b" : P.hazard);
     }
 
     if (kit.dead) return;      // holding: nothing clear to move along yet
@@ -176,10 +226,6 @@ export default function ForeseeRig({ stop }) {
       lerpQ(kit.a, kit.b, u, q.current);
     }
 
-    if (mat.current) {
-      mat.current.color.set(kit.dead ? "#d94b2b" : P.hazard);
-      mat.current.emissive.set(kit.dead ? "#d94b2b" : P.hazard);
-    }
   });
 
   // First paint happens on the first frame instead of in a memo: the mesh
@@ -215,6 +261,11 @@ export default function ForeseeRig({ stop }) {
           <meshStandardMaterial ref={mat} color={P.hazard}
             emissive={P.hazard} emissiveIntensity={0.55} roughness={0.5} />
         </mesh>
+        {/* Scaled every frame rather than through a prop. kit.r is set
+            imperatively by the console, which re-renders itself and not
+            this tree -- so a scale written as JSX stayed at whatever it was
+            on mount, and picking Large made the planner refuse paths around
+            a 0.30 m sphere while a 0.20 m one was drawn. */}
         <mesh ref={ball}>
           <sphereGeometry args={[OBS_R, 22, 16]} />
           <meshStandardMaterial color={P.teal} roughness={0.3} metalness={0.1}

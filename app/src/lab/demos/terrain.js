@@ -1,8 +1,8 @@
 /* A height field, and four costs over it that disagree about what a good
  * path is.
  *
- * The terrain is value noise on a grid -- two octaves, cosine interpolated,
- * from a fixed seed, so the same bench has the same ground every time. It is
+ * The terrain is value noise on a grid -- three octaves, cosine
+ * interpolated, from a seed, so a given seed always gives the same ground. It is
  * not a picture of terrain: the mesh on the bench is displaced by these exact
  * samples and the Go2's feet are placed on them, so a path that looks like it
  * climbs is one that climbs.

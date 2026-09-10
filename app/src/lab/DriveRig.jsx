@@ -1,9 +1,10 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { Local } from "./demos/dwa.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
+import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -108,8 +109,43 @@ export default function DriveRig({ stop }) {
     no: new THREE.Color("#5a2418")
   }), []);
 
+  /* The horizon is the control worth exposing here. It is the one number in
+     a sampling local planner that changes what it is: short and it is a
+     reflex that cannot see a corner coming, long and it is a planner
+     committing to ground it has not reached. Everything else about the fan
+     is a consequence of it, which is why this cell offers that and not a
+     row of sliders. */
+  useEffect(() => register(stop.id, {
+    title: "Velocity-space sampling",
+    actions: [
+      { label: "Reset", on: () => {
+          pose.current = { x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 };
+          cmd.current = { v: 0, w: 0, acc: 0 };
+        } }
+    ],
+    choice: {
+      get: () => ctrl.horizon,
+      set: (v) => { ctrl.horizon = v; },
+      options: [
+        { value: 1.2, label: "1.2 s" },
+        { value: 2.6, label: "2.6 s" },
+        { value: 4.0, label: "4.0 s" }
+      ]
+    },
+    readout: () => [
+      ["horizon", ctrl.horizon.toFixed(1) + " s"],
+      ["sampled", String(ctrl.count)],
+      ["admissible", String(ctrl.fanOk.slice(0, ctrl.count)
+        .reduce((a, b) => a + b, 0))],
+      ["v", cmd.current.v.toFixed(3) + " m/s"],
+      ["w", cmd.current.w.toFixed(2) + " rad/s"]
+    ],
+    hint: "Hover the pad to put the goal where you want it."
+  }), [stop.id, ctrl]);
+
   useFrame(({ clock, camera: cam }, dt) => {
     const d = Math.min(0.1, dt);
+    if (!isRunning(stop.id)) { mat.uEye.value.copy(cam.position); return; }
     const q = pose.current;
     held.current += d;
 
@@ -180,14 +216,18 @@ export default function DriveRig({ stop }) {
     let o = 0;
     for (let i = 0; i < ctrl.count; i++) {
       const c = ctrl.fanOk[i] ? cols.ok : cols.no;
+      /* Unrolled, because the obvious spelling of this loop -- for (const
+         kk of [k, k + 1]) -- allocates an array and an iterator per line
+         segment, and there are 147 trajectories of 12 segments at 20 Hz.
+         Thirty-five thousand throwaway arrays a second to draw a fan. */
       for (let k = 0; k < span - 1; k++) {
-        for (const kk of [k, k + 1]) {
-          pos[o] = ctrl.fan[(i * span + kk) * 2];
-          pos[o + 1] = ctrl.fan[(i * span + kk) * 2 + 1];
-          pos[o + 2] = 0.006;
-          col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
-          o += 3;
-        }
+        const a = (i * span + k) * 2, b = a + 2;
+        pos[o] = ctrl.fan[a]; pos[o + 1] = ctrl.fan[a + 1]; pos[o + 2] = 0.006;
+        col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
+        o += 3;
+        pos[o] = ctrl.fan[b]; pos[o + 1] = ctrl.fan[b + 1]; pos[o + 2] = 0.006;
+        col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
+        o += 3;
       }
     }
     geo.setDrawRange(0, o / 3);

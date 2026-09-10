@@ -39,7 +39,11 @@
 <main id="main" class="runner">
 
   <header class="runner__head">
-    <a class="runner__back" href="./"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg><span>Back</span></a>
+    <!-- written.html, not "./". This page is the document site's runner and
+         the document is where a reader following a link into it came from;
+         "./" used to be that document and is the WebGL building now, so Back
+         went somewhere the reader had never been. -->
+    <a class="runner__back" href="written.html"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg><span>Back</span></a>
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">

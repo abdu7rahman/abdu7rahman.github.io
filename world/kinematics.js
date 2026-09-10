@@ -59,10 +59,26 @@ function originMatrix([x, y, z, r, p, yw]) {
 }
 const O = ORIGINS.map(originMatrix);
 
+/* Two scratch matrices at module scope rather than two per call.
+ *
+ * This is the hot path for three bays in the lab: the reach cell puts nine
+ * thousand joint tuples a second through it while its cloud builds, and the
+ * replan cell's sampler can ask for a hundred thousand in a second while it
+ * is looking for a way round something. Two Matrix4 per call is two objects
+ * and two sixteen-element arrays, and at that rate it is the garbage
+ * collector rather than the arithmetic that decides whether the frame lands.
+ *
+ * Safe because linkFrames is synchronous, single threaded and does not
+ * yield: nothing can call it again before it returns. It is not reentrant
+ * and does not need to be.
+ */
+const _cur = new THREE.Matrix4();
+const _rot = new THREE.Matrix4();
+
 export function linkFrames(q, out) {
   const frames = out || Array.from({ length: 6 }, () => new THREE.Matrix4());
-  const cur = new THREE.Matrix4();
-  const rot = new THREE.Matrix4();
+  const cur = _cur;
+  const rot = _rot;
   for (let i = 0; i < 6; i++) {
     rot.makeRotationZ(q[i]);
     if (i === 0) cur.copy(O[0]).multiply(rot);

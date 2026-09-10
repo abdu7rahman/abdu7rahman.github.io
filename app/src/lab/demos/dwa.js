@@ -115,8 +115,16 @@ export class Local {
       }
     }
     this.count = n;
-    // Nothing admissible: back out, which is the honest response to being
-    // boxed in and the one case a fan of forward arcs cannot express.
+    /* Nothing admissible: back out, which is the honest response to being
+       boxed in and the one case a fan of forward arcs cannot express.
+    
+       It is also the one command here that was not collision checked, and
+       it cannot be by this method: every arc in the fan goes forward, so
+       there is nothing in the sampled set that describes reversing. A base
+       that has just been told nothing ahead of it is clear is a base whose
+       last known clear ground is behind it, which is the argument for
+       reversing slowly and the whole of it. Slowly: 0.06 m/s is a quarter
+       of the ceiling. */
     return best || [-0.06, this.maxW * 0.35, -1];
   }
 }

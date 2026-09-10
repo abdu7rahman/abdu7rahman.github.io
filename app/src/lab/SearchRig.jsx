@@ -4,6 +4,7 @@ import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { Search, FREE, WALL, OPEN, CLOSED, PATH, ENDS } from "./demos/astar.js";
+import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -128,6 +129,31 @@ export default function SearchRig({ stop }) {
      running when React commits and a frame can land in between. */
   useEffect(() => { newRun(); /* eslint-disable-next-line */ }, []);
 
+  /* What this cell can be told to do. A new map is the interesting one: the
+     course is generated, so laying another is the difference between a demo
+     and a thing you can put a question to. Step runs a single frame's worth
+     of expansion while paused, which is how anybody actually reads a search
+     -- watching it at four hundred nodes a second tells you the shape and
+     nothing about the order. */
+  useEffect(() => register(stop.id, {
+    title: "A* over a costmap",
+    actions: [
+      { label: "New map", on: () => newRun() },
+      { label: "Step", on: () => step(12) }
+    ],
+    readout: () => {
+      const r = run.current, se = kit.search;
+      return [
+        ["state", r.phase === "search" ? (se.done ? "done" : "expanding")
+               : r.phase === "drive" ? "driving" : "holding"],
+        ["expanded", String(se.expanded)],
+        ["open", String(se.heap.size)],
+        ["path", se.found ? se.path.length + " cells" : "--"]
+      ];
+    },
+    hint: "Eight-connected, octile heuristic, binary heap. Walled off, it says so and lays another."
+  }), [stop.id, kit]);
+
   /* The obstacles as real boxes, not only as cells in the texture. They cast
      into the bay's own task light, which is what makes the course read as
      something standing on a bench rather than as a diagram printed on one.
@@ -147,6 +173,51 @@ export default function SearchRig({ stop }) {
     }
     inst.count = n;
     inst.instanceMatrix.needsUpdate = true;
+    /* And the bounds, which nothing else invalidates. An InstancedMesh
+       computes its bounding sphere once, lazily, and needsUpdate on the
+       matrices does not clear it -- so a sphere cached before the first
+       paint is a 78 mm ball at the course centre, and the whole run of
+       walls gets frustum culled the moment the camera is near the edge of
+       the bench. Which is exactly where this bay's camera stands. */
+    inst.computeBoundingSphere();
+  }
+
+  /* The texture, from the search's own state array. A copy rather than a
+     second piece of bookkeeping: the algorithm's open and closed sets are
+     the truth and this is a view of them. */
+  function repaint() {
+    const { cells, search } = kit, r = run.current;
+    if (r.sx === undefined) return;
+    for (let i = 0; i < cells.length; i++) {
+      if (kit.wall[i]) { cells[i] = WALL; continue; }
+      const st = search.state[i];
+      cells[i] = st === OPEN ? OPEN : st === CLOSED ? CLOSED : FREE;
+    }
+    cells[r.sy * NX + r.sx] = ENDS; cells[r.ey * NX + r.ex] = ENDS;
+    kit.tex.needsUpdate = true;
+  }
+
+  /* One frame's worth of expansion, wherever it is called from.
+  
+     Step used to call search.step and repaint directly, and repaint rebuilds
+     every cell from the search's own state array -- which has no PATH value
+     in it, because the path is written once, on the transition to holding.
+     So pressing Step during the drive wiped the orange path off the bench,
+     and stepping all the way to the goal while paused left the readout
+     saying done with nothing drawn. The transition belongs with the step and
+     not with the frame that happened to notice it. */
+  function step(budget) {
+    const r = run.current, se = kit.search;
+    if (r.sx === undefined || r.phase !== "search") return;
+    se.step(budget);
+    repaint();
+    if (!se.done) return;
+    if (!se.found) { newRun(); return; }
+    r.pts = se.path.map(([i, j]) => [gx(i), gy(j)]);
+    for (const [i, j] of se.path) kit.cells[j * NX + i] = PATH;
+    kit.cells[r.sy * NX + r.sx] = ENDS; kit.cells[r.ey * NX + r.ex] = ENDS;
+    kit.tex.needsUpdate = true;
+    r.phase = "hold"; r.t = 0;
   }
 
   function newRun() {
@@ -181,28 +252,11 @@ export default function SearchRig({ stop }) {
     const { cells, search } = kit;
     const r = run.current;
     if (r.sx === undefined) return;
+    if (!isRunning(stop.id)) return;
     r.t += d;
 
     if (r.phase === "search") {
-      search.step(Math.max(1, Math.round(POPS_PER_S * d)));
-      // Repaint only what the search touched: its own state array is the
-      // truth, so this is a copy rather than a second bookkeeping.
-      for (let i = 0; i < cells.length; i++) {
-        if (kit.wall[i]) { cells[i] = WALL; continue; }
-        const st = search.state[i];
-        cells[i] = st === OPEN ? OPEN : st === CLOSED ? CLOSED : FREE;
-      }
-      cells[r.sy * NX + r.sx] = ENDS; cells[r.ey * NX + r.ex] = ENDS;
-      kit.tex.needsUpdate = true;
-
-      if (search.done) {
-        if (!search.found) { newRun(); return; }
-        r.pts = search.path.map(([i, j]) => [gx(i), gy(j)]);
-        for (const [i, j] of search.path) cells[j * NX + i] = PATH;
-        cells[r.sy * NX + r.sx] = ENDS; cells[r.ey * NX + r.ex] = ENDS;
-        kit.tex.needsUpdate = true;
-        r.phase = "hold"; r.t = 0;
-      }
+      step(Math.max(1, Math.round(POPS_PER_S * d)));
       return;
     }
 
