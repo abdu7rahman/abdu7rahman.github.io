@@ -88,9 +88,13 @@ export const STOPS = [
   { id: "terrain",  kind: "rig",  side:  1, at: 6.0, title: "Cost", frame: "course",
     sub: "Go2, four cost functions",
     note: "Click a point on a course and watch four cost functions drive to it." },
-  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Assembly", frame: "pair",
-    sub: "bimanual, eight phases",
-    note: "An eight-phase bimanual controller against its own analytic plant." },
+  /* The task the recordings in this project are actually of. It was a
+     handover of one block through eight solved poses; it is six tools, two
+     bins and two arms that each take whatever is nearest them, simulated
+     rather than played back. */
+  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Sorting", frame: "pair",
+    sub: "bimanual, simulated",
+    note: "Two arms sorting a bench of tools. Every tool is a free body and every grasp can fail." },
 
   { id: "stack",    kind: "room", side:  1, at: 7.5, title: "Stores",
     lede: "Things I have shipped something with, not things I have read about." },

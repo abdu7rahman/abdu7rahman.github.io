@@ -180,6 +180,22 @@ export class Sim {
     return hit;
   }
 
+  /* Command an actuator by name, which is how a grasp is switched on: the
+     adhesion actuators are ordinary actuators and a gripper is a number
+     between zero and one. Indices are resolved once, for the same reason
+     body indices are -- a named lookup allocates on a heap nobody collects. */
+  actuate(name, value) {
+    if (!this._acts) this._acts = new Map();
+    let id = this._acts.get(name);
+    if (id === undefined) {
+      const h = this.model.actuator(name);
+      id = h.id;
+      if (h.delete) h.delete();
+      this._acts.set(name, id);
+    }
+    this.data.ctrl[id] = value;
+  }
+
   get qpos() { return this.data.qpos; }
   get qvel() { return this.data.qvel; }
   get ctrl() { return this.data.ctrl; }

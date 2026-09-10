@@ -10,7 +10,7 @@ import ReachRig from "./ReachRig.jsx";
 import ForeseeRig from "./ForeseeRig.jsx";
 import RaceRig from "./RaceRig.jsx";
 import TerrainRig from "./TerrainRig.jsx";
-import AssembleRig from "./AssembleRig.jsx";
+import SortRig from "./SortRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -37,7 +37,7 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
    whole cell -- the machine included -- so this file steps out of the way. */
 const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
-               assemble: AssembleRig };
+               assemble: SortRig };
 
 /* The bench is 2.6 by 3.0 m and the 3.0 m side runs parallel to the aisle.
    That is the axis a mobile base gets to drive along, so it is the one
