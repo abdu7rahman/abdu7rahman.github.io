@@ -5,6 +5,7 @@ import Slab from "./lab/Slab.jsx";
 import Structure from "./lab/Structure.jsx";
 import Guarding from "./lab/Guarding.jsx";
 import Belief from "./lab/Belief.jsx";
+import Envelope from "./lab/Envelope.jsx";
 import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
@@ -61,6 +62,7 @@ export default function App() {
         <Suspense fallback={null}>
           <Slab />
           <Structure />
+          <Envelope />
           <Guarding />
           {/* One inspection layer over the whole floor, not one per cell. */}
           <Belief />
