@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ASSET } from "../lib/paths.js";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { creaseNormals } from "../lib/mesh.js";
@@ -27,7 +28,7 @@ export function useArm() {
   useEffect(() => {
     if (cached) return;
     let live = true;
-    fetch("assets/ur12e-hero.json")
+    fetch(ASSET("ur12e-hero.json"))
       .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
       .then(j => { cached = j; if (live) setMesh(j); })
       .catch(() => {});
