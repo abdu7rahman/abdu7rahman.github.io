@@ -14,6 +14,7 @@ tmp-*/
 # rebuilt from it, and node_modules is 206 MB of somebody else's code.
 app/node_modules/
 app/dist/
-app/shot-*.png
-app/hover-*.png
-app/aim-*.png
+# Probe renders. Everything that checks this build writes its frames next to
+# it; none of them is an asset the site serves, and no real app asset is a
+# PNG sitting at app/'s root.
+app/*.png
