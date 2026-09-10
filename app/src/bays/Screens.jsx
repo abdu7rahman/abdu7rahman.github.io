@@ -219,10 +219,35 @@ function Monitor({ stop }) {
     openCell(stop, b, () => { view.entered = null; });
   };
 
-  if (!tex || !fit) return null;
-
+  /* The body is always here; only the picture waits.
+  
+     This returned null until the demo behind it had painted, which was fine
+     while lab/Rig.jsx drew a placeholder monitor at the same transform and
+     wrong the moment that placeholder came out -- the two were z-fighting and
+     the opaque one was winning, so the fix was to delete it, and deleting it
+     left the cell with no screen at all until Pyodide had finished booting.
+     A monitor that is off is still a monitor. */
   return (
     <group position={pos} rotation-y={ry}>
+      {/* Bezel and stand. Furniture, so it does not care what is on screen. */}
+      <mesh castShadow>
+        <boxGeometry args={[FACE_W + 0.10, FACE_H + 0.10, 0.06]} />
+        <meshStandardMaterial color={P.steelDk} roughness={0.6} metalness={0.4} />
+      </mesh>
+      <mesh position={[0, 0, 0.032]}>
+        <planeGeometry args={[FACE_W, FACE_H]} />
+        <meshBasicMaterial color={"#0d1c21"} toneMapped={false} />
+      </mesh>
+
+      {tex && fit && <Picture {...{ tex, fit, ring, enter }} />}
+    </group>
+  );
+}
+
+/* What is actually running, drawn over the dark face. */
+function Picture({ tex, fit, ring, enter }) {
+  return (
+    <group>
       {/* The plate the picture sits on, the full size of the bezel opening, so
           a letterboxed canvas has a dark surround rather than the placeholder
           showing through the letterbox. */}

@@ -1,5 +1,3 @@
-import { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
 import { P } from "../lib/palette.js";
 import UR12e from "./UR12e.jsx";
 import TurtleBot from "./TurtleBot.jsx";
@@ -34,38 +32,15 @@ const BENCH_RUN = 3.0;
 export default function Rig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
-  const screen = useRef();
-
-  useFrame(({ clock }) => {
-    if (!screen.current) return;
-    // A screen is never perfectly steady: a slow flicker sells it as lit.
-    const f = 0.94 + Math.sin(clock.elapsedTime * 7.3 + stop.at) * 0.015;
-    screen.current.material.opacity = f;
-  });
-
   return (
     <group>
-      {/* Monitor on a post at the bench's outboard edge, angled to the lane
-          so it is readable from the aisle rather than only from inside. */}
-      <group position={[x - s * 1.1, 1.62, 0.9]} rotation-y={-s * 0.62}>
-        <mesh castShadow>
-          <boxGeometry args={[1.28, 0.78, 0.06]} />
-          <meshStandardMaterial color={P.steelDk} roughness={0.6} metalness={0.4} />
-        </mesh>
-        <mesh ref={screen} position={[0, 0, 0.035]}>
-          <planeGeometry args={[1.18, 0.68]} />
-          <meshBasicMaterial color={"#16323a"} transparent opacity={0.95} />
-        </mesh>
-        {/* A live trace across it, so the cell is running rather than idle. */}
-        <mesh position={[0, -0.12, 0.038]}>
-          <planeGeometry args={[1.0, 0.012]} />
-          <meshBasicMaterial color={P.teal} />
-        </mesh>
-        <mesh position={[0.22, 0.16, 0.038]}>
-          <planeGeometry args={[0.42, 0.012]} />
-          <meshBasicMaterial color={P.hazard} />
-        </mesh>
-      </group>
+      {/* The monitor itself belongs to bays/Screens.jsx, which owns the
+          running demo and the texture it is drawn on. This file drew one too,
+          at exactly the same transform, and the two z-fought -- the opaque
+          placeholder won, so every cell showed two coloured bars while a real
+          demo rendered into a texture nobody could see. One screen, and the
+          file that has something to put on it draws it. The post stays here,
+          because a post is furniture and not a display. */}
       <mesh position={[x - s * 1.1, 0.9, 0.9]}>
         <cylinderGeometry args={[0.05, 0.07, 0.62, 8]} />
         <meshStandardMaterial color={P.steel} roughness={0.6} metalness={0.5} />
