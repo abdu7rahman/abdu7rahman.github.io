@@ -37,7 +37,7 @@ export function useArm() {
   return mesh;
 }
 
-export default function UR12e({ phase = 0, scale = 1, tint }) {
+export default function UR12e({ phase = 0, scale = 1, tint, q: driven }) {
   const mesh = useArm();
   const groups = useRef([]);
   const q = useMemo(() => new Float32Array(6), []);
@@ -74,9 +74,20 @@ export default function UR12e({ phase = 0, scale = 1, tint }) {
     if (!parts) return;
     // Derived from the clock rather than accumulated, so a cell that has been
     // off screen comes back in step with every other cell in the building.
-    const t = (clock.elapsedTime / CYCLE + phase) % 2;
-    poseAt(t < 1 ? t : 2 - t, q);
-    linkFrames(q, frames);
+    /* Driven from outside, when something outside is driving.
+
+       The replan cell runs its own planner and hands the six joint angles
+       in; every other cell lets this file play the baked move. Both go
+       through the same linkFrames, so a posed arm and a planned one are the
+       same arithmetic and there is no second place a joint angle can mean
+       something different. */
+    if (driven && driven.current) {
+      linkFrames(driven.current, frames);
+    } else {
+      const t = (clock.elapsedTime / CYCLE + phase) % 2;
+      poseAt(t < 1 ? t : 2 - t, q);
+      linkFrames(q, frames);
+    }
     for (let li = 0; li < groups.current.length; li++) {
       const g = groups.current[li];
       if (!g) continue;
