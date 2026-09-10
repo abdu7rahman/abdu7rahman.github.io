@@ -126,6 +126,22 @@ export class Sim {
     return obj;
   }
 
+  /* A body's own axis, as a direction in simulation coordinates.
+  
+     Unlike point() this does not convert to the scene's y-up: a caller asking
+     which way a tool is lying is almost always about to compare it with
+     something else in the simulation's frame, and converting and converting
+     back is where sign errors come from. k is 0, 1 or 2 for the body's local
+     x, y or z. */
+  dir(name, k, out) {
+    const i = this.bodyId(name);
+    const xq = this.data.xquat;
+    _q.set(xq[i * 4 + 1], xq[i * 4 + 2], xq[i * 4 + 3], xq[i * 4]);
+    return (out || new THREE.Vector3())
+      .set(k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0)
+      .applyQuaternion(_q);
+  }
+
   /* The same read, as a point, for anything that wants where a tool is
      without wanting to move an object there. */
   point(name, v) {

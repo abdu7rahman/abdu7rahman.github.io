@@ -53,7 +53,7 @@ const REACH = 0.95;          // how far from its own base an arm will go
 /* The jaw, in metres. Shut is narrower than the thinnest tool here -- a 20 mm
    screwdriver shaft -- so the fingers always close onto something rather than
    onto each other, and the position servo's force limit is what holds it. */
-const GRIP_OPEN = 0.05, GRIP_SHUT = 0.012;
+const GRIP_OPEN = 0.05, GRIP_SHUT = 0.006;
 
 /* Scene coordinates from simulation coordinates: MuJoCo is z-up, the scene is
    y-up, and this is the same quarter turn sim/engine.js applies to a body. */
@@ -95,6 +95,20 @@ export default function SortRig({ stop }) {
        tool it has claimed. The claim is what keeps two arms off one tool
        without either of them knowing about the other's programme. */
     state: ["seek", "seek"], t: [0, 0], claim: [null, null],
+    /* Integral trim on the descent, per arm, in metres.
+    
+       A position servo reaching down under gravity settles short of its
+       command, and how short depends on how far out the arm is -- measured
+       on this cell, about 2 cm at the bench, which is more than the
+       thickness of half the tools here. So the jaws closed above the work.
+       Commanding a fixed amount lower would be a guess that is wrong
+       everywhere except where it was measured; this accumulates the
+       difference between where the tool point was asked to be and where the
+       simulation says it is, and is capped so a blocked arm cannot wind it
+       up. It is the integral term of a controller, and it is here for the
+       reason integral terms are always here: there is a standing error and
+       proportional action cannot remove it. */
+    trim: [0, 0],
     /* How many times each arm has tried and failed on a given tool. An arm
        that keeps choosing the nearest thing will choose the same unreachable
        or un-grippable thing forever, and measured, that is exactly what
@@ -208,7 +222,9 @@ export default function SortRig({ stop }) {
       const claim = kit.claim[arm];
       const spec = PLAN[kit.state[arm]];
       const idx = claim ? SORT.tools.findIndex(t => t.id === claim) : -1;
-      if (spec.at === "tool" && idx >= 0) kit.tgt.copy(where[idx]).setZ(where[idx].z + spec.dz);
+      if (spec.at === "tool" && idx >= 0) {
+        kit.tgt.copy(where[idx]).setZ(where[idx].z + spec.dz - kit.trim[arm]);
+      }
       else if (spec.at === "claim" && idx >= 0) kit.tgt.copy(where[idx]).setZ(SORT.mount + spec.dz);
       else if (spec.at === "bin" && idx >= 0) {
         // This arm's own bin for that class of tool, on this arm's own side.
@@ -238,6 +254,20 @@ export default function SortRig({ stop }) {
     }
 
     sm.step(d);
+
+    /* Wind the trim only while descending, and only from the vertical error,
+       because that is the axis gravity acts on and the only one with a
+       standing offset. sim/models.js puts the tcp body 46 mm above the tool
+       point, so that offset comes back out here. */
+    for (const arm of [0, 1]) {
+      if (kit.state[arm] !== "descend") continue;
+      const idx = kit.claim[arm] ? SORT.tools.findIndex(t => t.id === kit.claim[arm]) : -1;
+      if (idx < 0) continue;
+      sm.point(arm === 0 ? "l_tcp" : "r_tcp", kit.a);
+      const toolZ = kit.a.y - 0.046;
+      const want = where[idx].z + TOUCH;
+      kit.trim[arm] = Math.max(-0.02, Math.min(0.09, kit.trim[arm] + (toolZ - want) * d * 1.6));
+    }
 
     for (const i of [0, 1]) for (let j = 0; j < 6; j++) kit.act[i][j] = sm.qpos[i * 6 + j];
     SORT.tools.forEach((t, i) => {

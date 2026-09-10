@@ -120,14 +120,14 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
             rgba="0.8 0.8 0.85 1" mass="0.5"/>
       <site name="${name}_grip" pos="0 0 0.046" size="0.008"/>
       <body name="${name}_fa" pos="0 0 0.03">
-        <joint name="${name}_ga" type="slide" axis="1 0 0" range="0.012 0.05"
-               damping="6" armature="0.004"/>
+        <joint name="${name}_ga" type="slide" axis="1 0 0" range="0.003 0.052"
+               ref="0.05" damping="6" armature="0.004"/>
         <geom ${ARM} type="box" size="0.008 0.018 0.016" pos="0 0 0.016" mass="0.06"
               friction="2.2 0.05 0.002" rgba="0.55 0.57 0.6 1"/>
       </body>
       <body name="${name}_fb" pos="0 0 0.03">
-        <joint name="${name}_gb" type="slide" axis="-1 0 0" range="0.012 0.05"
-               damping="6" armature="0.004"/>
+        <joint name="${name}_gb" type="slide" axis="-1 0 0" range="0.003 0.052"
+               ref="0.05" damping="6" armature="0.004"/>
         <geom ${ARM} type="box" size="0.008 0.018 0.016" pos="0 0 0.016" mass="0.06"
               friction="2.2 0.05 0.002" rgba="0.55 0.57 0.6 1"/>
       </body>
@@ -155,10 +155,17 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
   /* Both fingers on one command, which is what a parallel gripper is. The
      force ceiling is what decides whether a grip holds: 90 N through a pad at
      friction 2.2 carries a tool that weighs a couple of newtons with a wide
-     margin, and will still lose it if the arm is thrown about. */
+     margin, and will still lose it if the arm is thrown about.
+  
+     The range runs to 3 mm rather than 12 and the joints open at their own
+     reference, and both of those are fixes. Commanding a jaw to exactly its
+     own limit makes the servo fight the limit constraint instead of the
+     thing it is holding -- measured, one finger sat at 49 mm pulling 33 N
+     and never moved -- and a slide joint whose zero is outside its range
+     starts the model resolving a violation it did not need to have. */
   for (const j of ["ga", "gb"]) {
     act += `<position name="${name}_${j}" joint="${name}_${j}" kp="900"
-      dampratio="1" forcerange="-90 90" ctrlrange="0.012 0.05"/>`;
+      dampratio="1" forcerange="-90 90" ctrlrange="0.003 0.052"/>`;
   }
   return { body: chain, act, density };
 }

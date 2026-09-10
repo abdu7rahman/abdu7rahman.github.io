@@ -186,6 +186,47 @@ export function solve(seed, target, out, iters = 24, dir = DOWN) {
   return err;
 }
 
+/* Turn the gripper about its own tool axis so its jaws face a given
+ * direction, and do it after the solve rather than inside it.
+ *
+ * The six-number error above leaves roll free on purpose -- a gripper does not
+ * care how it is rolled and constraining it would spend the arm's one
+ * redundancy on nothing. But a two-finger gripper does care, and picking up a
+ * 150 mm bar means closing across it rather than along it. Measured on the
+ * sorting cell: the arm reached the tool, descended onto it and closed with
+ * the jaws lined up with the bar's length, so one pad landed on it, the other
+ * went past, and the tool was dragged sideways instead of lifted.
+ *
+ * Joint six turns the tool about its own axis one for one, so the correction
+ * is a single angle: the signed rotation about the tool axis that takes the
+ * jaw direction onto the wanted one. Applied to q[5] and nothing else, so it
+ * cannot disturb the position or the direction the solve just achieved.
+ *
+ * `want` is a direction in the same frame as the solve, and only its
+ * component perpendicular to the tool axis matters. Jaws are symmetric, so
+ * the answer is taken modulo a half turn -- the nearer of the two ways round.
+ */
+const _jaw = new THREE.Vector3();
+const _wp = new THREE.Vector3();
+
+export function roll(q, want) {
+  linkFrames(q, _frames);
+  const m = _frames[5].elements;
+  _axis.set(m[8], m[9], m[10]);
+  _jaw.set(m[0], m[1], m[2]);
+  // Both projected into the plane the jaws actually move in.
+  _wp.copy(want).addScaledVector(_axis, -want.dot(_axis));
+  if (_wp.lengthSq() < 1e-8) return 0;
+  _wp.normalize();
+  _jaw.addScaledVector(_axis, -_jaw.dot(_axis)).normalize();
+  let a = Math.atan2(_z.crossVectors(_jaw, _wp).dot(_axis), _jaw.dot(_wp));
+  // A jaw pair is the same rotated by pi, so never turn more than a quarter.
+  if (a > Math.PI / 2) a -= Math.PI;
+  if (a < -Math.PI / 2) a += Math.PI;
+  q[5] = Math.max(LO[5], Math.min(HI[5], q[5] + a));
+  return a;
+}
+
 /* Where the tool is for a configuration, for a caller that has a joint vector
    and wants a point without keeping its own frames around. */
 export function tcp(q, out) {
