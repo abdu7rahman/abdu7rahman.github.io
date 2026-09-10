@@ -71,6 +71,8 @@ export const SHAFT_FRAG = /* glsl */`
   uniform vec3  uSky;
   uniform float uDx, uDz;     // metres of x and z per metre of fall
   uniform float uHX, uHZ;     // aperture half sizes
+  uniform float uPen;         // penumbra half width at the slab, metres
+  uniform vec2  uNear;        // metres: nothing at x, everything by y
   uniform float uDrop;        // aperture soffit to slab
   uniform float uGain;
   uniform vec3  uAir;
@@ -91,8 +93,12 @@ export const SHAFT_FRAG = /* glsl */`
     if (abs(S.y) < 1e-6) S.y = 1e-6;
     if (abs(S.z) < 1e-6) S.z = 1e-6;
 
-    vec3 lo = vec3(-uHX, -uDrop, -uHZ);
-    vec3 hi = vec3( uHX,  0.0,    uHZ);
+    // The slab test bounds the beam plus its penumbra, not the beam. The
+    // taper below needs somewhere to run out to; bounded at the aperture
+    // size it would only ever reach half strength at the wall and the
+    // silhouette would still be the wall.
+    vec3 lo = vec3(-uHX - uPen, -uDrop, -uHZ - uPen);
+    vec3 hi = vec3( uHX + uPen,  0.0,    uHZ + uPen);
     vec3 ta = (lo - O) / S;
     vec3 tb = (hi - O) / S;
     vec3 tn = min(ta, tb);
@@ -103,18 +109,71 @@ export const SHAFT_FRAG = /* glsl */`
     float chord = t1 - t0;
     if (chord <= 0.0) discard;
 
-    // A rooflight is glass-reinforced polyester, not a window: it scatters,
-    // so the beam leaves the aperture as a cone and its radiance per metre
-    // drops as it spreads. Evaluated at the middle of the chord, which is
-    // one sample rather than an integral and is indistinguishable at this
-    // size.
-    float yMid = O.y + R.y * (t0 + t1) * 0.5;
-    float spread = mix(1.0, 0.30, clamp(-yMid / uDrop, 0.0, 1.0));
+    /* A rooflight is glass-reinforced polyester, not a window. It scatters,
+       which has two consequences and the shaft only had one of them.
 
-    float I = chord * uGain * spread;
-    // Looking along a beam gives a chord of tens of metres and a wall of
-    // white. Compressed rather than clipped, so the length still reads.
-    I = I / (1.0 + I * 0.55);
+       The one it had: the beam leaves the aperture as a cone, so its
+       radiance per metre drops as it spreads. Evaluated at the middle of
+       the chord, one sample rather than an integral, indistinguishable at
+       this size.
+
+       The one it did not: a diffusing panel is an area source, so its
+       shadow has a penumbra, and the penumbra is not a detail here -- it is
+       most of the edge. The umbra shrinks and the penumbra grows by the
+       same amount as the beam falls, so the profile is full strength inside
+       uHX - pen, zero outside uHX + pen, and pen goes from nothing at the
+       glass to uPen at the slab. Without it the chord alone was the whole
+       silhouette, and a chord through a box has a hard edge: seven of them
+       down the roof read as a staircase of bright rectangles rather than as
+       light coming into a shed. */
+    vec3 mid = O + R * ((t0 + t1) * 0.5);
+    float fall = clamp(-mid.y / uDrop, 0.0, 1.0);
+    /* 0.18 at the slab, not the 0.30 it was. The beam widens in two axes as
+       it falls, so the radiance per metre of it falls faster than a single
+       taper suggests, and the number only started to matter once the proxy
+       box was fixed: before that the lower half of every beam was missing
+       and the far end of the taper was never drawn. */
+    float spread = mix(1.0, 0.18, fall);
+
+    // Never zero width: at the aperture the two smoothstep edges would
+    // coincide, and a smoothstep whose edges are equal is a divide by zero.
+    float pen = max(uPen * fall, 0.02);
+    float soft = (1.0 - smoothstep(uHX - pen, uHX + pen, abs(mid.x)))
+               * (1.0 - smoothstep(uHZ - pen, uHZ + pen, abs(mid.z)));
+
+    float I = chord * uGain * spread * soft;
+    /* Compressed rather than clipped, so the length still reads -- but to
+       0.55 rather than to 1.82, and the difference is the whole station.
+    
+       A chord is tens of metres when you look along a beam, and standing
+       beside one you are looking along it across most of the frame: at a
+       test cell the camera is two metres from a beam 4.5 m wide at eye
+       height, which subtends most of the view. That is correct, and it read
+       as a flat pale sheet over two thirds of the frame with the cell
+       ghosted through it, because the asymptote was above white. Scattered
+       daylight in air is not a white surface however far you look through
+       it, and 0.55 of the sky colour lands at 211 of 255 through the curve
+       -- bright, and still a beam you can see the building through. */
+    I = I / (1.0 + I / 0.55);
+
+    /* Nothing in the first few metres, everything past a dozen, and this is
+       the term that makes seven beams in a shed read as beams.
+    
+       Without it the medium is uniform in depth and the camera swims in it.
+       Standing at a test cell you are three metres from a beam that is
+       4.5 m across at eye height with six more behind it at 7.2 m centres,
+       so almost every ray in the frame crosses one and the whole right of
+       the view came back as a flat pale sheet with the cell ghosted through
+       it -- fog, not light. From the entrance the same seven are ten to
+       fifty metres off, they overlap along the view, and they are the best
+       thing in the building. The difference between those two is entirely
+       how far away the air is.
+    
+       t is metres here: the shear is applied to the ray's origin and
+       direction, not to its parameter, so t0 is the distance from the eye
+       to where the beam starts. Perceptually this is also just true -- the
+       beam you are standing in is the one you cannot see. */
+    I *= smoothstep(uNear.x, uNear.y, t0);
 
     float d = length(cameraPosition - vW);
     I *= 1.0 - smoothstep(uFogNear, uFogFar, d);

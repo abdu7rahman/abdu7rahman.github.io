@@ -60,6 +60,12 @@ export default function Envelope() {
     uDz:      { value: DZ },
     uHX:      { value: AP_HX },
     uHZ:      { value: AP_HZ },
+    /* Penumbra half width where the beam meets the slab, in metres, and
+       0.9 on a 1.5 m half aperture is not a large number for a diffusing
+       panel -- a GRP rooflight is an area source the size of the opening,
+       so its shadow edge is soft in proportion to how far it has fallen. */
+    uPen:     { value: 0.9 },
+    uNear:    { value: new THREE.Vector2(3.0, 13.0) },
     uDrop:    { value: AP_Y },
     /* 0.10, not the 0.16 it was. A shaft is the air in a beam and air is
        thin: at 0.16 the volume read as a solid wedge of light rather than as
@@ -103,6 +109,30 @@ export default function Envelope() {
   }), [mouths]);
 
   const frag = useMemo(() => poolFrag(mouths.length), [mouths]);
+
+  /* The proxy box for the beams, built once and shared by all seven.
+  
+     Translated down half its height, which it was not, and that was cutting
+     every beam in half. The shader works in object space with the aperture
+     at the origin and the beam running to y = -uDrop, but a BoxGeometry is
+     centred on its origin -- so the box spanned from ROOF/2 up to 1.5*ROOF,
+     half of it in the sky above the roof and none of it over the lower half
+     of the beam. Since the material is BackSide and the chord is analytic,
+     the box does not bound the light, it only decides which pixels get to
+     ask for it: below mid height nothing asked, and seven beams sheared
+     along the sun and truncated at the same height read as a staircase of
+     bright rectangles.
+  
+     Wide enough for the shear. The beam moves DX and DZ metres per metre of
+     fall, so the swept solid needs AP_HX + |DX| * AP_Y of half width; this
+     carries twice the shear, which also covers the penumbra with room to
+     spare. */
+  const shaftGeo = useMemo(() => {
+    const g = new THREE.BoxGeometry(AP_HX * 2 + 2 * Math.abs(DX) * AP_Y, AP_Y,
+                                    AP_HZ * 2 + 2 * Math.abs(DZ) * AP_Y);
+    g.translate(0, -AP_Y / 2, 0);
+    return g;
+  }, []);
 
   useFrame(() => { /* nothing animates: the sun does not move in a shed */ });
 
@@ -150,9 +180,8 @@ export default function Envelope() {
           anything. */}
       {Array.from({ length: RUN_N }, (_, i) => (
         <mesh key={"sh" + i} position={[AP_X, ROOF, AP_Z0 - i * PITCH]}
+              geometry={shaftGeo}
               ref={el => (shafts.current[i] = el)}>
-          <boxGeometry args={[AP_HX * 2 + 2 * Math.abs(DX) * AP_Y, AP_Y,
-                              AP_HZ * 2 + 2 * Math.abs(DZ) * AP_Y]} />
           <shaderMaterial
             uniforms={shaftU}
             vertexShader={SHAFT_VERT}

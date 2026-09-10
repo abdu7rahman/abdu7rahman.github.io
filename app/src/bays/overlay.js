@@ -48,9 +48,14 @@ const CSS = `
                   padding: 4px 12px; cursor: pointer; }
 #bay-bar button:hover { border-color: var(--hazard); color: var(--hazard); }
 
-#bay-hint { position: fixed; right: clamp(14px, 2vw, 34px); top: 18px; z-index: 6;
+/* On a backing, like everything else written over the building. This sits
+   top right, which at a test cell is a daylight beam crossing the aisle --
+   pale, and the muted grey underneath it went to nothing. */
+#bay-hint { position: fixed; right: clamp(14px, 2vw, 34px); top: 14px; z-index: 6;
             display: none; pointer-events: none; text-align: right;
-            font-family: var(--mono); }
+            padding: 8px 12px 9px; font-family: var(--mono);
+            background: linear-gradient(to bottom, rgba(9,9,10,.90), rgba(9,9,10,.84));
+            border-top: 2px solid var(--hazard); }
 #bay-hint.on { display: block; }
 #bay-hint b { display: block; font: 600 10px/1.6 var(--mono); letter-spacing: .16em;
               text-transform: uppercase; color: var(--hazard); }
