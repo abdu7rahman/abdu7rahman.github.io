@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import * as THREE from "three";
 import { P } from "../lib/palette.js";
 import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
 
@@ -14,6 +16,17 @@ export default function Bay({ stop, children }) {
   const s = stop.side;                    // -1 left of the lane, +1 right
   const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
+
+  /* A real object in the scene, because a spot light's target has to be one.
+  
+     three reads the aim as target.matrixWorld and nothing updates the matrix
+     of an object that is not in the graph, so the obvious spelling --
+     target-position on the light -- sets a position the renderer never sees
+     and every one of these lamps pointed at the world origin instead of at
+     its own bench. Silent: the light is on, the cone is somewhere else, and
+     the cell just looks unlit. Measured before the fix, a test cell came
+     back at p50 18 of 255 with the subject of the shot in the dark. */
+  const aim = useMemo(() => new THREE.Object3D(), []);
 
   return (
     <group position={[0, 0, -stop.at * 7.2]}>
@@ -36,9 +49,10 @@ export default function Bay({ stop, children }) {
 
       {/* Task light over the bench: hard, close, and the reason a bay reads
           brighter than the lane it opens off. */}
+      <primitive object={aim} position={[x, 0.9, 0]} />
       <spotLight
         position={[x, EAVES - 2.6, 1.4]}
-        target-position={[x, 0.9, 0]}
+        target={aim}
         angle={0.62}
         penumbra={0.35}
         intensity={210}

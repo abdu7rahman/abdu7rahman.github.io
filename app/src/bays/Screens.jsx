@@ -56,7 +56,16 @@ const FRAME_W = 1120, FRAME_H = 720;
    instead of seven times inside seven bays. */
 function monitorAt(stop) {
   const s = stop.side;
-  return { pos: [s * WORK - s * 1.1, 1.62, 0.9 - stop.at * PITCH], ry: -s * 0.62 };
+  /* Behind the machine, not in front of it, and that is a framing decision
+     with a measurement behind it. The dolly stops four metres short of a bay
+     and looks in at about 51 degrees; from there the near-aisle corner of
+     the bench, where this used to be, is on exactly the bearing the machine
+     is on and 0.6 m closer -- so every arm in the building was rendering
+     correctly and standing behind its own monitor. At the far corner the
+     screen is 62 degrees off and the same distance out, so the two are
+     eleven degrees apart in frame and the machine is silhouetted against the
+     brightest thing in its cell instead of hidden by it. */
+  return { pos: [s * WORK + s * 1.05, 1.62, 0.9 - stop.at * PITCH], ry: -s * 0.62 };
 }
 
 /* What the seven monitors and the one policy share. Passing it as props would

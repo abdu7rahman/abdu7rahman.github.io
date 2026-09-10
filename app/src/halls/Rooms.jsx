@@ -46,11 +46,21 @@ function Shell({ side, deep }) {
         <meshStandardMaterial color={P.hazard} roughness={0.8}
           emissive={P.hazard} emissiveIntensity={0.08} />
       </mesh>
-      {/* One soft source per room, high and wide, so a room reads as lit
+      {/* Two soft sources per room, high and wide, so a room reads as lit
           rather than as spotlit. No shadow map: seven cells already cast and
-          the shadow budget is spent where machines are. */}
-      <pointLight position={[x, WALL_H - 0.3, 0]} color={"#ffe6cc"}
-        intensity={46} distance={16} decay={2} />
+          the shadow budget is spent where machines are.
+
+          Two and not one, and at 140 rather than 46, because these only
+          started being looked at when the dolly learned to turn into them.
+          One lamp at the middle of a 7.6 m room with decay 2 puts about 12
+          on the floor beneath it and under 3 on the back wall, which is a
+          hotspot in a black box -- fine as a glow seen edge-on from the
+          aisle, which is all it ever was. A pair at the quarter points is
+          the fitting a room this size actually gets. */}
+      <pointLight position={[x, WALL_H - 0.3, deep / 4]} color={"#ffe6cc"}
+        intensity={140} distance={17} decay={2} />
+      <pointLight position={[x, WALL_H - 0.3, -deep / 4]} color={"#ffe6cc"}
+        intensity={140} distance={17} decay={2} />
     </group>
   );
 }

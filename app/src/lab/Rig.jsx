@@ -41,7 +41,7 @@ export default function Rig({ stop }) {
           demo rendered into a texture nobody could see. One screen, and the
           file that has something to put on it draws it. The post stays here,
           because a post is furniture and not a display. */}
-      <mesh position={[x - s * 1.1, 0.9, 0.9]}>
+      <mesh position={[x + s * 1.05, 0.9, 0.9]}>
         <cylinderGeometry args={[0.05, 0.07, 0.62, 8]} />
         <meshStandardMaterial color={P.steel} roughness={0.6} metalness={0.5} />
       </mesh>
@@ -66,7 +66,7 @@ export default function Rig({ stop }) {
           <Go2 phase={(stop.at * 0.37) % 1} />
         </group>
       ) : (
-        <group position={[x + s * 0.35, 0.9, -0.2]}>
+        <group position={[x - s * 0.5, 0.9, -0.2]}>
           <UR12e phase={(stop.at * 0.37) % 2} />
         </group>
       )}
@@ -74,8 +74,11 @@ export default function Rig({ stop }) {
       {/* The e-stop, which is the smallest and most necessary orange in the
           building. It belongs to the cell rather than to the machine -- a
           mobile base drives away from its own bench and the button does not
-          go with it -- so it stands on the bench beside whatever is running. */}
-      <mesh position={[x - s * 0.95, 0.915, 0.95]} castShadow>
+          go with it -- so it stands on the bench beside whatever is running.
+          On the aisle corner, which is the one part of this layout that is
+          not about the camera: a stop button you have to reach across a
+          working machine to press is not a stop button. */}
+      <mesh position={[x - s * 1.12, 0.915, 0.95]} castShadow>
         <cylinderGeometry args={[0.055, 0.055, 0.03, 12]} />
         <meshStandardMaterial color={P.hazard} emissive={P.hazard} emissiveIntensity={0.5} roughness={0.5} />
       </mesh>
