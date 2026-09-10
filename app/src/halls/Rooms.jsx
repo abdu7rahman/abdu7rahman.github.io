@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import * as THREE from "three";
 import { Instances, Instance } from "@react-three/drei";
 import { P } from "../lib/palette.js";
 import { AISLE, BAY_D, EAVES, PITCH, WORK, STOPS } from "../lib/plan.js";
@@ -136,21 +137,78 @@ function Metrology({ side }) {
 }
 
 /* A desk, for the room the reader leaves from. */
-function Desk({ side }) {
+function Desk({ side, x: ax, z = 0 }) {
   const s = side || 1;
-  const x = (side === 0 ? 1 : s) * (WORK - 0.4);
+  const x = ax !== undefined ? ax : (side === 0 ? 1 : s) * (WORK - 0.4);
   return (
     <group>
-      <mesh position={[x, 0.72, 0]} castShadow receiveShadow>
+      <mesh position={[x, 0.72, z]} castShadow receiveShadow>
         <boxGeometry args={[1.6, 0.06, 0.8]} />
         <meshStandardMaterial color={P.steel} roughness={0.65} metalness={0.3} />
       </mesh>
       {[-0.7, 0.7].map((d, i) => (
-        <mesh key={i} position={[x + d, 0.35, 0]} castShadow>
+        <mesh key={i} position={[x + d, 0.35, z]} castShadow>
           <boxGeometry args={[0.06, 0.7, 0.7]} />
           <meshStandardMaterial color={P.steelDk} roughness={0.8} metalness={0.3} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+/* The history wall, and the light that makes it one.
+
+   One long plate with nothing on it, which is the right call -- what is
+   written on it is the reading panel, and a wall with painted text would be
+   a picture of the reading sitting next to the reading. But an unlit plate
+   the same grey as the wall it is bolted to is not a plate, it is the wall,
+   and once the dolly started turning into this room that was the whole shot:
+   a lit empty box. A wall wash is the fitting the plate would actually have,
+   and the crates under it are what a store of five seasons of retired
+   hardware looks like from the aisle. Nothing here says what is in them. */
+function History({ side }) {
+  const s = side || -1;
+  const back = s * (AISLE / 2 + BAY_D);
+  const aim = useMemo(() => new THREE.Object3D(), []);
+  const crates = useMemo(
+    () => [-1.9, -0.62, 0.66, 1.94].map((z, i) => [z, 0.44 + (i % 2) * 0.06]), []);
+  return (
+    <group>
+      <mesh position={[back - s * 0.05, 1.7, 0]} rotation-y={-s * Math.PI / 2}>
+        <planeGeometry args={[5.4, 2.2]} />
+        <meshStandardMaterial color={P.steel} roughness={0.55} metalness={0.35} />
+      </mesh>
+      {crates.map(([z, h], i) => (
+        <mesh key={i} position={[back - s * 0.75, h / 2, z]} castShadow receiveShadow>
+          <boxGeometry args={[1.1, h, 1.0]} />
+          <meshStandardMaterial color={i % 2 ? P.steel : P.steelDk}
+            roughness={0.85} metalness={0.15} />
+        </mesh>
+      ))}
+      <primitive object={aim} position={[back, 1.9, 0]} />
+      <spotLight position={[back - s * 3.2, WALL_H - 0.2, 0]} target={aim}
+        angle={0.7} penumbra={0.6} intensity={190} distance={14} decay={2}
+        color={"#fff0dc"} />
+    </group>
+  );
+}
+
+/* The desk at the end of the run, in the aisle rather than off it.
+
+   The office is the one room with no hand of its own, so the dolly keeps
+   the lane there and looks straight down sixty-six metres at the end wall.
+   A desk parked in a side bay is a desk nobody sees; a desk in front of the
+   door, with the door lit from outside behind it, is the last shot in the
+   building and the one the contact panel sits beside. */
+function Reception() {
+  const aim = useMemo(() => new THREE.Object3D(), []);
+  return (
+    <group>
+      <Desk side={0} x={-0.9} z={-5.4} />
+      <primitive object={aim} position={[-0.9, 0.8, -5.4]} />
+      <spotLight position={[-2.2, WALL_H + 0.9, -3.4]} target={aim}
+        angle={0.62} penumbra={0.45} intensity={220} distance={13} decay={2}
+        color={"#ffe6cc"} castShadow />
     </group>
   );
 }
@@ -168,17 +226,9 @@ export default function Rooms() {
             {r.id === "work"     && <Racking side={side} bays={3} deep={deep} />}
             {r.id === "stack"    && <Racking side={side} bays={3} deep={deep} />}
             {r.id === "measured" && <Metrology side={side} />}
-            {(r.id === "contact" || r.id === "entry") && <Desk side={side} />}
-            {r.id === "path"     && (
-              /* A history wall: one long plate, lit, nothing on it. What is
-                 written on it is the panel; a wall with painted text would be
-                 a picture of the reading sitting next to the reading. */
-              <mesh position={[side * (AISLE / 2 + BAY_D - 0.05), 1.7, 0]}
-                    rotation-y={-side * Math.PI / 2}>
-                <planeGeometry args={[5.4, 2.2]} />
-                <meshStandardMaterial color={P.steel} roughness={0.55} metalness={0.35} />
-              </mesh>
-            )}
+            {r.id === "entry"    && <Desk side={side} />}
+            {r.id === "contact"  && <Reception />}
+            {r.id === "path"     && <History side={side} />}
           </group>
         );
       })}

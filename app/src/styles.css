@@ -130,7 +130,13 @@ canvas { display: block; touch-action: pan-y; }
   max-height: calc(100dvh - 184px);
   display: flex; flex-direction: column;
   padding: 16px 20px 6px;
-  background: linear-gradient(to bottom, rgba(9,9,10,.93), rgba(9,9,10,.86));
+  /* .94 and .90, up from .93 and .86, for one station: the office looks
+     down sixty-six metres at a doorway open to the sky, which is the only
+     backdrop in the building that reaches 255, and at the old alpha it came
+     through the foot of the column as a visible pale band under the contact
+     links. Still transparent enough everywhere else that the building
+     reads behind the reading. */
+  background: linear-gradient(to bottom, rgba(9,9,10,.94), rgba(9,9,10,.90));
   border-top: 2px solid var(--hazard);
   animation: room-in 460ms cubic-bezier(.2,.7,.2,1) both;
 }

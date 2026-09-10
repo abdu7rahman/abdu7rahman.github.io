@@ -153,10 +153,29 @@ export default function Envelope() {
 
       {/* The door in the end wall, which is what makes the far end somewhere
           rather than a stop. Wider than the lane so the lane clearly goes
-          through it, and lit from behind by the pool shader's own door term. */}
+          through it, and the daylight outside it is why the pool shader puts
+          a wash of light on the slab in front of it.
+
+          Blown, and above 1.0, which is the point of rendering into a half
+          float buffer at all. A doorway open to the sky, seen from inside a
+          shed lit to a lane value of 95 of 255, is not a slightly pale
+          rectangle -- it is four or five stops over everything around it,
+          and the eye reads that overload as outside. It used to be #1b2430
+          with toneMapped off, which is 27 of 255: darker than the floor, so
+          the end of a sixty-six metre aisle was a hole rather than a door.
+
+          Tone mapped, unlike before, and that matters more than it looks.
+          toneMapped false skips the curve but not the encode, and the encode
+          is the identity when the scene is being rendered into a target and
+          is not when it is going to the canvas -- so the one material in the
+          building set that way was the one material that came out different
+          with the post chain on. Set in linear above unity instead, the
+          curve rolls it off to near white on both paths and the bright pass
+          sees a genuine source. */}
       <mesh position={[0, 1.9, BACK + 0.06]}>
         <planeGeometry args={[4.2, 3.8]} />
-        <meshBasicMaterial color={"#1b2430"} toneMapped={false} />
+        <meshBasicMaterial
+          color={new THREE.Color().setRGB(1.35, 1.46, 1.68, THREE.LinearSRGBColorSpace)} />
       </mesh>
       {[-2.15, 2.15].map((d, i) => (
         <mesh key={i} position={[d, 1.9, BACK + 0.1]} castShadow>
