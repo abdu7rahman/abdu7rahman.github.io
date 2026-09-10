@@ -1,5 +1,6 @@
 import { useThree } from "@react-three/fiber";
 import { useEffect } from "react";
+import { detect } from "../lib/capability.js";
 
 /* A handle on the scene for anything outside it.
  *
@@ -15,10 +16,16 @@ import { useEffect } from "react";
  * move the world tests the probe rather than the page.
  */
 export default function Probe() {
-  const { scene, camera, gl } = useThree();
+  const { scene, camera, gl, clock } = useThree();
   useEffect(() => {
-    window.__lab = { scene, camera, gl };
+    /* The clock is here because the one thing about this building that
+       cannot be photographed is whether it is moving. lab/Budget.jsx
+       implements reduced motion by holding elapsedTime still while leaving
+       the frame delta alone, so a cycle stops and an easing keeps working
+       -- and both states look identical in a screenshot. Reading the clock
+       twice a second apart is the only check of it there is. */
+    window.__lab = { scene, camera, gl, clock, capability: detect() };
     return () => { delete window.__lab; };
-  }, [scene, camera, gl]);
+  }, [scene, camera, gl, clock]);
   return null;
 }

@@ -11,6 +11,7 @@ import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
 import Probe from "./nav/Probe.jsx";
 import Grade from "./lab/Grade.jsx";
+import Budget from "./lab/Budget.jsx";
 import { detect } from "./lib/capability.js";
 import Screens from "./bays/Screens.jsx";
 import Rooms from "./halls/Rooms.jsx";
@@ -19,6 +20,17 @@ import { P, KEY } from "./lib/palette.js";
 import { STOPS, RUN } from "./lib/plan.js";
 
 export default function App() {
+  /* Read once, at the top, and passed down as numbers rather than looked up
+     again in each consumer. detect() caches, so a second call is cheap, but
+     a tier that is read in six places is a tier that can be read
+     inconsistently in six places -- and until this commit it was read in
+     exactly one of them. TIERS carried dpr, shadows, keyShadow and
+     cellShadows for four components and only post was ever consumed:
+     ?lab=low rendered byte for byte the same frame as ?lab=high, which is
+     the whole ladder doing nothing. */
+  const { quality } = detect();
+  const rigs = STOPS.filter(s => s.kind === "rig");
+
   return (
     <>
       {/* The document is as long as the building, so the browser's own
@@ -33,8 +45,12 @@ export default function App() {
       <div style={{ height: `${RUN * 34}px`, pointerEvents: "none" }} aria-hidden="true" />
 
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        shadows={quality.shadows}
+        /* A range, not a number: the cap is the tier's, the floor is the
+           device's own. Fragment cost is dpr squared, which is the largest
+           single lever in a WebGL page and the reason this is first in the
+           ladder. */
+        dpr={[1, quality.dpr]}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         camera={{ fov: 52, near: 0.1, far: 140, position: [0, 1.62, 4] }}
         onCreated={({ gl, scene }) => {
@@ -48,12 +64,16 @@ export default function App() {
         {/* Almost nothing ambient. The brief asked for harder light and the
             way to get it is to refuse to fill the shadows. */}
         <ambientLight intensity={0.16} color={"#6d6a66"} />
+        {/* The key, and its map is the second lever. The shadow camera spans
+            48 m, so 2048 is 42.7 texels per metre and 1024 is 21.3 -- at
+            1024 a 0.42 m column edge is still nine texels across and a hard
+            edge, for a quarter of the memory and a quarter of the fill. */}
         <directionalLight
           position={[KEY.x, KEY.y, KEY.z]}
           intensity={2.3}
           color={"#fff0dc"}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
+          castShadow={quality.keyShadow > 0}
+          shadow-mapSize={[quality.keyShadow || 1, quality.keyShadow || 1]}
           shadow-camera-left={-24}
           shadow-camera-right={24}
           shadow-camera-top={24}
@@ -70,16 +90,19 @@ export default function App() {
           <Belief />
           {/* The six rooms the written work is read in. */}
           <Rooms />
-          {STOPS.filter(s => s.kind === "rig").map(s => (
-            <Bay key={s.id} stop={s}><Rig stop={s} /></Bay>
+          {rigs.map((s, i) => (
+            <Bay key={s.id} stop={s} index={i} cells={rigs.length}>
+              <Rig stop={s} />
+            </Bay>
           ))}
           {/* The seven demos, running on the monitor in each cell. */}
           <Screens />
+          <Budget />
           <Dolly />
           <Probe />
           {/* The finish. Off on the low tier, where the fill it costs is the
               whole budget. */}
-          {detect().quality.post && <Grade />}
+          {quality.post && <Grade />}
         </Suspense>
       </Canvas>
 

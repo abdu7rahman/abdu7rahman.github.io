@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { P } from "../lib/palette.js";
 import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
+import { due } from "./shadowBudget.js";
 
 /* A test cell off the lane: a plinth, a back wall, a screen carrying whatever
  * that rig is running, and a lamp aimed at the work rather than at the room.
@@ -12,7 +14,7 @@ import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
  * have it show what the rig is doing. A picture of a robot is a poster; a
  * running plot bolted to a machine is a test cell.
  */
-export default function Bay({ stop, children }) {
+export default function Bay({ stop, index = 0, cells = 7, children }) {
   const s = stop.side;                    // -1 left of the lane, +1 right
   const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
@@ -27,6 +29,23 @@ export default function Bay({ stop, children }) {
      the cell just looks unlit. Measured before the fix, a test cell came
      back at p50 18 of 255 with the subject of the shot in the dark. */
   const aim = useMemo(() => new THREE.Object3D(), []);
+
+  /* This lamp's shadow map, drawn on its turn rather than every frame. See
+     shadowBudget.js for why it is a schedule and not a switch. Forced for
+     the first pass because a map that has never been drawn is not a stale
+     map, it is a missing one, and a bay with no shadow at all is more
+     obviously wrong than a bay whose shadow is three frames old. */
+  const lamp = useRef();
+  const drawn = useRef(false);
+  useEffect(() => {
+    if (lamp.current) lamp.current.shadow.autoUpdate = false;
+  }, []);
+  useFrame(() => {
+    const l = lamp.current;
+    if (!l) return;
+    if (!drawn.current) { l.shadow.needsUpdate = true; drawn.current = true; return; }
+    l.shadow.needsUpdate = due(index, cells);
+  });
 
   return (
     <group position={[0, 0, -stop.at * 7.2]}>
@@ -51,6 +70,7 @@ export default function Bay({ stop, children }) {
           brighter than the lane it opens off. */}
       <primitive object={aim} position={[x, 0.9, 0]} />
       <spotLight
+        ref={lamp}
         position={[x, EAVES - 2.6, 1.4]}
         target={aim}
         angle={0.62}

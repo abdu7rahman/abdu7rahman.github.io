@@ -8,16 +8,33 @@
  * of that the canvas asked for dpr up to 2, which on a phone is four times the
  * fragments of dpr 1 for a panel nobody holds close enough to resolve.
  *
- * The numbers below were taken by toggling each feature in a live page and
+ * The numbers below were taken by loading a live page at each tier and
  * reading gl.info.render back through window.__lab, not by counting the
  * source, because the source undercounts: instanced meshes are one call and
  * many triangles, a shadow-casting light re-draws every caster once more, and
  * frustum culling removes things the source has no idea about.
  *
+ * What one frame cost before any of this existed, everything on:
+ *
  *   whole frame, camera at the entry     685 calls   314,568 tris
  *   the seven cell spotlights' shadows  -229 calls  -102,383 tris
  *   the key's 2048 shadow map            -91 calls   -54,182 tris
  *   the seven machines                   -49 calls  -101,441 tris
+ *
+ * And what the three tiers cost now, same camera, measured the same way.
+ * Read gl.info.render with the post chain off (?post=0) or the number you
+ * get is the grade's own full-screen quad -- three resets info at the top
+ * of every render() and the pass makes four of them, so the last one wins:
+ *
+ *   high    561 calls   250,669 tris   dpr 2.0   shadow map on
+ *   medium  548 calls   234,575 tris   dpr 1.5   shadow map on
+ *   low     401 calls   158,759 tris   dpr 1.0   shadow map off
+ *
+ * High is 124 calls under the old whole-frame figure with nothing removed
+ * from the scene, which is the cell shadow schedule: five of the seven maps
+ * are a frame or two old on any given frame and cost nothing to keep.
+ * Fragment cost is dpr squared on top of all of it, so the three tiers are
+ * 4.00, 2.25 and 1.00 times each other before a single triangle is counted.
  *
  * So the tiers are built in that order: shadows first, resolution second,
  * post third, geometry last. Dropping the machines would be dropping the
@@ -152,6 +169,11 @@ export function detect() {
  * feature. lab/Budget.jsx implements that split by freezing the clock's
  * elapsed time while leaving the per-frame delta alone -- everything driven
  * by a cycle stops, everything driven by an easing keeps working.
+ *
+ * Checked rather than asserted, because both states look identical in a
+ * screenshot: with the preference set, window.__lab.clock.elapsedTime read
+ * three seconds apart went 0 to 0 while a scroll over the same interval
+ * still walked the camera from z = 4 to z = -18.
  */
 export function watchStillness(onChange) {
   if (typeof window.matchMedia !== "function") { onChange(false); return () => {}; }
