@@ -66,9 +66,18 @@ export function octile(ax, ay, bx, by) {
 }
 
 export class Search {
-  constructor(w, h, wall) {
+  /* `cost` is optional and is a per-cell multiplier on the price of entering
+     that cell, which is what turns one search into four different ones over
+     the same ground. It must be at least 1 everywhere or the octile
+     heuristic stops being admissible -- h is a distance, so a cell cheaper
+     than distance means h can exceed the true remaining cost, and A* returns
+     a path that is not the shortest without saying so. The cost bay builds
+     its four fields with that floor and this is where the requirement
+     lives. */
+  constructor(w, h, wall, cost) {
     this.w = w; this.h = h;
     this.wall = wall;                       // Uint8Array, 1 where blocked
+    this.cost = cost || null;               // Float32Array, >= 1, or null
     this.g = new Float32Array(w * h);
     this.from = new Int32Array(w * h);
     this.state = new Uint8Array(w * h);     // FREE / OPEN / CLOSED
@@ -113,7 +122,7 @@ export class Search {
         if (wall[j]) continue;
         // No corner cutting: a diagonal needs both of its orthogonals clear.
         if (dx && dy && (wall[y * w + nx] || wall[ny * w + x])) continue;
-        const ng = g[i] + c;
+        const ng = g[i] + c * (this.cost ? this.cost[j] : 1);
         if (ng < g[j]) {
           g[j] = ng; from[j] = i; state[j] = OPEN;
           heap.push(ng + octile(nx, ny, this.gx, this.gy), j);

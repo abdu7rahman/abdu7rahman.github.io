@@ -82,7 +82,7 @@ export const STOPS = [
   { id: "terrain",  kind: "rig",  side:  1, at: 6.0, title: "Cost", frame: "course",
     sub: "Go2, four cost functions",
     note: "Click a point on a course and watch four cost functions drive to it." },
-  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Assembly", frame: "machine",
+  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Assembly", frame: "pair",
     sub: "bimanual, eight phases",
     note: "An eight-phase bimanual controller against its own analytic plant." },
 

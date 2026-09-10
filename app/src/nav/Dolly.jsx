@@ -119,7 +119,11 @@ const SHOT = {
      envelope is mostly off screen. So this shot steps back to the centre
      line instead of leaning in -- 4.1 m of throw on a 46 -- which is what
      anybody does when the thing they are looking at got bigger. */
-  envelope: { x: 0.20, y: 1.95, aim: 1.45, fov: 46 }
+  envelope: { x: 0.20, y: 1.95, aim: 1.45, fov: 46 },
+  /* Between the two: a cell whose subject is a pair of machines rather than
+     one. The assembly bay stands two arms 1.04 m apart on the bench, which
+     the machine shot crops and the envelope shot leaves small. */
+  pair: { x: 1.40, y: 1.95, aim: 1.20, fov: 44 }
 };
 const EYE_Y = 1.62;
 

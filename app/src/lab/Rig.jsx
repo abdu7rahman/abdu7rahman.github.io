@@ -3,11 +3,14 @@ import UR12e from "./UR12e.jsx";
 import TurtleBot from "./TurtleBot.jsx";
 import Go2 from "./Go2.jsx";
 import { WORK } from "../lib/plan.js";
+import Fixtures from "./Fixtures.jsx";
 import SearchRig from "./SearchRig.jsx";
 import DriveRig from "./DriveRig.jsx";
 import ReachRig from "./ReachRig.jsx";
 import ForeseeRig from "./ForeseeRig.jsx";
 import RaceRig from "./RaceRig.jsx";
+import TerrainRig from "./TerrainRig.jsx";
+import AssembleRig from "./AssembleRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -33,7 +36,8 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
    the real Burger down the path that comes out. Anything named here owns its
    whole cell -- the machine included -- so this file steps out of the way. */
 const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
-               foresee: ForeseeRig, race: RaceRig };
+               foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
+               assemble: AssembleRig };
 
 /* The bench Bay.jsx draws is a 2.6 by 3.0 m box and the 3.0 m side runs
    parallel to the aisle. That is the axis a mobile base gets to drive along,
@@ -46,7 +50,7 @@ export default function Rig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
   const Own = RUNS[stop.id];
-  if (Own) return <Own stop={stop} />;
+  if (Own) return <><Fixtures stop={stop} /><Own stop={stop} /></>;
   return (
     <group>
       {/* The monitor itself belongs to bays/Screens.jsx, which owns the
@@ -56,10 +60,7 @@ export default function Rig({ stop }) {
           demo rendered into a texture nobody could see. One screen, and the
           file that has something to put on it draws it. The post stays here,
           because a post is furniture and not a display. */}
-      <mesh position={[x + s * 1.05, 0.9, 0.9]}>
-        <cylinderGeometry args={[0.05, 0.07, 0.62, 8]} />
-        <meshStandardMaterial color={P.steel} roughness={0.6} metalness={0.5} />
-      </mesh>
+      <Fixtures stop={stop} />
 
       {/* The machine. The vendor's own triangles in all three cases, moved by
           the vendor's own kinematics: the arm by the measured module the
@@ -86,17 +87,6 @@ export default function Rig({ stop }) {
         </group>
       )}
 
-      {/* The e-stop, which is the smallest and most necessary orange in the
-          building. It belongs to the cell rather than to the machine -- a
-          mobile base drives away from its own bench and the button does not
-          go with it -- so it stands on the bench beside whatever is running.
-          On the aisle corner, which is the one part of this layout that is
-          not about the camera: a stop button you have to reach across a
-          working machine to press is not a stop button. */}
-      <mesh position={[x - s * 1.12, 0.915, 0.95]} castShadow>
-        <cylinderGeometry args={[0.055, 0.055, 0.03, 12]} />
-        <meshStandardMaterial color={P.hazard} emissive={P.hazard} emissiveIntensity={0.5} roughness={0.5} />
-      </mesh>
     </group>
   );
 }
