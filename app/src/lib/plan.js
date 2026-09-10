@@ -47,7 +47,13 @@ export const WORK = AISLE / 2 + 1.7;
  * guessing.
  */
 export const STOPS = [
-  { id: "entry",    kind: "room", side:  0, at: 0,   title: "High bay",
+  /* "About", not "High bay". A high bay is the trade name for a building
+     with a tall clear span and a travelling crane, which is what this place
+     is -- and which tells a visitor nothing at all about what is in it. The
+     first station is who this is and what he does, so it says so. The rest
+     of the index reads as a facility board because the rest of the index is
+     a facility; the front of it is not the place to be clever. */
+  { id: "entry",    kind: "room", side:  0, at: 0,   title: "About",
     lede: "Robotics engineer. Motion planning, manipulation, and the bringup that gets it onto real hardware." },
 
   { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search", frame: "course",

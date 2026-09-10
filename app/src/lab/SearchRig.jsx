@@ -123,6 +123,8 @@ export default function SearchRig({ stop }) {
   const run = useRef({ phase: "search", t: 0, seed: 1, at: 0, pts: [] });
   const walls = useRef();
   const mat = useRef();
+  // 1 while painting walls, 0 while erasing, null when not dragging.
+  const paint = useRef(null);
 
   /* Lay the first map before the first frame, so the bay is never blank.
      The frame loop guards on r.sx anyway, because R3F's loop is already
@@ -139,6 +141,13 @@ export default function SearchRig({ stop }) {
     title: "A* over a costmap",
     actions: [
       { label: "New map", on: () => newRun() },
+      { label: "Clear", on: () => {
+          // Everything but the rim, so what is left is a course and not the
+          // aisle.
+          for (let j = 1; j < NY - 1; j++)
+            for (let i = 1; i < NX - 1; i++) kit.wall[j * NX + i] = 0;
+          paintWalls(); replan();
+        } },
       { label: "Step", on: () => step(12) }
     ],
     readout: () => {
@@ -151,7 +160,7 @@ export default function SearchRig({ stop }) {
         ["path", se.found ? se.path.length + " cells" : "--"]
       ];
     },
-    hint: "Eight-connected, octile heuristic, binary heap. Walled off, it says so and lays another."
+    hint: "Drag on the grid to build walls, drag from a wall to knock them down. It re-searches on every edit."
   }), [stop.id, kit]);
 
   /* The obstacles as real boxes, not only as cells in the texture. They cast
@@ -218,6 +227,38 @@ export default function SearchRig({ stop }) {
     kit.cells[r.sy * NX + r.sx] = ENDS; kit.cells[r.ey * NX + r.ex] = ENDS;
     kit.tex.needsUpdate = true;
     r.phase = "hold"; r.t = 0;
+  }
+
+  /* Which cell a pointer event landed on, in the grid's own indices, or null
+     if it is outside or on the rim. The rim is not editable: a course whose
+     edge can be opened is a course a path can leave, and the search would
+     then be searching the aisle. */
+  function cellAt(e) {
+    const p = e.object.worldToLocal(e.point.clone());
+    const i = Math.floor((p.x + COURSE_X / 2) / CELL);
+    const j = Math.floor((p.y + COURSE_Y / 2) / CELL);
+    if (i < 1 || j < 1 || i >= NX - 1 || j >= NY - 1) return null;
+    return j * NX + i;
+  }
+
+  function edit(c) {
+    const r = run.current;
+    if (kit.wall[c] === paint.current) return;
+    // Neither end can be built on: a start or a goal inside a wall is a
+    // search that reports unreachable and tells you nothing about the map.
+    if (c === r.sy * NX + r.sx || c === r.ey * NX + r.ex) return;
+    kit.wall[c] = paint.current;
+    paintWalls();
+    replan();
+  }
+
+  /* Re-search the current start and goal over whatever the map is now. */
+  function replan() {
+    const r = run.current;
+    kit.search.start(r.sx, r.sy, r.ex, r.ey);
+    r.phase = "search"; r.t = 0; r.at = 0; r.pts = [];
+    pose.current = { x: gx(r.sx), y: gy(r.sy), psi: 0, travel: 0, turned: 0 };
+    repaint();
   }
 
   function newRun() {
@@ -312,7 +353,36 @@ export default function SearchRig({ stop }) {
        runs along y. One rotation for the group means the grid, the walls and
        the robot cannot disagree about which way the course faces. */
     <group position={[x, 0.9, 0]} rotation-x={-Math.PI / 2}>
-      <mesh position={[0, 0, 0.003]}>
+      {/* The map is drawn on, which is what the written Search section says
+          this is: draw a map and search it. Dragging paints walls, dragging
+          from a wall erases -- the mode is decided by the first cell you
+          touch, which is how every tile editor has worked since anybody
+          made one, and means there is no mode to be in by mistake.
+
+          Each edit re-runs the search from scratch rather than repairing
+          it. D* Lite would repair it and would be the right answer for a
+          robot that has driven half the path already; for 621 cells it is
+          a millisecond either way, and a full re-run is the one that cannot
+          be quietly wrong. */}
+      <mesh
+        position={[0, 0, 0.003]}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const c = cellAt(e);
+          if (!c) return;
+          paint.current = kit.wall[c] ? 0 : 1;
+          e.target.setPointerCapture(e.pointerId);
+          edit(c);
+        }}
+        onPointerMove={(e) => {
+          if (paint.current === null) return;
+          e.stopPropagation();
+          const c = cellAt(e);
+          if (c !== null) edit(c);
+        }}
+        onPointerUp={(e) => { paint.current = null; }}
+        onPointerOut={() => { paint.current = null; }}
+      >
         <planeGeometry args={[COURSE_X, COURSE_Y]} />
         <shaderMaterial
           ref={mat}

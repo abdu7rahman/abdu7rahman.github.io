@@ -5,6 +5,7 @@ import Go2 from "./Go2.jsx";
 import { Search } from "./demos/astar.js";
 import { heights, COSTS, RELIEF } from "./demos/terrain.js";
 import { register, isRunning } from "./console.js";
+import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -215,7 +216,12 @@ export default function TerrainRig({ stop }) {
          what the modulo was: it ran four complete A* passes over 1,116 cells
          and rebuilt four tube geometries on half of every second's frames,
          thirty times a second, whether or not anybody was in this bay. */
-      const tick = Math.floor(clock.elapsedTime * 2);
+      // Twice a second at the top tier and less often below it. What is
+      // being cut is how often the four answers are refreshed while the
+      // goal wanders on its own, not the searches themselves: an A* run
+      // with fewer nodes is a different answer, and this bay is about the
+      // answers.
+      const tick = Math.floor(clock.elapsedTime * 2 * detect().quality.work);
       if (tick !== kit.lastSolve) { kit.lastSolve = tick; solve(); }
     }
 

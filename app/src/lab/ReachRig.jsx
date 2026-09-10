@@ -4,6 +4,7 @@ import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, TCP_Z } from "../../../world/kinematics.js";
 import { register, isRunning } from "./console.js";
+import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -77,9 +78,17 @@ export default function ReachRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
 
+  /* The cloud is a Monte Carlo estimate of a set, so the tier scales how
+     many samples it is estimated from and not what is being estimated. At
+     the low tier that is 24,500 points instead of 70,000 -- a thinner shell
+     of the same shape, which is the honest way to be cheaper about an
+     estimate. */
+  const cap = detect().quality.work;
+  const n = Math.round(N * cap);
+
   const kit = useMemo(() => {
-    const pos = new Float32Array(N * 3);
-    const col = new Float32Array(N * 3);
+    const pos = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
@@ -92,7 +101,7 @@ export default function ReachRig({ stop }) {
       near: new THREE.Color(P.teal),
       far: new THREE.Color(P.hazard)
     };
-  }, []);
+  }, [n]);
 
   const tint = useMemo(() => new THREE.Color(), []);
 
@@ -115,7 +124,7 @@ export default function ReachRig({ stop }) {
     },
     readout: () => [
       ["samples", kit.n.toLocaleString("en")],
-      ["of", N.toLocaleString("en")],
+      ["of", n.toLocaleString("en")],
       ["joints swept", kit.lockBase ? "4" : "5"]
     ],
     hint: "Every point is a tool centre from the arm's own forward kinematics."
@@ -123,8 +132,8 @@ export default function ReachRig({ stop }) {
 
   useFrame((_, dt) => {
     if (!isRunning(stop.id)) return;
-    if (kit.n >= N) return;
-    const add = Math.min(N - kit.n, Math.max(1, Math.round(PER_S * Math.min(0.1, dt))));
+    if (kit.n >= n) return;
+    const add = Math.min(n - kit.n, Math.max(1, Math.round(PER_S * cap * Math.min(0.1, dt))));
     for (let i = 0; i < add; i++) {
       for (let j = 0; j < 6; j++) kit.q[j] = LO[j] + kit.rand() * (HI[j] - LO[j]);
       // Base locked: the envelope collapses to the slice the other joints

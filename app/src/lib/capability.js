@@ -59,10 +59,49 @@
    (-24 to +24), so 2048 is 42.7 texels per metre and 1024 is 21.3 -- at 1024
    a 0.42 m column edge is 9 texels across, which is still a hard edge, and it
    is a quarter of the memory and a quarter of the fill. */
+/* `work` is the one that is not about drawing.
+ *
+ * Seven cells run real algorithms every frame, and the cost of those is on
+ * the CPU where none of the other four settings reach: the reach bay puts
+ * nine thousand joint tuples a second through forward kinematics, the race
+ * bay's MPPI rolls out 96 sequences of 16 steps twenty times a second, the
+ * local control bay scores 147 trajectories at the same rate, and the cost
+ * bay re-runs four A* passes twice a second. Halving the resolution does
+ * nothing about any of it.
+ *
+ * So it is a scale on sample counts, and the rigs read it and cut the
+ * numbers that are sampling rather than the numbers that are the algorithm:
+ * fewer rollouts, not a shorter horizon; fewer points in the cloud, not a
+ * smaller workspace. What each bay shows stays true at every tier, it is
+ * just estimated from less. That distinction is the whole reason this is a
+ * scale and not a set of feature switches.
+ *
+ * Measured at 1440 by 900 with the post chain off and the camera settled,
+ * because gl.info with the post chain on reports its own final quad and
+ * nothing else. High tier: the entrance is 565 draw calls and 347,887
+ * triangles, the heaviest frame in the building by a factor of three over
+ * any cell, because from there you can see all of it; the cells run 206 to
+ * 286 calls and 160,000 to 246,000 triangles.
+ *
+ * The same five cells at low:
+ *
+ *              high              low
+ *   search     231 / 182,913     37 /  20,402
+ *   local ctl  282 / 214,572     41 /  18,212
+ *   race       270 / 245,973     50 /  64,720
+ *   reach      218 / 203,712     60 /  23,194
+ *   cost       258 / 204,074     66 /  44,387
+ *
+ * Frame rate is deliberately not in that table. Every headless render of
+ * this building runs under SwiftShader on a contended machine, where the
+ * measurement is dominated by what else is running -- the search cell timed
+ * slower at low than at high on one pass, which is noise and not a result.
+ * Draw calls and triangles are deterministic, so they are what is recorded.
+ */
 export const TIERS = {
-  high:   { dpr: 2.0, post: true,  shadows: true,  keyShadow: 2048, cellShadows: 2 },
-  medium: { dpr: 1.5, post: true,  shadows: true,  keyShadow: 1024, cellShadows: 1 },
-  low:    { dpr: 1.0, post: false, shadows: false, keyShadow: 0,    cellShadows: 0 }
+  high:   { dpr: 2.0, post: true,  shadows: true,  keyShadow: 2048, cellShadows: 2, work: 1.00 },
+  medium: { dpr: 1.5, post: true,  shadows: true,  keyShadow: 1024, cellShadows: 1, work: 0.60 },
+  low:    { dpr: 1.0, post: false, shadows: false, keyShadow: 0,    cellShadows: 0, work: 0.35 }
 };
 
 /* One reading, cached, because every consumer must agree and because probing

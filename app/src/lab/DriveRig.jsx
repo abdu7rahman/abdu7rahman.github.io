@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { Local } from "./demos/dwa.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
+import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -39,23 +40,40 @@ const TICK = 1 / 20;          // 20 Hz, which is the rate the written
    radius, in the bench frame. Cylinders rather than boxes because the
    clearance term is a point-to-circle distance and a circle is the shape
    that makes that exact rather than conservative. */
-const OBS = [
+const OBS0 = [
   [-0.44,  0.42, 0.11],
   [ 0.40,  0.22, 0.13],
   [-0.14, -0.42, 0.12],
   [ 0.50, -0.62, 0.10]
 ];
+const OBS_R = 0.12;          // what a placed one is, in metres
 
 export default function DriveRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
 
-  const ctrl = useMemo(
-    () => new Local({ maxV: MAX_V, maxW: MAX_W, horizon: HORIZON }), []);
+  /* Fewer samples at a lower tier, never a shorter horizon: the horizon is
+     what the controller is, the sample count is only how finely it looks.
+     Odd counts, so zero angular velocity stays exactly in the set -- a
+     sampler that cannot choose to go straight is a sampler that weaves. */
+  const ctrl = useMemo(() => {
+    const w = detect().quality.work;
+    const odd = (x) => { const n = Math.max(3, Math.round(x)); return n % 2 ? n : n + 1; };
+    return new Local({ maxV: MAX_V, maxW: MAX_W, horizon: HORIZON,
+                       nv: odd(7 * w), nw: odd(21 * w) });
+  }, []);
   const pose = useRef({ x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 });
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
   const goal = useRef(new THREE.Vector2(0.8, 0.9));
   const held = useRef(0);          // seconds since the cursor last set it
+  /* The obstacles belong to the reader. A local planner is only interesting
+     against a world you can change under it, and one that only ever sees
+     four cylinders somebody else placed is a planner being shown rather
+     than being asked anything. Held in a ref and rendered from a counter,
+     because the controller reads them every tick and React re-rendering the
+     scene to move a cylinder would be the tail wagging the dog. */
+  const obs = useRef(OBS0.map(o => o.slice()));
+  const [obsN, setObsN] = useState(0);
 
   const fan = useRef();
   const pick = useRef();
@@ -121,6 +139,8 @@ export default function DriveRig({ stop }) {
       { label: "Reset", on: () => {
           pose.current = { x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 };
           cmd.current = { v: 0, w: 0, acc: 0 };
+          obs.current = OBS0.map(o => o.slice());
+          setObsN(n => n + 1);
         } }
     ],
     choice: {
@@ -137,10 +157,11 @@ export default function DriveRig({ stop }) {
       ["sampled", String(ctrl.count)],
       ["admissible", String(ctrl.fanOk.slice(0, ctrl.count)
         .reduce((a, b) => a + b, 0))],
+      ["obstacles", String(obs.current.length)],
       ["v", cmd.current.v.toFixed(3) + " m/s"],
       ["w", cmd.current.w.toFixed(2) + " rad/s"]
     ],
-    hint: "Hover the pad to put the goal where you want it."
+    hint: "Hover to move the goal. Click the pad to drop an obstacle, click one to lift it."
   }), [stop.id, ctrl]);
 
   useFrame(({ clock, camera: cam }, dt) => {
@@ -165,7 +186,7 @@ export default function DriveRig({ stop }) {
     if (cmd.current.acc >= TICK) {
       cmd.current.acc -= TICK;
       const [v, w, pickIdx] = ctrl.plan([q.x, q.y, q.psi],
-                                        [goal.current.x, goal.current.y], OBS);
+                                        [goal.current.x, goal.current.y], obs.current);
       cmd.current.v = v; cmd.current.w = w;
       paintFan(pickIdx);
     }
@@ -241,6 +262,10 @@ export default function DriveRig({ stop }) {
           a pointer handler is the whole interaction: where it is hit in
           local space is the goal, in metres, with no picking maths of its
           own. */}
+      {/* Hover moves the goal; a click puts an obstacle down, or picks one
+          up if you click one. Both on the pad itself, because a control for
+          placing things in a world that is not in the world is a control
+          somebody has to be told about. */}
       <mesh
         position={[0, 0, 0.002]}
         onPointerMove={(e) => {
@@ -248,6 +273,15 @@ export default function DriveRig({ stop }) {
           const p = e.object.worldToLocal(e.point.clone());
           goal.current.set(p.x, p.y);
           held.current = 0;
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const p = e.object.worldToLocal(e.point.clone());
+          const hit = obs.current.findIndex(
+            o => Math.hypot(p.x - o[0], p.y - o[1]) < o[2] + 0.03);
+          if (hit >= 0) obs.current.splice(hit, 1);
+          else obs.current.push([p.x, p.y, OBS_R]);
+          setObsN(n => n + 1);
         }}
       >
         <planeGeometry args={[COURSE_X, COURSE_Y]} />
@@ -268,8 +302,9 @@ export default function DriveRig({ stop }) {
         <lineBasicMaterial color={P.hazard} depthWrite={false} />
       </line>
 
-      {OBS.map((o, i) => (
-        <mesh key={i} position={[o[0], o[1], 0.09]} castShadow receiveShadow>
+      {obs.current.map((o, i) => (
+        <mesh key={i + ":" + obsN} position={[o[0], o[1], 0.09]}
+              castShadow receiveShadow>
           <cylinderGeometry args={[o[2], o[2], 0.18, 18]} />
           <meshStandardMaterial color={P.steel} roughness={0.8} metalness={0.15} />
         </mesh>

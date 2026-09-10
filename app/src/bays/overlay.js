@@ -60,6 +60,15 @@ const CSS = `
 #bay-hint b { display: block; font: 600 10px/1.6 var(--mono); letter-spacing: .16em;
               text-transform: uppercase; color: var(--hazard); }
 #bay-hint span { font-size: 11px; color: var(--mut); }
+
+/* Below the control row on a small screen, where the corner block and the
+   read control take the whole of the top: measured at 390 px this badge is
+   243 px wide and overlapped both of them. After the rule it overrides, not
+   before it -- same specificity, so the later one wins and a media query
+   written above the thing it corrects corrects nothing. */
+@media (max-width: 820px) {
+  #bay-hint { top: 58px; }
+}
 `;
 
 let chrome = null, bar = null, hintEl = null;

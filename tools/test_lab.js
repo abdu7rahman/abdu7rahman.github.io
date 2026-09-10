@@ -116,7 +116,7 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       at: (document.querySelector('.index li.on .t') || {}).textContent,
       ask: (document.querySelector('.ask') || {}).textContent || null
     }));
-    ok('you land at the entrance', /high bay/i.test(home.at || ''), String(home.at));
+    ok('you land at the entrance', /about/i.test(home.at || ''), String(home.at));
     ok('and its reading is up', home.plate, JSON.stringify(home));
     ok('with a control that says so', /hide/i.test(home.ask || ''), String(home.ask));
 
@@ -246,12 +246,69 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     }
   }
 
-  console.log('\nE. the way out is a link');
+  console.log('\nD1. the world can be edited, not only watched');
   {
-    // Out of the cell first: D left it open and the overlay is over
-    // everything, so this was measuring the overlay and calling it a fault.
+    /* A simulator is something you operate on. Two bays let the reader
+       change the world under the algorithm: the search grid is drawn on and
+       the drive pad takes obstacles. Both re-solve on every edit, which is
+       the part worth checking -- an editor that changes the picture and not
+       the problem is a paint program. */
+    // Out of the cell D opened: its scrim covers the page, including the
+    // index, which is how this section first failed.
     await pg.keyboard.press('Escape');
     await pg.waitForTimeout(1500);
+
+    const walls = () => pg.evaluate(() => {
+      let n = 0;
+      window.__lab.scene.traverse(o => { if (o.isInstancedMesh) n = Math.max(n, o.count); });
+      return n;
+    });
+    await pg.click('.index li:nth-child(2) button');   // search
+    await settle();
+    await pg.waitForTimeout(2500);
+    const before = await walls();
+    /* Dragged from wherever the middle of the course happens to be, so the
+       mode is whatever the first cell was -- which is the point of deciding
+       the mode from that cell. The check is that the map changed and the
+       search went back to work, not which direction it went. */
+    await pg.mouse.move(620, 470);
+    await pg.mouse.down();
+    for (let i = 0; i < 12; i++) {
+      await pg.mouse.move(620 + i * 22, 470 + i * 6);
+      await pg.waitForTimeout(120);
+    }
+    await pg.mouse.up();
+    await pg.waitForTimeout(3500);
+    const after = await walls();
+    ok('drawing on the grid changes the map', after !== before, before + ' -> ' + after);
+    const state = await pg.evaluate(() => {
+      const r = [...document.querySelectorAll('.console__out > div')]
+        .map(d => d.textContent.trim().replace(/\s+/g, ' '));
+      return r.join(' / ');
+    });
+    ok('and it re-searches on the edit', /expand|done|holding|driving/i.test(state), state);
+
+    await pg.click('.index li:nth-child(3) button');   // local control
+    await settle();
+    await pg.waitForTimeout(2500);
+    const count = async () => pg.evaluate(() => {
+      const row = [...document.querySelectorAll('.console__out > div')]
+        .find(d => /obstacles/i.test(d.textContent));
+      return row ? parseInt(row.textContent.replace(/\D+/g, ''), 10) : null;
+    });
+    const n0 = await count();
+    await pg.mouse.click(760, 520);
+    await pg.waitForTimeout(2200);
+    const n1 = await count();
+    ok('clicking the pad drops an obstacle', n1 === n0 + 1, n0 + ' -> ' + n1);
+    await pg.mouse.click(760, 520);
+    await pg.waitForTimeout(2200);
+    const n2 = await count();
+    ok('and clicking it again lifts it', n2 === n0, n1 + ' -> ' + n2);
+  }
+
+  console.log('\nE. the way out is a link');
+  {
     const href = await pg.getAttribute('.edge a', 'href');
     ok('the corner block links to the document', href === '/written.html', String(href));
     const box = await pg.evaluate(() => {

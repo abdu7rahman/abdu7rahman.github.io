@@ -6,6 +6,7 @@ import { purePursuit, stanley, MPPI, nearest, ahead } from "./demos/controllers.
 import { Local } from "./demos/dwa.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
+import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -62,8 +63,17 @@ export default function RaceRig({ stop }) {
   const kit = useMemo(() => {
     const path = makePath();
     const rand = seeded(0xC0FFEE11);
-    const dwa = new Local({ maxV: MAX_V, maxW: MAX_W, horizon: 1.9, nv: 5, nw: 15 });
-    const mppi = new MPPI({ maxV: MAX_V, maxW: MAX_W });
+    /* Scaled by the tier, and only the sample counts. MPPI is the expensive
+       one here -- 96 sequences of 16 steps, each scoring against the plan,
+       twenty times a second -- and fewer sequences is a noisier estimate of
+       the same expectation, which is what a lower tier should buy. The
+       horizon and the temperature are the algorithm and do not move. */
+    const w = detect().quality.work;
+    const odd = (x) => { const n = Math.max(3, Math.round(x)); return n % 2 ? n : n + 1; };
+    const dwa = new Local({ maxV: MAX_V, maxW: MAX_W, horizon: 1.9,
+                            nv: odd(5 * w), nw: odd(15 * w) });
+    const mppi = new MPPI({ maxV: MAX_V, maxW: MAX_W,
+                            K: Math.max(24, Math.round(96 * w)) });
     const runners = [
       { name: "pure pursuit", col: P.hazard,
         step: (st) => purePursuit(st, path, { look: 0.34, maxV: MAX_V, maxW: MAX_W }) },
