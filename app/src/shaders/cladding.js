@@ -151,9 +151,19 @@ export function cladding(material, opt = {}) {
     );
   };
 
-  /* Without this the patched material and an unpatched standard material
-     hash to the same program and whichever compiles first wins -- silently,
-     and in whichever direction the traversal happens to run that session. */
-  material.customProgramCacheKey = () => "cladding";
+  /* The cache key carries the configuration rather than just the word.
+  
+     Without a key at all, a patched material and an unpatched standard
+     material hash to the same program and whichever compiles first wins.
+     With a constant one, every cladding material in the building shares a
+     program, and three only runs onBeforeCompile on a cache miss -- so a
+     second material asking for "cladding" with a different axis or pitch
+     would be drawn with the first one's constants. Nothing in the building
+     is known to have been drawn wrong by that; it is closed because it is
+     the kind of fault that is invisible until it is load-bearing. */
+  const key = "cladding:" + [u.uCladAxis.value.x, u.uPitch.value, u.uCrown.value,
+    u.uRamp.value, u.uDepth.value, u.uSeam.value, u.uBase.value, u.uDado.value]
+    .map(n => +n.toFixed(4)).join(",");
+  material.customProgramCacheKey = () => key;
   return material;
 }

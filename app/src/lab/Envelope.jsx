@@ -74,10 +74,20 @@ function Wall({ x, z, w, h, ry = 0, colour = P.steelDk, dado = 2.35 }) {
  * in a reveal is a hole in a building.
  */
 function Shutter({ x, z, ry, w = 4.4, h = 4.6, open = 0 }) {
-  const curtain = useMemo(() => cladding(new THREE.MeshStandardMaterial({
-    color: new THREE.Color("#2b2d31"), roughness: 0.62, metalness: 0.45
-  }), { axis: new THREE.Vector3(0, 1, 0), pitch: 0.115, crown: 0.62,
-        ramp: 0.14, depth: 0.022, seam: 0, dado: -1 }), []);
+  /* Plain, and not the cladding patch, and this is a known unknown rather
+     than a preference.
+  
+     The curtain wants horizontal slats, which is what shaders/cladding.js
+     does on the walls with its axis turned. Patched, this mesh draws
+     nothing: not dark, not wrong, absent -- the doorway behind it shows
+     through, a raycast puts it 2 cm in front of that doorway, and swapping
+     in a plain material with no other change fills 2364 of 2394 pixels in
+     the same window. Giving the patch a per-configuration program cache key
+     did not change it either. Whatever it is, it is in the patch and not in
+     this file, so this runs plain until somebody finds it. */
+  const curtain = useMemo(() => new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#33363b"), roughness: 0.62, metalness: 0.45
+  }), []);
   useEffect(() => () => curtain.dispose(), [curtain]);
   const drop = h * (1 - open);
   return (
@@ -166,7 +176,7 @@ export default function Envelope() {
     uBandHi:    { value: EAVES - 0.6 },
     uBandGain:  { value: 0.055 },
     uBackZ:     { value: BACK },
-    uDoorHX:    { value: 2.1 },
+    uDoorHX:    { value: 1.7 },   // half the opening, so the wash matches it
     uDoorGain:  { value: 0.26 },
     uDoorRun:   { value: 9.0 },
     uFront:     { value: FRONT },
@@ -256,14 +266,51 @@ export default function Envelope() {
           with the post chain on. Set in linear above unity instead, the
           curve rolls it off to near white on both paths and the bright pass
           sees a genuine source. */}
-      <mesh position={[0, 1.9, BACK + 0.06]}>
-        <planeGeometry args={[4.2, 3.8]} />
+      {/* 1.05 rather than 1.35, and 3.4 by 3.0 rather than 4.2 by 3.8.
+      
+          Both numbers were set for the view from the entrance, sixty-six
+          metres away, where the opening is a hundred pixels of overload at
+          the vanishing point and the whole job is to read as outside. The
+          office stands 7.2 m from it, and there the same plane is 550 px of
+          flat 255 across the middle of the last shot in the building --
+          no gradient, no edge, nothing to look at. At 1.05 the middle still
+          clips and the corners roll off, which is what an overexposed
+          doorway actually looks like. */}
+      {/* 0.58, and the arithmetic is worth writing down because two goes at
+          this were spent guessing.
+      
+          The plane is basic, so what reaches the tone curve is its value
+          times the 1.30 exposure, and the bright pass thresholds at 0.72
+          with a 0.36 knee. At 1.05 that is 1.365 in, about 0.80 out and 233
+          of 255 on the canvas -- and then it is well over the threshold, so
+          the blur puts a wide halo back on top and everything within a
+          couple of hundred pixels goes to 255. Measured, that included the
+          shutter curtain hanging in front of it, which is a dark object that
+          rendered white: the raycast found it 2 cm nearer the camera than
+          the opening and the screenshot showed no sign of it.
+      
+          0.58 gives 0.754 in, about 0.60 out and 200 on the canvas, which is
+          just over the knee. It still reads as five stops over the lane, it
+          still blooms, and it stops eating what is in front of it. */}
+      <mesh position={[0, 1.6, BACK + 0.06]}>
+        <planeGeometry args={[3.4, 3.0]} />
         <meshBasicMaterial
-          color={new THREE.Color().setRGB(1.35, 1.46, 1.68, THREE.LinearSRGBColorSpace)} />
+          color={new THREE.Color().setRGB(0.58, 0.63, 0.74, THREE.LinearSRGBColorSpace)} />
       </mesh>
-      {[-2.15, 2.15].map((d, i) => (
-        <mesh key={i} position={[d, 1.9, BACK + 0.1]} castShadow>
-          <boxGeometry args={[0.12, 3.9, 0.12]} />
+      {/* And the shutter over it, half down.
+      
+          The opening is the brightest thing in the building by four or five
+          stops, which is right from the entrance and wrong from the office:
+          at 7.2 m the same plane is 550 px of flat white across the middle of
+          the last shot, and no amount of taking the value down fixes that,
+          because the bright pass puts back whatever the curve takes off. What
+          fixes it is something in front of it. A goods door left half down is
+          what one actually looks like between deliveries, and the band of sky
+          under it is a shape rather than a rectangle. */}
+      <Shutter x={0} z={BACK + 0.12} ry={0} w={3.9} h={3.3} open={0.52} />
+      {[-1.78, 1.78].map((d, i) => (
+        <mesh key={i} position={[d, 1.6, BACK + 0.1]} castShadow>
+          <boxGeometry args={[0.12, 3.3, 0.12]} />
           <meshStandardMaterial color={P.hazard} roughness={0.7}
             emissive={P.hazard} emissiveIntensity={0.10} />
         </mesh>

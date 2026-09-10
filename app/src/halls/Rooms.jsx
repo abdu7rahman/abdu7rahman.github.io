@@ -387,20 +387,82 @@ function History({ side }) {
   );
 }
 
-/* The desk at the end of the run, in the aisle rather than off it.
-
-   The office is the one room with no hand of its own, so the dolly keeps
-   the lane there and looks straight down sixty-six metres at the end wall.
-   A desk parked in a side bay is a desk nobody sees; a desk in front of the
-   door, with the door lit from outside behind it, is the last shot in the
-   building and the one the contact panel sits beside. */
+/* The office at the end of the run, in the aisle rather than off it.
+ *
+ * The office is the one room with no hand of its own, so the dolly keeps the
+ * lane there and looks straight down sixty-six metres at the end wall. A desk
+ * parked in a side bay is a desk nobody sees; a counter in front of the door,
+ * with the door lit from outside behind it, is the last shot in the building
+ * and the one the contact panel sits beside.
+ *
+ * A counter rather than the desk it was. A desk is a table, and a table seen
+ * end on from a lane is a dark bar -- which is exactly what it read as, in
+ * front of an opening that took up half the frame. A counter has a face, a
+ * top that oversails it and a return, so it has three surfaces at three
+ * angles and it is the thing the reader is standing at rather than a piece of
+ * furniture in the distance.
+ */
 function Reception() {
   const aim = useMemo(() => new THREE.Object3D(), []);
+  /* Off the door and forward of it. The doorway is 3.4 m wide on the
+     centreline and the counter used to sit at -0.9, so it stood across the
+     one bright thing in the shot; and everything behind it was pushed into
+     the 1.8 m left between the counter and the end wall, which put the
+     pigeonholes 3.4 m from the reader's eye where a 2.5 m board fills two
+     thirds of the frame. At -2.4 the counter clears the opening, and at
+     z = -4.0 there is 3.2 m of room behind it to put the rest in. */
+  const x = -2.4, z = -4.0;
+  /* member() puts the section's first number on whichever axis the run is
+     not, and which of the two ends up vertical depends on the direction --
+     for a run down the lane the first is the x extent and the second is the
+     height, and for a run across it they swap. Three members here were
+     written with them the wrong way round, and the return came out 0.92 wide
+     by 0.58 tall instead of the reverse: a wedge sticking into the aisle
+     rather than the end of a counter. */
+  const kit = useMemo(() => {
+    const out = [];
+    // Front face, return and plinth: the body of the counter.
+    out.push([x - 1.5, 0.06, z, x + 1.5, 0.06, z, 0.12, 0.62]);
+    out.push([x - 1.5, 0.58, z, x + 1.5, 0.58, z, 0.92, 0.58]);
+    out.push([x + 1.5, 0.58, z, x + 1.5, 0.58, z - 1.5, 0.58, 0.92]);
+    // The top, oversailing the face, which is the one line of this that
+    // catches the light from the doorway behind it.
+    out.push([x - 1.62, 1.07, z + 0.09, x + 1.62, 1.07, z + 0.09, 0.06, 0.76]);
+    out.push([x + 1.59, 1.07, z + 0.09, x + 1.59, 1.07, z - 1.6, 0.76, 0.06]);
+    return out;
+  }, [x, z]);
+  const boards = useMemo(() => {
+    const out = [];
+    /* A rack of pigeonholes behind the counter -- further down the lane, not
+       nearer, which is the sign this had wrong. Twelve holes on a 1.6 m
+       carcass: the one object that says post room without needing a label,
+       and small enough that at 6 m it is a detail rather than a wall. */
+    const bz = z - 1.9, w = 0.8;
+    for (let c = 0; c <= 4; c++)
+      out.push([x - w + c * (w / 2), 1.35, bz, x - w + c * (w / 2), 2.15, bz, 0.03, 0.30]);
+    for (let r = 0; r <= 3; r++)
+      out.push([x - w, 1.35 + r * 0.267, bz, x + w, 1.35 + r * 0.267, bz, 0.03, 0.30]);
+    // The carcass back, and the stand it sits on.
+    out.push([x, 1.75, bz - 0.16, x, 1.75, bz - 0.161, 1.62, 0.82]);
+    out.push([x, 0.02, bz, x, 1.35, bz, 1.62, 0.34]);
+    return out;
+  }, [x, z]);
   return (
     <group>
-      <Desk side={0} x={-0.9} z={-5.4} />
-      <primitive object={aim} position={[-0.9, 0.8, -5.4]} />
-      <spotLight position={[-2.2, WALL_H + 0.9, -3.4]} target={aim}
+      <Members list={kit} colour={P.steel} castShadow receiveShadow />
+      <Members list={boards} colour={P.steelDk} castShadow receiveShadow />
+      {/* The chair behind it, because a counter with nobody's chair behind
+          it is a barrier. */}
+      <mesh position={[x + 0.4, 0.24, z - 0.9]} castShadow receiveShadow>
+        <boxGeometry args={[0.46, 0.08, 0.46]} />
+        <meshStandardMaterial color={P.steelDk} roughness={0.85} metalness={0.1} />
+      </mesh>
+      <mesh position={[x + 0.4, 0.12, z - 0.9]} castShadow>
+        <cylinderGeometry args={[0.05, 0.05, 0.24, 8]} />
+        <meshStandardMaterial color={P.steel} roughness={0.5} metalness={0.6} />
+      </mesh>
+      <primitive object={aim} position={[x, 0.9, z]} />
+      <spotLight position={[x + 0.6, WALL_H + 0.9, z + 2.2]} target={aim}
         angle={0.62} penumbra={0.45} intensity={130} distance={13} decay={2}
         color={"#ffe6cc"} castShadow />
     </group>
@@ -408,8 +470,8 @@ function Reception() {
 }
 
 /* One instanced mesh, filled from a list of member tuples. The pattern is
-   lab/Structure.jsx's; it is here as a local because two of them are needed
-   and neither is worth a file. */
+   lab/Structure.jsx's; it is here as a local because several of them are
+   needed and none is worth a file. */
 function Members({ list, colour, emissive = 0, ...rest }) {
   const ref = useRef();
   const geo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
@@ -423,7 +485,7 @@ function Members({ list, colour, emissive = 0, ...rest }) {
     inst.computeBoundingSphere();
   }, [list]);
   return (
-    <instancedMesh ref={ref} args={[geo, undefined, list.length]} {...rest}>
+    <instancedMesh ref={ref} args={[geo, undefined, Math.max(1, list.length)]} {...rest}>
       <meshStandardMaterial color={colour} roughness={0.72} metalness={0.35}
         emissive={emissive ? colour : "#000000"} emissiveIntensity={emissive} />
     </instancedMesh>
