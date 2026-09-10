@@ -172,6 +172,10 @@ export default function Screens() {
    five metres visually indistinguishable from one uploaded every frame. */
 const UPLOAD_MS = 66;
 
+/* How much brighter than its own pixels a running screen is. Linear, so it
+   is set through setRGB rather than from a hex, which would clamp at 1. */
+const SCREEN_GAIN = new THREE.Color().setRGB(1.5, 1.5, 1.5, THREE.LinearSRGBColorSpace);
+
 function Monitor({ stop }) {
   const ring = useRef();
   const [tex, setTex] = useState(null);
@@ -243,18 +247,40 @@ function Monitor({ stop }) {
         <boxGeometry args={[FACE_W + 0.10, FACE_H + 0.10, 0.06]} />
         <meshStandardMaterial color={P.steelDk} roughness={0.6} metalness={0.4} />
       </mesh>
-      <mesh position={[0, 0, 0.032]}>
+      {/* The face, and it is what carries the click -- not the picture in
+          front of it.
+
+          A cell used to be enterable only once its demo had painted, and
+          that is the wrong condition. The demos boot Pyodide from a CDN;
+          on a network that cannot reach it, or during an outage, or simply
+          in the seconds before it lands, every monitor in the building is
+          dark while the hint in the corner says click the screen to take
+          the cell. Nothing to click, and the promise was the site's.
+          Entering opens the section either way, which is where a reader
+          would see what went wrong and can still read the writing.
+
+          The picture in front has no handlers of its own: R3F walks every
+          intersection along the ray and skips the objects that carry
+          nothing, so a click through the picture lands here. */}
+      <mesh
+        position={[0, 0, 0.032]}
+        onPointerOver={() => { if (ring.current) ring.current.visible = true;
+                               document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { if (ring.current) ring.current.visible = false;
+                              document.body.style.cursor = ""; }}
+        onClick={enter}
+      >
         <planeGeometry args={[FACE_W, FACE_H]} />
-        <meshBasicMaterial color={"#0d1c21"} toneMapped={false} />
+        <meshStandardMaterial color={"#0d1c21"} roughness={0.35} metalness={0.1} />
       </mesh>
 
-      {tex && fit && <Picture {...{ tex, fit, ring, enter }} />}
+      {tex && fit && <Picture {...{ tex, fit, ring }} />}
     </group>
   );
 }
 
 /* What is actually running, drawn over the dark face. */
-function Picture({ tex, fit, ring, enter }) {
+function Picture({ tex, fit, ring }) {
   return (
     <group>
       {/* The plate the picture sits on, the full size of the bezel opening, so
@@ -273,22 +299,30 @@ function Picture({ tex, fit, ring, enter }) {
         <meshBasicMaterial color={P.hazard} />
       </mesh>
 
-      <mesh
-        position={[0, 0, 0.042]}
-        onPointerOver={() => { if (ring.current) ring.current.visible = true;
-                               document.body.style.cursor = "pointer"; }}
-        onPointerOut={() => { if (ring.current) ring.current.visible = false;
-                              document.body.style.cursor = ""; }}
-        onClick={enter}
-      >
+      <mesh position={[0, 0, 0.042]}>
         <planeGeometry args={fit} />
-        {/* Not tone mapped. Everything else in this building is lit and goes
-            through ACES; a monitor is a source and its pixels are the
-            finished image already -- the demos' palette was checked for
-            contrast against its own dark ground in tools/check_contrast.py,
-            and a tonemap applied on top of that is a second grade nobody
-            asked for. */}
-        <meshBasicMaterial map={tex} toneMapped={false} />
+        {/* Tone mapped, and above unity, which is the opposite of what this
+            was and the second correction of the same kind in this building.
+
+            It was toneMapped false, on the reasoning that a monitor's pixels
+            are the finished image and a curve over them is a second grade
+            nobody asked for. The reasoning is sound and the flag does not
+            do it: toneMapped false skips the curve but not the colour space
+            encode, and that encode is the identity when the scene is being
+            drawn into a render target and is not when it is going to the
+            canvas. So the monitors were the one thing in the building that
+            looked different with the post chain on -- the tier decided the
+            picture, which is worse than any grade.
+
+            Tone mapped, both paths apply the same curve in the same place.
+            The gain is what the flag was really reaching for: a screen is a
+            source, it should be the brightest thing in a dark bay, and at
+            1.5 in linear the bright end of a demo clears the bloom
+            threshold and the monitor throws light the way the lamp faces
+            and the rails already do. ACES is monotonic, so the palette's
+            ordering -- which is what tools/check_contrast.py checks -- is
+            untouched. */}
+        <meshBasicMaterial map={tex} color={SCREEN_GAIN} />
       </mesh>
     </group>
   );

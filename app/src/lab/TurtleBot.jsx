@@ -38,8 +38,12 @@ const TRACK = WHEEL_L_Y - WHEEL_R_Y;               // 0.160 m between the axles
 const TYRE_R = 0.033;          // the wheel collision cylinder's radius, and
                                // what left_tire.stl measures: 33.0 mm in both
                                // of its in-plane axes, 9.1 mm half-width
-const MAX_V = 0.22;            // BURGER_MAX_LIN_VEL, m/s
-const MAX_W = 2.84;            // BURGER_MAX_ANG_VEL, rad/s
+/* Exported, because a controller written elsewhere in this building has to
+   obey the same ceilings the robot does. A planner that drives this machine
+   at a speed its own teleop node refuses is a planner whose result means
+   nothing. */
+export const MAX_V = 0.22;     // BURGER_MAX_LIN_VEL, m/s
+export const MAX_W = 2.84;     // BURGER_MAX_ANG_VEL, rad/s
 
 /* Those numbers close on each other, which is the check that the model is
    standing rather than floating: base_link is 0.010 above base_footprint, the
@@ -108,7 +112,7 @@ function sweptRadius(mesh) {
   return r;
 }
 
-export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint }) {
+export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint, pose }) {
   const mesh = useTurtleBot();
   const groups = useRef([]);
   const drive = useRef();
@@ -165,9 +169,57 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint }) {
     return { run, straight, cycle: 2 * straight + 2 * TURN };
   }, [mesh, bench]);
 
+  /* The URDF chain, given the two wheel angles. Shared by the canned traverse
+     and by an outside controller so there is one place the frames are built. */
+  const poseLinks = (phiL, phiR) => {
+    for (let li = 0; li < groups.current.length; li++) {
+      const g = groups.current[li];
+      if (!g) continue;
+      const name = mesh.links[li].name;
+      if (name === "base_link") {
+        M.link.makeTranslation(0, 0, BASE_Z);
+      } else if (name === "base_scan") {
+        M.link.makeTranslation(SCAN[0], SCAN[1], BASE_Z + SCAN[2]);
+      } else {
+        // Joint origin, then the joint's own rpy, then the wheel angle about
+        // the axis that rpy just laid down. The baked tyre already carries the
+        // <visual> rpy that undoes it, so the mesh lands the right way up.
+        const left = name === "wheel_left_link";
+        M.joint.makeTranslation(0, left ? WHEEL_L_Y : WHEEL_R_Y, BASE_Z + WHEEL_Z);
+        M.tilt.makeRotationX(WHEEL_RX);
+        M.spin.makeRotationZ(left ? phiL : phiR);
+        M.link.multiplyMatrices(M.joint, M.tilt).multiply(M.spin);
+      }
+      g.matrix.copy(M.link);
+      g.matrixWorldNeedsUpdate = true;
+    }
+  };
+
   useFrame(({ clock }) => {
     if (!parts || !path) return;
     const { run, straight, cycle } = path;
+
+    /* Driven from outside, when something outside is driving.
+
+       A bay that is only showing the machine gets the canned traverse below,
+       which is what this file was written for. A bay running an actual
+       controller -- the search rig plans a path across the bench and follows
+       it -- hands the pose in instead, and everything downstream is
+       identical: the same wheel arithmetic off the same odometer, the same
+       URDF frames. The robot does not know which one is driving it, which is
+       the only way the wheels stay honest in both. */
+    if (pose && pose.current) {
+      const q = pose.current;
+      if (drive.current) {
+        drive.current.matrix
+          .makeRotationZ(q.psi + Math.PI / 2)
+          .setPosition(q.x, q.y, 0);
+        drive.current.matrixWorldNeedsUpdate = true;
+      }
+      poseLinks((q.travel - (TRACK / 2) * q.turned) / TYRE_R,
+                (q.travel + (TRACK / 2) * q.turned) / TYRE_R);
+      return;
+    }
 
     /* Derived from the clock rather than accumulated, the same way the arm is,
        so a cell that has been off screen for a minute comes back in step. The
@@ -222,27 +274,7 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint }) {
       drive.current.matrixWorldNeedsUpdate = true;
     }
 
-    for (let li = 0; li < groups.current.length; li++) {
-      const g = groups.current[li];
-      if (!g) continue;
-      const name = mesh.links[li].name;
-      if (name === "base_link") {
-        M.link.makeTranslation(0, 0, BASE_Z);
-      } else if (name === "base_scan") {
-        M.link.makeTranslation(SCAN[0], SCAN[1], BASE_Z + SCAN[2]);
-      } else {
-        // Joint origin, then the joint's own rpy, then the wheel angle about
-        // the axis that rpy just laid down. The baked tyre already carries the
-        // <visual> rpy that undoes it, so the mesh lands the right way up.
-        const left = name === "wheel_left_link";
-        M.joint.makeTranslation(0, left ? WHEEL_L_Y : WHEEL_R_Y, BASE_Z + WHEEL_Z);
-        M.tilt.makeRotationX(WHEEL_RX);
-        M.spin.makeRotationZ(left ? phiL : phiR);
-        M.link.multiplyMatrices(M.joint, M.tilt).multiply(M.spin);
-      }
-      g.matrix.copy(M.link);
-      g.matrixWorldNeedsUpdate = true;
-    }
+    poseLinks(phiL, phiR);
   });
 
   if (!parts) return null;

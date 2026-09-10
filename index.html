@@ -31,8 +31,8 @@
      it. Declared here so a reader who wants the page rather than the
      building can find it, and so a crawler knows the two are one thing. -->
 <link rel="alternate" type="text/html" href="/written.html" title="The same work, written">
-  <script type="module" crossorigin src="/build/index-C6bS1Jiz.js"></script>
-  <link rel="stylesheet" crossorigin href="/build/index-t3-dA3du.css">
+  <script type="module" crossorigin src="/build/index-K8WAvoID.js"></script>
+  <link rel="stylesheet" crossorigin href="/build/index-D396-e2o.css">
 </head>
 <body>
 <div id="root"></div>
@@ -61,11 +61,13 @@
   <p>This is a WebGL facility and it needs JavaScript. The written version of
      everything in it is at <a href="/written.html">the document site</a>.</p>
 </noscript>
-<!-- Root-absolute, so Vite treats them as public assets and leaves them
-     alone rather than trying to pull them into the bundle. They ran on
-     written.html and nowhere else, which meant the front door was the one
-     page nobody was counting. -->
-<script src="/analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
-<script src="/visits.js?v=e085290f" defer></script>
+<!-- The analytics beacon and the visit counter are appended by the
+     transformIndexHtml hook in vite.config.js, not written here: Vite tries
+     to bundle any script tag it finds in this file and warns on every build
+     about the two it cannot, and bundling them is exactly wrong -- one of
+     them is found by document.querySelector on its own tag. See the note in
+     the config for the whole reason. -->
+  <script src="/analytics.js?v=9744e924" defer data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e"></script>
+  <script src="/visits.js?v=e085290f" defer></script>
 </body>
 </html>

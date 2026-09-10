@@ -62,15 +62,20 @@ canvas { display: block; touch-action: pan-y; }
 .index li.on button { color: var(--ink); }
 .index li.on .n { color: var(--hazard); }
 
-/* The plate on the wall of whatever you are standing in front of. */
-/* The box does not take the pointer, only what is written in it does.
-   A plate is sized to the frame and mostly empty, so with the default it is
-   the element under the cursor across most of the screen and the building
-   behind it cannot be hovered at all -- measured, elementFromPoint at the
-   middle of the frame returned an h3. Nothing about that looks wrong; the
-   world simply stops responding. */
-.plate { pointer-events: none; }
-.plate > *, .plate .panel { pointer-events: auto; }
+/* The plate on the wall of whatever you are standing in front of.
+
+   It takes the pointer, and for a while it deliberately did not. When a
+   plate was type on bare render it was a 640 px box that was mostly empty
+   and entirely invisible, so with the default it became the element under
+   the cursor across most of the frame and the building behind it could not
+   be hovered at all -- measured, elementFromPoint at the middle of the
+   frame returned an h3. The fix then was to let only the words take it.
+
+   Both plates carry a backing now, and that inverts the argument: the box
+   is exactly what a reader sees, and the gaps between its paragraphs are
+   opaque. Falling through them meant the costmap opening on a patch of
+   floor hidden behind the reading. What you can see is what you can hit. */
+.plate { pointer-events: auto; }
 /* The caption is on a plate for the same reason the index is. A test cell
    is the brightest place in this building -- a lit slab, a run of hazard
    chevrons at exactly caption height and a daylight beam across the aisle
@@ -78,7 +83,12 @@ canvas { display: block; touch-action: pan-y; }
    diagonals with nothing behind it. Same surface as the room plate: opaque
    where the words are, a hazard rule on top, and nothing anywhere else. */
 .plate {
-  position: fixed; left: 50%; bottom: clamp(28px, 7vh, 78px);
+  /* At the top, which is where the caption has to be now that the cells run
+     their work on the bench. Centred at the foot of the frame it sat over the
+     middle of a 2.7 m occupancy grid -- the caption covering the thing it
+     captions. The top third of a cell shot is the dark bay wall above the
+     bench, which is nothing, and a plate is what nothing is for. */
+  position: fixed; left: 50%; top: clamp(20px, 5vh, 58px);
   transform: translateX(-50%); z-index: 5;
   width: min(92vw, 560px); text-align: center;
   padding: 15px 24px 19px;
@@ -86,7 +96,7 @@ canvas { display: block; touch-action: pan-y; }
   border-top: 2px solid var(--hazard);
   animation: plate-in 420ms cubic-bezier(.2,.7,.2,1) both;
 }
-@keyframes plate-in { from { opacity: 0; transform: translateX(-50%) translateY(9px); }
+@keyframes plate-in { from { opacity: 0; transform: translateX(-50%) translateY(-9px); }
                       to   { opacity: 1; transform: translateX(-50%) translateY(0); } }
 .plate .kind {
   margin: 0 0 8px; color: var(--hazard);
@@ -132,7 +142,7 @@ canvas { display: block; touch-action: pan-y; }
 
 @media (max-width: 820px) {
   .index { display: none; }
-  .plate { width: 92vw; bottom: 22px; }
+  .plate { width: 92vw; top: 14px; }
   /* The index goes at this width and the corner block does not: on a phone
      the way out to the document is the more useful of the two, not the
      less. */
@@ -162,7 +172,7 @@ canvas { display: block; touch-action: pan-y; }
      short stations -- which is most of them -- put a 350 pixel slab of flat
      black under three paragraphs. A max-height and an auto bottom keep the
      scroll for the long ones and let the rest end where the words do. */
-  top: 92px; bottom: auto;
+  top: 92px; bottom: auto; left: auto;
   max-height: calc(100dvh - 184px);
   display: flex; flex-direction: column;
   padding: 16px 20px 6px;

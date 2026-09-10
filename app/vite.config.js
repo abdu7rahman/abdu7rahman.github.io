@@ -7,9 +7,43 @@ import react from "@vitejs/plugin-react";
    and the switch is this one line. emptyOutDir matters when it moves -- the
    root carries demo.html, the worker, the assets and the whole vanilla site,
    and Vite's default is to wipe the directory it writes to. */
+/* The two classic scripts the front door carries, injected rather than
+   written into app/index.html.
+ 
+   Vite treats every script tag in the entry HTML as something to resolve and
+   bundle, and warns once per build per tag that it cannot bundle a classic
+   one -- while still, correctly, leaving it alone. Bundling them would be
+   the wrong outcome anyway: analytics.js finds its endpoint with
+   document.querySelector("script[data-analytics]"), so the tag is not a
+   loading detail, it is the configuration. And visits.js has to run before
+   the module that mounts the app, because the element it looks for is static
+   markup and an element React renders is one it would find missing.
+ 
+   transformIndexHtml is the documented way to add a tag after Vite has
+   finished looking. tools/stamp.py puts the ?v= on them afterwards, off the
+   built file. */
+const CLASSIC = [
+  { src: "/analytics.js",
+    attrs: { "data-analytics": "https://portfolio-analytics.abdu7rahman.workers.dev/e" } },
+  { src: "/visits.js", attrs: {} }
+];
+
+function classicScripts() {
+  return {
+    name: "classic-scripts",
+    transformIndexHtml() {
+      return CLASSIC.map(({ src, attrs }) => ({
+        tag: "script",
+        attrs: { src, defer: true, ...attrs },
+        injectTo: "body"
+      }));
+    }
+  };
+}
+
 export default defineConfig({
   base: "/",
-  plugins: [react()],
+  plugins: [react(), classicScripts()],
   /* The kinematics are imported from world/, not copied into app/.
      world/kinematics.js is the measured UR12e -- link frames, poseAt,
      toolPoint -- and it is what the document site's arm, its reachable-set

@@ -34,38 +34,46 @@ export const WORK = AISLE / 2 + 1.7;
  *
  * `kind: rig` is a test cell with a machine in it and a live demo on its
  * screen. `kind: room` is somewhere you go to read.
+ *
+ * `frame` is what the shot is of, and nav/Dolly.jsx is its only reader. A
+ * course rig runs its work on the bench surface -- an occupancy grid, a cost
+ * field, a lap -- so the camera has to get above it and take in the whole
+ * 2.7 m of it, or the map is a band of colour seen edge on. A machine rig's
+ * subject is the 0.6 m of arm standing on the bench, which wants the
+ * opposite: in close, near eye height, on a longer lens. One shot cannot be
+ * both, and guessing from the machine would be guessing.
  */
 export const STOPS = [
   { id: "entry",    kind: "room", side:  0, at: 0,   title: "High bay",
     lede: "Robotics engineer. Motion planning, manipulation, and the bringup that gets it onto real hardware." },
 
-  { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search",
+  { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search", frame: "course",
     sub: "A*, Theta*, RRT, SMAC, hybrid",
     note: "Draw a map and search it. Five planners over one costmap." },
-  { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control",
+  { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control", frame: "course",
     sub: "DWA, MPPI, TEB, Pure Pursuit, Stanley",
     note: "Drive a TurtleBot with the cursor using any of five controllers." },
-  { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race",
+  { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
     sub: "all five over one plan",
     note: "The same plan, five controllers, one clock." },
 
   { id: "work",     kind: "room", side:  1, at: 3.0, title: "Archive",
     lede: "Ten systems worth showing. Everything else lives on GitHub." },
 
-  { id: "reach",    kind: "rig",  side: -1, at: 3.8, title: "Reach",
+  { id: "reach",    kind: "rig",  side: -1, at: 3.8, title: "Reach", frame: "machine",
     sub: "UR12e workspace",
     note: "The arm's reachable set, solved rather than drawn." },
-  { id: "foresee",  kind: "rig",  side:  1, at: 4.4, title: "Replan",
+  { id: "foresee",  kind: "rig",  side:  1, at: 4.4, title: "Replan", frame: "machine",
     sub: "UR12e, continuous",
     note: "Block the arm mid-motion and watch it cancel and replan around your hand." },
 
   { id: "measured", kind: "room", side: -1, at: 5.2, title: "Metrology",
     lede: "Claims I could check, checked — including the ones that came out badly." },
 
-  { id: "terrain",  kind: "rig",  side:  1, at: 6.0, title: "Cost",
+  { id: "terrain",  kind: "rig",  side:  1, at: 6.0, title: "Cost", frame: "course",
     sub: "Go2, four cost functions",
     note: "Click a point on a course and watch four cost functions drive to it." },
-  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Assembly",
+  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Assembly", frame: "machine",
     sub: "bimanual, eight phases",
     note: "An eight-phase bimanual controller against its own analytic plant." },
 

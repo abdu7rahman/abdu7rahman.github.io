@@ -3,6 +3,7 @@ import UR12e from "./UR12e.jsx";
 import TurtleBot from "./TurtleBot.jsx";
 import Go2 from "./Go2.jsx";
 import { WORK } from "../lib/plan.js";
+import SearchRig from "./SearchRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -22,6 +23,13 @@ import { WORK } from "../lib/plan.js";
    Anything not named here is an arm, which is the majority and the default. */
 const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
 
+/* Cells that run their own work on the bench rather than standing a machine
+   next to a picture of it. lab/SearchRig.jsx is the first: it lays an
+   occupancy grid on the bench top, expands a real A* across it, and drives
+   the real Burger down the path that comes out. Anything named here owns its
+   whole cell -- the machine included -- so this file steps out of the way. */
+const RUNS = { space: SearchRig };
+
 /* The bench Bay.jsx draws is a 2.6 by 3.0 m box and the 3.0 m side runs
    parallel to the aisle. That is the axis a mobile base gets to drive along,
    so it is the one passed down; TurtleBot.jsx takes its own swept radius off
@@ -32,6 +40,8 @@ const BENCH_RUN = 3.0;
 export default function Rig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
+  const Own = RUNS[stop.id];
+  if (Own) return <Own stop={stop} />;
   return (
     <group>
       {/* The monitor itself belongs to bays/Screens.jsx, which owns the

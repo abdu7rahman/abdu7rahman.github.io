@@ -59,12 +59,12 @@
   <p>This is a WebGL facility and it needs JavaScript. The written version of
      everything in it is at <a href="/written.html">the document site</a>.</p>
 </noscript>
-<!-- Root-absolute, so Vite treats them as public assets and leaves them
-     alone rather than trying to pull them into the bundle. They ran on
-     written.html and nowhere else, which meant the front door was the one
-     page nobody was counting. -->
-<script src="/analytics.js" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
-<script src="/visits.js" defer></script>
+<!-- The analytics beacon and the visit counter are appended by the
+     transformIndexHtml hook in vite.config.js, not written here: Vite tries
+     to bundle any script tag it finds in this file and warns on every build
+     about the two it cannot, and bundling them is exactly wrong -- one of
+     them is found by document.querySelector on its own tag. See the note in
+     the config for the whole reason. -->
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
