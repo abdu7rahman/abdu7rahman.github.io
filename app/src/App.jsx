@@ -6,12 +6,14 @@ import Structure from "./lab/Structure.jsx";
 import Guarding from "./lab/Guarding.jsx";
 import Catwalk from "./lab/Catwalk.jsx";
 import Clutter from "./lab/Clutter.jsx";
+import G1 from "./lab/G1.jsx";
 import Belief from "./lab/Belief.jsx";
 import Envelope from "./lab/Envelope.jsx";
 import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
 import Probe from "./nav/Probe.jsx";
+import Survey from "./nav/Survey.jsx";
 import Grade from "./lab/Grade.jsx";
 import Budget from "./lab/Budget.jsx";
 import { detect } from "./lib/capability.js";
@@ -92,6 +94,7 @@ export default function App() {
           <Guarding />
           {/* What the building has accumulated, off the structural grid. */}
           <Clutter />
+          <group position={[1.2, 0, -2.0]} rotation-y={Math.PI}><G1 /></group>
           {/* One inspection layer over the whole floor, not one per cell. */}
           <Belief />
           {/* The six rooms the written work is read in. */}
@@ -106,6 +109,8 @@ export default function App() {
           <Budget />
           <Dolly />
           <Probe />
+          {/* The map of the building, taken from the building. */}
+          <Survey />
           {/* The finish. Off on the low tier, where the fill it costs is the
               whole budget. */}
           {quality.post && <Grade />}

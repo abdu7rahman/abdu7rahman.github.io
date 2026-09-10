@@ -89,6 +89,7 @@ export default function Belief() {
 
   return (
     <mesh
+      userData={{ ghost: true }}
       rotation-x={-Math.PI / 2}
       position={[0, 0.012, -RUN / 2]}
       onPointerMove={(e) => { want.current.copy(e.point); hot.current = true; }}
