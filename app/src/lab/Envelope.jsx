@@ -1,7 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { SHAFT_VERT, SHAFT_FRAG, POOL_VERT, poolFrag } from "../shaders/daylight.js";
+import { cladding } from "../shaders/cladding.js";
 import { P, KEY } from "../lib/palette.js";
 import { AISLE, BAY_D, EAVES, PITCH, RUN, STOPS } from "../lib/plan.js";
 
@@ -37,13 +38,81 @@ const AP_X = -DX * AP_Y;                 // so the pool lands on the lane centre
 const RUN_N = 7;                         // how many, down the run
 const AP_Z0 = -PITCH * 1.5;
 
-function Wall({ x, z, w, h, ry = 0, colour = P.steelDk }) {
+/* A clad wall.
+ *
+ * The material is built here rather than declared as a JSX child because
+ * shaders/cladding.js patches it, and a patch is a property of the material
+ * object -- three has to see onBeforeCompile before it first compiles, and a
+ * ref set after mount is one frame too late. So it is made in a memo, handed
+ * over with primitive, and disposed when it goes.
+ *
+ * `base` is what turns the plane's local y into a height above the slab: the
+ * mesh is positioned at h/2 and the geometry runs from -h/2, so the two
+ * cancel and the shader can talk about 2.35 m and mean it.
+ */
+function Wall({ x, z, w, h, ry = 0, colour = P.steelDk, dado = 2.35 }) {
+  const mat = useMemo(() => cladding(new THREE.MeshStandardMaterial({
+    color: new THREE.Color(colour),
+    roughness: 0.88, metalness: 0.14, side: THREE.DoubleSide
+  }), { base: h / 2, dado }), [colour, h, dado]);
+  useEffect(() => () => mat.dispose(), [mat]);
   return (
     <mesh position={[x, h / 2, z]} rotation-y={ry} receiveShadow>
       <planeGeometry args={[w, h]} />
-      <meshStandardMaterial color={colour} roughness={0.96} metalness={0.05}
-        side={THREE.DoubleSide} />
+      <primitive object={mat} attach="material" />
     </mesh>
+  );
+}
+
+/* A roller shutter, which is the one thing a blank flank of a shed always
+ * has and this one did not.
+ *
+ * Horizontal slats rather than vertical ribs, so it reads as a door and not
+ * as more wall: same material patch, axis turned. The curtain is recessed
+ * 0.12 m into the opening and framed in painted angle, because a shutter set
+ * flush with the cladding is a rectangle of a different colour and a shutter
+ * in a reveal is a hole in a building.
+ */
+function Shutter({ x, z, ry, w = 4.4, h = 4.6, open = 0 }) {
+  const curtain = useMemo(() => cladding(new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#2b2d31"), roughness: 0.62, metalness: 0.45
+  }), { axis: new THREE.Vector3(0, 1, 0), pitch: 0.115, crown: 0.62,
+        ramp: 0.14, depth: 0.022, seam: 0, dado: -1 }), []);
+  useEffect(() => () => curtain.dispose(), [curtain]);
+  const drop = h * (1 - open);
+  return (
+    <group position={[x, 0, z]} rotation-y={ry}>
+      {/* The reveal: a dark recess the curtain hangs inside. */}
+      <mesh position={[0, h / 2, -0.16]} receiveShadow>
+        <planeGeometry args={[w, h]} />
+        <meshStandardMaterial color={"#0e0f11"} roughness={1} />
+      </mesh>
+      <mesh position={[0, h - drop / 2, -0.04]} receiveShadow>
+        <planeGeometry args={[w - 0.24, drop]} />
+        <primitive object={curtain} attach="material" />
+      </mesh>
+      {/* Guides either side and the hood over the barrel. */}
+      {[-1, 1].map(s => (
+        <mesh key={s} position={[s * (w / 2 - 0.06), h / 2, 0.02]} castShadow>
+          <boxGeometry args={[0.14, h, 0.16]} />
+          <meshStandardMaterial color={P.hazard} roughness={0.72}
+            emissive={P.hazard} emissiveIntensity={0.06} />
+        </mesh>
+      ))}
+      <mesh position={[0, h + 0.22, 0.04]} castShadow>
+        <boxGeometry args={[w + 0.2, 0.44, 0.34]} />
+        <meshStandardMaterial color={P.steel} roughness={0.7} metalness={0.4} />
+      </mesh>
+      {/* Bollards, which is how you can tell from across a building that
+          something drives through there. */}
+      {[-1, 1].map(s => (
+        <mesh key={"b" + s} position={[s * (w / 2 + 0.5), 0.55, 0.55]} castShadow>
+          <cylinderGeometry args={[0.11, 0.11, 1.1, 10]} />
+          <meshStandardMaterial color={P.hazard} roughness={0.8}
+            emissive={P.hazard} emissiveIntensity={0.10} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -53,6 +122,12 @@ export default function Envelope() {
 
   const mouths = useMemo(
     () => STOPS.filter(s => s.side !== 0).map(s => [s.side, -s.at * PITCH]), []);
+
+  const deck = useMemo(() => cladding(new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#141417"), roughness: 1, metalness: 0,
+    side: THREE.DoubleSide
+  }), { pitch: 0.62, crown: 0.34, ramp: 0.13, depth: 0.07, seam: 0, dado: -1 }), []);
+  useEffect(() => () => deck.dispose(), [deck]);
 
   const shaftU = useMemo(() => ({
     uSky:     { value: new THREE.Color("#cfe0ff") },
@@ -143,13 +218,22 @@ export default function Envelope() {
           the reader the back of the building through its own roof. */}
       <Wall x={-WALL} z={-RUN / 2} w={RUN + 4 * PITCH} h={ROOF} ry={Math.PI / 2} />
       <Wall x={WALL}  z={-RUN / 2} w={RUN + 4 * PITCH} h={ROOF} ry={-Math.PI / 2} />
+      {/* The deck. Same patch, a coarser profile and no base course: a roof
+          sheet is a deeper section than a wall sheet because it spans purlins
+          instead of rails, and a roof does not have a bottom two metres. */}
       <mesh position={[0, ROOF, -RUN / 2]} rotation-x={Math.PI / 2} receiveShadow>
         <planeGeometry args={[WALL * 2, RUN + 4 * PITCH]} />
-        <meshStandardMaterial color={"#141417"} roughness={1} metalness={0}
-          side={THREE.DoubleSide} />
+        <primitive object={deck} attach="material" />
       </mesh>
       <Wall x={0} z={BACK} w={WALL * 2} h={ROOF} />
       <Wall x={0} z={FRONT} w={WALL * 2} h={ROOF} />
+
+      {/* Two goods doors in the end wall, either side of the personnel door.
+          This is the vanishing point of a 66 m aisle and the only thing on it
+          was a lit rectangle; a shed's end wall is where the lorries back on
+          to, and three openings at three sizes is what says so. */}
+      <Shutter x={-6.6} z={BACK + 0.05} ry={0} w={4.6} h={4.8} open={0.34} />
+      <Shutter x={6.6} z={BACK + 0.05} ry={0} w={4.6} h={4.8} open={0} />
 
       {/* The door in the end wall, which is what makes the far end somewhere
           rather than a stop. Wider than the lane so the lane clearly goes

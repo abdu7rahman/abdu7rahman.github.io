@@ -258,10 +258,18 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     await pg.keyboard.press('Escape');
     await pg.waitForTimeout(1500);
 
+    /* By name, not by "the biggest instanced mesh in the scene".
+    
+       That is what this was, and it worked for exactly as long as the search
+       bay's walls were the only instanced mesh worth counting. The building
+       is now mostly instanced steel -- structure, catwalk, partitions,
+       racking, benches -- so the maximum became the catwalk's member count
+       and this read 432 before the drag and 432 after, on a grid that was
+       editing perfectly well. Asking for the object by name cannot drift
+       like that. */
     const walls = () => pg.evaluate(() => {
-      let n = 0;
-      window.__lab.scene.traverse(o => { if (o.isInstancedMesh) n = Math.max(n, o.count); });
-      return n;
+      const m = window.__lab.scene.getObjectByName('search-walls');
+      return m ? m.count : -1;
     });
     await pg.click('.index li:nth-child(2) button');   // search
     await settle();

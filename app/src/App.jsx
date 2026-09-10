@@ -4,6 +4,8 @@ import * as THREE from "three";
 import Slab from "./lab/Slab.jsx";
 import Structure from "./lab/Structure.jsx";
 import Guarding from "./lab/Guarding.jsx";
+import Catwalk from "./lab/Catwalk.jsx";
+import Clutter from "./lab/Clutter.jsx";
 import Belief from "./lab/Belief.jsx";
 import Envelope from "./lab/Envelope.jsx";
 import Bay from "./lab/Bay.jsx";
@@ -85,8 +87,11 @@ export default function App() {
         <Suspense fallback={null}>
           <Slab />
           <Structure />
+          <Catwalk />
           <Envelope />
           <Guarding />
+          {/* What the building has accumulated, off the structural grid. */}
+          <Clutter />
           {/* One inspection layer over the whole floor, not one per cell. */}
           <Belief />
           {/* The six rooms the written work is read in. */}

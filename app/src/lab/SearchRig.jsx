@@ -394,7 +394,16 @@ export default function SearchRig({ stop }) {
         />
       </mesh>
 
-      <instancedMesh ref={walls} args={[wallMesh, undefined, NX * NY]}
+      {/* Named, because something outside has to be able to find it. The
+          interaction suite checks that drawing on the grid changes the map,
+          and it used to do that by taking the largest instance count in the
+          scene -- which was this mesh right up until the building itself
+          started being built out of instanced steel, and is now the catwalk.
+          A test that silently starts measuring a different object is worse
+          than no test: it read 432 before an edit and 432 after and called
+          the editor broken. */}
+      <instancedMesh ref={walls} name="search-walls"
+                     args={[wallMesh, undefined, NX * NY]}
                      castShadow receiveShadow>
         <meshStandardMaterial color={P.steel} roughness={0.85} metalness={0.12} />
       </instancedMesh>

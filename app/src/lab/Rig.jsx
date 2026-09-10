@@ -39,12 +39,13 @@ const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
                assemble: AssembleRig };
 
-/* The bench Bay.jsx draws is a 2.6 by 3.0 m box and the 3.0 m side runs
-   parallel to the aisle. That is the axis a mobile base gets to drive along,
-   so it is the one passed down; TurtleBot.jsx takes its own swept radius off
-   the geometry and works out the rest. Stated here rather than imported
-   because Bay.jsx has it inline in a boxGeometry, and a second name for it
-   would be a second thing to keep in step. */
+/* The bench is 2.6 by 3.0 m and the 3.0 m side runs parallel to the aisle.
+   That is the axis a mobile base gets to drive along, so it is the one
+   passed down; TurtleBot.jsx takes its own swept radius off the geometry and
+   works out the rest. lab/Bench.jsx owns the number as BENCH_D and does not
+   export it, which is deliberate -- it is a dimension of a piece of
+   furniture, not an interface -- so this is a second statement of it rather
+   than a second definition. */
 const BENCH_RUN = 3.0;
 export default function Rig({ stop }) {
   const s = stop.side;

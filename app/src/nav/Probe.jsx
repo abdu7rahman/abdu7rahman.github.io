@@ -1,4 +1,5 @@
 import { useThree } from "@react-three/fiber";
+import * as THREE from "three";
 import { useEffect } from "react";
 import { detect } from "../lib/capability.js";
 import * as plan from "../lib/plan.js";
@@ -29,7 +30,13 @@ export default function Probe() {
        camera has arrived is to know where it was going, and that is a
        function of the floor plan. A probe that recomputes RUN from a
        hard-coded pitch is a probe that passes after somebody moves a bay. */
-    window.__lab = { scene, camera, gl, clock, plan, capability: detect() };
+    /* three itself, which is not decoration. Everything a probe wants to ask
+       about a 3D scene -- what is under this pixel, how big is that in
+       metres, is this actually in shot -- is a Raycaster, a Vector3 or a
+       Box3 away, and none of those are reachable from an object graph. The
+       alternative, and it was tried, is reimplementing ray-sphere in the
+       page and getting a different answer from the renderer. */
+    window.__lab = { scene, camera, gl, clock, plan, THREE, capability: detect() };
     return () => { delete window.__lab; };
   }, [scene, camera, gl, clock]);
   return null;
