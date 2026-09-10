@@ -77,12 +77,21 @@ canvas { display: block; touch-action: pan-y; }
    A cell's plate is a caption and stays centred at the bottom of the frame.
    A room's is the reading, so it takes a column, scrolls inside itself, and
    sits on a backing dark enough to hold body text over a lit floor. */
+/* A room's heading needs the same backing its panel has.
+   Set on the raw canvas it was text over a lit building, and the building is
+   full of saturated orange at exactly head height -- a guard rail ran clean
+   through the lede in the entrance shot. The header and the panel are one
+   surface now, opaque where words are and nowhere else, which is the same
+   answer the document site arrived at and for the same reason. */
 .plate--room {
   left: auto; right: clamp(16px, 4vw, 72px);
   transform: none; text-align: left;
   width: min(52vw, 620px);
   top: 92px; bottom: 92px;
   display: flex; flex-direction: column;
+  padding: 16px 20px 0;
+  background: linear-gradient(to bottom, rgba(9,9,10,.93), rgba(9,9,10,.86));
+  border-top: 2px solid var(--hazard);
   animation: room-in 460ms cubic-bezier(.2,.7,.2,1) both;
 }
 @keyframes room-in { from { opacity: 0; transform: translateX(14px); }
@@ -95,10 +104,9 @@ canvas { display: block; touch-action: pan-y; }
 .plate--room.plate--wide { width: min(64vw, 860px); }
 
 .panel {
-  margin-top: 18px; padding: 18px 20px 22px;
+  margin-top: 14px; padding: 14px 0 20px;
   overflow-y: auto; overscroll-behavior: contain;
-  background: linear-gradient(to bottom, rgba(9,9,10,.90), rgba(9,9,10,.82));
-  border-top: 2px solid var(--hazard);
+  border-top: 1px solid #2b2b31;
   font-size: 14px; line-height: 1.55; color: #d6d6da;
 }
 .panel p { margin: 0 0 12px; }

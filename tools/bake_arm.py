@@ -239,7 +239,7 @@ def _bake(mesh, T):
     return q[used].ravel().tolist(), inv.astype(np.int32).ravel().tolist()
 
 
-def _group(link_parts, budget):
+def _group(link_parts, budget, split=False):
     """Merge a link's parts by colour, then decimate each colour to budget.
 
     A UR forearm arrives as seven geometries but only four materials; three of
@@ -259,26 +259,76 @@ def _group(link_parts, budget):
     on the source before anything is thrown away: about 0 for a panel and near
     1 for a cap. It buys a part up to three times the share its area alone
     would have earned.
+
+    `split` spends each colour's share per connected solid instead of over the
+    whole colour at once. Off here and for every arm bake, which is why this
+    file's output is unchanged by its arrival; see `_split_decimate` for the
+    one assembly that needs it and the measurement that decided it.
     """
     import trimesh
     by_colour = {}
     for m in link_parts:
         by_colour.setdefault(tuple(_colour(m)), []).append(m)
     merged = {c: trimesh.util.concatenate(ms) for c, ms in by_colour.items()}
-    def weight(m):
-        w = m.copy()
-        w.merge_vertices()
-        a = w.face_adjacency_angles
-        bend = float((a > 0.175).mean()) if len(a) else 0.0    # 10 degrees
-        return float(m.area) * (1.0 + 2.0 * bend)
-
-    wts = {c: weight(m) for c, m in merged.items()}
+    wts = {c: _weight(m) for c, m in merged.items()}
     total = sum(wts.values())
     out = []
     for c, m in sorted(merged.items(), key=lambda kv: -wts[kv[0]]):
         share = wts[c] / total if total else 0.0
-        out.append((list(c), _decimate(m, round(budget * share))))
+        want = round(budget * share)
+        out.append((list(c), _split_decimate(m, want) if split else _decimate(m, want)))
     return out
+
+
+def _split_decimate(mesh, budget):
+    """Decimate each connected component on its own share of `budget`.
+
+    Only ever asked for by bake_mobile, and only for the TurtleBot, because
+    the decision is a property of how the thing was drawn rather than of the
+    pipeline. `_decimate` on a whole assembly is a quadric collapse with no
+    idea that two surfaces 2 mm apart belong to opposite faces of the same
+    laser-cut plate: the error of pulling one into the other is (2 mm)^2,
+    which is nothing next to the error of shortening a 137 mm outline, so it
+    eats the thickness first and the Burger's four plates come out as warped
+    lozenges with the M3 standoffs between them gone entirely.
+
+    Splitting first spends the budget per solid, so a plate cannot be
+    collapsed into its neighbour and a standoff cannot be annihilated to pay
+    for one. Measured on burger_base.stl, asked for 7267: 7266 triangles at
+    1.79 mm mean deviation whole, against 12270 at 1.41 mm split -- and the
+    standoffs are there, which the deviation number does not say and the
+    render does.
+
+    It is wrong for the Go2 and the same measurement says so. A moulded shell
+    is not four plates and twelve pillars, it is one surface with 662 vent
+    slots and bolt heads counted as separate components, and `FLOOR` then buys
+    each of them 24 triangles whether the silhouette wanted them or not: the
+    hip goes from 1420 triangles to 9181 to gain 1.38 mm on a part 118 mm
+    across. So the Go2 is baked whole and this is not used on it.
+    """
+    import trimesh
+    comps = mesh.split(only_watertight=False)
+    if len(comps) <= 1:
+        return _decimate(mesh, budget)
+    wts = [_weight(c) for c in comps]
+    total = sum(wts)
+    parts = [_decimate(c, round(budget * w / total) if total else 0)
+             for c, w in zip(comps, wts)]
+    return trimesh.util.concatenate(parts)
+
+
+def _weight(m):
+    """A part's claim on the budget: area, weighted by how much of it bends.
+
+    Lifted out of `_group` unchanged when `_split_decimate` needed the same
+    rule one level down. Same numbers, one copy, so the two levels cannot
+    start disagreeing about what a curved surface is worth.
+    """
+    w = m.copy()
+    w.merge_vertices()
+    a = w.face_adjacency_angles
+    bend = float((a > 0.175).mean()) if len(a) else 0.0        # 10 degrees
+    return float(m.area) * (1.0 + 2.0 * bend)
 
 
 def main():
