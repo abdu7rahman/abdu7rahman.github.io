@@ -4,6 +4,7 @@ import TurtleBot from "./TurtleBot.jsx";
 import Go2 from "./Go2.jsx";
 import { WORK } from "../lib/plan.js";
 import SearchRig from "./SearchRig.jsx";
+import DriveRig from "./DriveRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -28,7 +29,7 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
    occupancy grid on the bench top, expands a real A* across it, and drives
    the real Burger down the path that comes out. Anything named here owns its
    whole cell -- the machine included -- so this file steps out of the way. */
-const RUNS = { space: SearchRig };
+const RUNS = { space: SearchRig, drive: DriveRig };
 
 /* The bench Bay.jsx draws is a 2.6 by 3.0 m box and the 3.0 m side runs
    parallel to the aisle. That is the axis a mobile base gets to drive along,
