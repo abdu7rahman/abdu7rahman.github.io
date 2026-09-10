@@ -1,6 +1,5 @@
 import { P } from "../lib/palette.js";
 import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
-import Belief from "./Belief.jsx";
 
 /* A test cell off the lane: a plinth, a back wall, a screen carrying whatever
  * that rig is running, and a lamp aimed at the work rather than at the room.
@@ -48,9 +47,6 @@ export default function Bay({ stop, children }) {
         color={"#ffe0c4"}
         castShadow
       />
-
-      {/* The floor of the cell, as the planner sees it, under the cursor. */}
-      <Belief side={s} seed={Math.round(stop.at * 10)} />
 
       {children}
     </group>

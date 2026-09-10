@@ -17,10 +17,11 @@ import { P } from "../lib/palette.js";
  *
  * The colours came out of turtlebot3_burger.urdf rather than out of the mesh,
  * because STL carries no material at all: light_black for the plates, dark
- * for the tyres and the scanner. They are handled exactly the way UR12e.jsx
- * handles the arm's, pulled a third of the way toward the room's machine
- * grey, so the two machines are lit by the same building instead of each
- * bringing its own.
+ * for the tyres and the scanner. They are treated the way UR12e.jsx treats
+ * the arm's -- pulled a third of the way toward the room's machine grey, so
+ * the machines are lit by the same building instead of each bringing its own
+ * -- with one correction to how they are read in, which the note over `parts`
+ * sets out with the numbers.
  */
 
 /* Everything below is read off turtlebot3_description/urdf/turtlebot3_burger.urdf
@@ -116,7 +117,19 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint }) {
     spin: new THREE.Matrix4(), tilt: new THREE.Matrix4()
   }), []);
 
-  /* One geometry per part, built once, exactly as the arm's are. */
+  /* One geometry per part, built once, as the arm's are, with one deliberate
+     difference. UR12e.jsx builds its own colour with `new THREE.Color(r,g,b)`,
+     which takes three floats as already being in three's working space, and
+     that space is linear -- while `new THREE.Color(P.machine)` parses a hex
+     string and converts it from sRGB on the way in. So the two sides of the
+     lerp below were never in the same space. The bake's RGB comes off a URDF
+     <material> and a COLLADA <effect> and both of those are sRGB, so read as
+     linear they render brighter than they are: 102, which is the Burger's
+     light_black, displays as 170 before any light reaches it and 181 after
+     the pull toward the room. Named as sRGB it is 102 and 146. That is the
+     difference between a dark grey machine and a pale one, and this robot is
+     dark grey. The arm is left alone -- its own meshes are pale to begin
+     with, and correcting it is not this change's business. */
   const parts = useMemo(() => {
     if (!mesh) return null;
     const room = new THREE.Color(P.machine);
@@ -133,7 +146,8 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint }) {
         const g = new THREE.BufferGeometry();
         g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
         g.setAttribute("normal", new THREE.BufferAttribute(creaseNormals(pos, 78), 3));
-        const own = new THREE.Color(part.c[0]/255, part.c[1]/255, part.c[2]/255);
+        const own = new THREE.Color().setRGB(
+          part.c[0]/255, part.c[1]/255, part.c[2]/255, THREE.SRGBColorSpace);
         const col = own.lerp(tint ? new THREE.Color(tint) : room, 0.34);
         return { geometry: g, color: col };
       })

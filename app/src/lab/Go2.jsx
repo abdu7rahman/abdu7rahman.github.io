@@ -149,7 +149,13 @@ export default function Go2({ phase = 0, scale = 1, tint }) {
 
   /* One geometry per part of each baked mesh, built once and then shared by
      however many links draw it -- the hip's triangles are uploaded once and
-     drawn four times. */
+     drawn four times.
+
+     The colour is named as sRGB rather than handed to `new THREE.Color(r,g,b)`
+     as three bare floats, which is a one-line divergence from UR12e.jsx;
+     TurtleBot.jsx carries the reason and the numbers. It matters less here
+     than it does there, because Unitree's shell is genuinely pale, but the
+     black feet and the dark trim were coming out as mid grey. */
   const geom = useMemo(() => {
     if (!mesh) return null;
     const room = new THREE.Color(P.machine);
@@ -167,7 +173,8 @@ export default function Go2({ phase = 0, scale = 1, tint }) {
         const g = new THREE.BufferGeometry();
         g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
         g.setAttribute("normal", new THREE.BufferAttribute(creaseNormals(pos, 78), 3));
-        const own = new THREE.Color(part.c[0]/255, part.c[1]/255, part.c[2]/255);
+        const own = new THREE.Color().setRGB(
+          part.c[0]/255, part.c[1]/255, part.c[2]/255, THREE.SRGBColorSpace);
         const col = own.lerp(tint ? new THREE.Color(tint) : room, 0.34);
         return { geometry: g, color: col };
       });

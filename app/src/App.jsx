@@ -4,6 +4,7 @@ import * as THREE from "three";
 import Slab from "./lab/Slab.jsx";
 import Structure from "./lab/Structure.jsx";
 import Guarding from "./lab/Guarding.jsx";
+import Belief from "./lab/Belief.jsx";
 import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
@@ -59,6 +60,8 @@ export default function App() {
           <Slab />
           <Structure />
           <Guarding />
+          {/* One inspection layer over the whole floor, not one per cell. */}
+          <Belief />
           {STOPS.filter(s => s.kind === "rig").map(s => (
             <Bay key={s.id} stop={s}><Rig stop={s} /></Bay>
           ))}

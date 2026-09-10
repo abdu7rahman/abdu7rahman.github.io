@@ -39,6 +39,14 @@ canvas { display: block; touch-action: pan-y; }
 .index li.on .n { color: var(--hazard); }
 
 /* The plate on the wall of whatever you are standing in front of. */
+/* The box does not take the pointer, only what is written in it does.
+   A plate is sized to the frame and mostly empty, so with the default it is
+   the element under the cursor across most of the screen and the building
+   behind it cannot be hovered at all -- measured, elementFromPoint at the
+   middle of the frame returned an h3. Nothing about that looks wrong; the
+   world simply stops responding. */
+.plate { pointer-events: none; }
+.plate > *, .plate .panel { pointer-events: auto; }
 .plate {
   position: fixed; left: 50%; bottom: clamp(28px, 7vh, 78px);
   transform: translateX(-50%); z-index: 5;

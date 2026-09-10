@@ -8,7 +8,7 @@ import react from "@vitejs/plugin-react";
    root carries demo.html, the worker, the assets and the whole vanilla site,
    and Vite's default is to wipe the directory it writes to. */
 export default defineConfig({
-  base: "/lab/",
+  base: "/",
   plugins: [react()],
   /* The kinematics are imported from world/, not copied into app/.
      world/kinematics.js is the measured UR12e -- link frames, poseAt,
@@ -25,18 +25,19 @@ export default defineConfig({
      across the boundary, so a matrix built by one copy is not a Matrix4 to
      the other. */
   resolve: { dedupe: ["three"] },
-  /* Served from /lab/ for now, beside the document site rather than instead
-     of it. GitHub Pages serves this repository's root and the root is the
-     written site, which works; replacing it with a building that is still
-     being built would be trading something finished for something that is
-     not. When the lab is ready this becomes base "/" and outDir "..", and the
-     emptyOutDir below has to go with it -- the root carries demo.html, the
-     worker, the assets and the whole vanilla site, and Vite's default is to
-     wipe whatever directory it writes into. */
+  /* The lab is the site now. index.html at the root is this build's output;
+     the written site it grew out of is written.html beside it, still whole,
+     still the source every word and number in the lab is baked from. */
   build: {
-    outDir: "../lab",
-    emptyOutDir: true,
-    assetsDir: "assets",
+    outDir: "..",
+    // Never true here. The root is not a build directory -- it carries
+    // written.html, demo.html, the worker, the assets and the whole
+    // vanilla site, and Vite wipes the directory it writes into.
+    emptyOutDir: false,
+    // Not "assets": that directory already exists and holds the baked
+    // robots and the social card. Keeping the bundle separate means a
+    // build can never be confused for content.
+    assetsDir: "build",
     target: "es2022"
   }
 });
