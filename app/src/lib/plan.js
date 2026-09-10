@@ -56,9 +56,15 @@ export const STOPS = [
   { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control", frame: "course",
     sub: "DWA, MPPI, TEB, Pure Pursuit, Stanley",
     note: "Drive a TurtleBot with the cursor using any of five controllers." },
+  /* Four, not the written section's five. lab/demos/controllers.js
+     implements pure pursuit, Stanley, a velocity-space sampler and MPPI --
+     four published controllers, each the thing it is named after. TEB is a
+     nonlinear optimisation over a timed elastic band and is not something
+     this building runs; the written section benchmarks all five and this
+     bay says four because four is what is on the bench. */
   { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
-    sub: "all five over one plan",
-    note: "The same plan, five controllers, one clock." },
+    sub: "four controllers, one plan",
+    note: "The same plan and the same clock, four ways of following it." },
 
   { id: "work",     kind: "room", side:  1, at: 3.0, title: "Archive",
     lede: "Ten systems worth showing. Everything else lives on GitHub." },

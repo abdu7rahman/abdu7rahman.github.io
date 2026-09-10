@@ -7,6 +7,7 @@ import SearchRig from "./SearchRig.jsx";
 import DriveRig from "./DriveRig.jsx";
 import ReachRig from "./ReachRig.jsx";
 import ForeseeRig from "./ForeseeRig.jsx";
+import RaceRig from "./RaceRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -32,7 +33,7 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
    the real Burger down the path that comes out. Anything named here owns its
    whole cell -- the machine included -- so this file steps out of the way. */
 const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
-               foresee: ForeseeRig };
+               foresee: ForeseeRig, race: RaceRig };
 
 /* The bench Bay.jsx draws is a 2.6 by 3.0 m box and the 3.0 m side runs
    parallel to the aisle. That is the axis a mobile base gets to drive along,
