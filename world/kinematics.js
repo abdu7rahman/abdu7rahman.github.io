@@ -10,7 +10,13 @@
  */
 import * as THREE from "three";
 
-const ORIGINS = [
+/* Exported, because the simulator is generated from it.
+ *
+ * app/src/sim/models.js writes the MJCF for this arm out of these six
+ * origins, so the body MuJoCo integrates and the mesh three draws are the
+ * same robot by construction rather than by two people typing the same
+ * numbers into two files. */
+export const ORIGINS = [
   [0, 0, 0.1807, 0, 0, 0],
   [0, 0, 0, Math.PI / 2, 0, 0],
   [-0.6127, 0, 0, 0, 0, 0],
