@@ -1,6 +1,7 @@
 import { useThree } from "@react-three/fiber";
 import { useEffect } from "react";
 import { detect } from "../lib/capability.js";
+import * as plan from "../lib/plan.js";
 
 /* A handle on the scene for anything outside it.
  *
@@ -24,7 +25,11 @@ export default function Probe() {
        the frame delta alone, so a cycle stops and an easing keeps working
        -- and both states look identical in a screenshot. Reading the clock
        twice a second apart is the only check of it there is. */
-    window.__lab = { scene, camera, gl, clock, capability: detect() };
+    /* The plan too, because the only way to check from outside that the
+       camera has arrived is to know where it was going, and that is a
+       function of the floor plan. A probe that recomputes RUN from a
+       hard-coded pitch is a probe that passes after somebody moves a bay. */
+    window.__lab = { scene, camera, gl, clock, plan, capability: detect() };
     return () => { delete window.__lab; };
   }, [scene, camera, gl, clock]);
   return null;

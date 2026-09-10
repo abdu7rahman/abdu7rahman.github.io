@@ -49,19 +49,34 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   const title = () => pg.evaluate(() =>
     (document.querySelector('.index li.on .t') || {}).textContent);
 
-  /* Wait for the camera, not for a clock. The document is 8,611 px of
-     scrollbar for 66 m of building and the browser's own smooth scroll
-     crosses it at its own pace; at four frames a second a fixed dwell is
-     either far too long or, as it was, silently too short -- a station click
-     that had not landed yet read as a station click that did nothing. */
+  /* Wait for the camera to arrive, not for it to stop moving.
+  
+     Stopping is the wrong test and it failed in a way worth writing down.
+     This page runs at a few frames a second under a software rasteriser,
+     and at the cost bay it drops lower still -- so two polls six hundred
+     milliseconds apart can read the same camera position simply because no
+     frame ran between them. Three of those in a row and a stillness test
+     declares a camera settled while it is a third of the way down a
+     sixty-six metre aisle. Which is exactly what it did: a station click
+     that had landed correctly read as a station click that did nothing.
+  
+     Arrival is a fact rather than an inference. The scroll position is the
+     reader's intent and lands instantly; the camera eases toward it. So ask
+     the page where the scroll says it should be and wait until it is, which
+     cannot be satisfied by a page that is merely too slow to have moved. */
   const settle = async () => {
-    let prev = null, still = 0;
-    for (let i = 0; i < 50 && still < 3; i++) {
-      const z = await pg.evaluate(() => +window.__lab.camera.position.z.toFixed(3));
-      still = (prev !== null && Math.abs(z - prev) < 0.004) ? still + 1 : 0;
-      prev = z;
-      await pg.waitForTimeout(600);
+    for (let i = 0; i < 90; i++) {
+      const d = await pg.evaluate(() => {
+        const max = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+        // The same mapping nav/useTravel.js uses, and RUN is on the plan.
+        const RUN = window.__lab.plan.RUN;
+        const want = -(1 - window.scrollY / max) * RUN;
+        return Math.abs(window.__lab.camera.position.z - want);
+      });
+      if (d < 0.35) return true;
+      await pg.waitForTimeout(500);
     }
+    return false;
   };
 
   console.log('\nA. the canvas gets the pointer at all');
