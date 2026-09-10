@@ -10,6 +10,7 @@ import Rig from "./lab/Rig.jsx";
 import Dolly from "./nav/Dolly.jsx";
 import Probe from "./nav/Probe.jsx";
 import Screens from "./bays/Screens.jsx";
+import Rooms from "./halls/Rooms.jsx";
 import Readout from "./nav/Readout.jsx";
 import { P, KEY } from "./lib/palette.js";
 import { STOPS, RUN } from "./lib/plan.js";
@@ -63,6 +64,8 @@ export default function App() {
           <Guarding />
           {/* One inspection layer over the whole floor, not one per cell. */}
           <Belief />
+          {/* The six rooms the written work is read in. */}
+          <Rooms />
           {STOPS.filter(s => s.kind === "rig").map(s => (
             <Bay key={s.id} stop={s}><Rig stop={s} /></Bay>
           ))}

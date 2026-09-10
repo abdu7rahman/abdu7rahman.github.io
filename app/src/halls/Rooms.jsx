@@ -1,0 +1,177 @@
+import { useMemo } from "react";
+import { Instances, Instance } from "@react-three/drei";
+import { P } from "../lib/palette.js";
+import { AISLE, BAY_D, EAVES, PITCH, WORK, STOPS } from "../lib/plan.js";
+
+/* The six rooms, which were six gaps.
+ *
+ * A cell is a machine behind a fence and you glance into it walking past. A
+ * room is somewhere you stop, so it is built the other way round: fewer
+ * moving things, more surface, and the light coming off what is in it rather
+ * than off a spot aimed at a bench. The reading itself is DOM over the canvas
+ * (nav/Panel.jsx) -- these are the places that reading happens in, not a
+ * second copy of it painted onto a wall.
+ *
+ * They are the same building as the cells. Same 7.2 m grid, same steel, same
+ * rule about orange: it goes on what would really be painted -- a kick rail,
+ * a door edge, a fire point -- and nowhere else. Six different art directions
+ * would make this a showreel; one vocabulary makes it a facility.
+ */
+const ROOMS = STOPS.filter(s => s.kind === "room");
+
+/* Partition height. Not to the truss: a room boxed to 8.4 m would black out
+   the bay behind it and the aisle's depth is the whole composition. 3.4 m is
+   a real partition height, it clears a door and a rack, and it leaves the
+   portal frames reading over the top of everything. */
+const WALL_H = 3.4;
+
+function Shell({ side, deep }) {
+  const s = side || 1;
+  const x = s * WORK;
+  const back = s * (AISLE / 2 + BAY_D);
+  return (
+    <group>
+      {/* Back wall and one return, so a room is a corner rather than a flat. */}
+      <mesh position={[back, WALL_H / 2, 0]} rotation-y={-s * Math.PI / 2} receiveShadow>
+        <planeGeometry args={[deep, WALL_H]} />
+        <meshStandardMaterial color={P.steelDk} roughness={0.95} metalness={0.06} />
+      </mesh>
+      <mesh position={[x, WALL_H / 2, -deep / 2]} receiveShadow>
+        <planeGeometry args={[BAY_D, WALL_H]} />
+        <meshStandardMaterial color={P.steelDk} roughness={0.95} metalness={0.06} />
+      </mesh>
+      {/* The painted edge where a partition meets the floor. */}
+      <mesh position={[x, 0.05, -deep / 2 + 0.02]}>
+        <boxGeometry args={[BAY_D, 0.1, 0.04]} />
+        <meshStandardMaterial color={P.hazard} roughness={0.8}
+          emissive={P.hazard} emissiveIntensity={0.08} />
+      </mesh>
+      {/* One soft source per room, high and wide, so a room reads as lit
+          rather than as spotlit. No shadow map: seven cells already cast and
+          the shadow budget is spent where machines are. */}
+      <pointLight position={[x, WALL_H - 0.3, 0]} color={"#ffe6cc"}
+        intensity={46} distance={16} decay={2} />
+    </group>
+  );
+}
+
+/* Racking: uprights and shelves, instanced. The one piece of furniture that
+   says storage without anybody having to label it. */
+function Racking({ side, bays, deep }) {
+  const s = side || 1;
+  const x = s * (WORK + 1.5);
+  const shelves = useMemo(() => {
+    const out = [];
+    for (let b = 0; b < bays; b++) {
+      const z = -deep / 2 + 1.2 + b * 2.3;
+      for (let l = 0; l < 4; l++) out.push([x, 0.42 + l * 0.78, z]);
+    }
+    return out;
+  }, [x, bays, deep]);
+  return (
+    <group>
+      <Instances limit={shelves.length} castShadow receiveShadow>
+        <boxGeometry args={[1.9, 0.05, 2.0]} />
+        <meshStandardMaterial color={P.steel} roughness={0.75} metalness={0.35} />
+        {shelves.map((p, i) => <Instance key={i} position={p} />)}
+      </Instances>
+      {/* Uprights, orange because racking is. */}
+      <Instances limit={bays * 2} castShadow>
+        <boxGeometry args={[0.07, 3.2, 0.07]} />
+        <meshStandardMaterial color={P.hazard} roughness={0.7}
+          emissive={P.hazard} emissiveIntensity={0.05} />
+        {Array.from({ length: bays }, (_, b) => {
+          const z = -deep / 2 + 1.2 + b * 2.3;
+          return (
+            <group key={b}>
+              <Instance position={[x - 0.9, 1.6, z - 1.0]} />
+              <Instance position={[x + 0.9, 1.6, z - 1.0]} />
+            </group>
+          );
+        })}
+      </Instances>
+    </group>
+  );
+}
+
+/* Metrology: a granite surface plate on a stand, which is the one object a
+   measuring room is actually built around, plus an instrument bench. */
+function Metrology({ side }) {
+  const s = side || -1;
+  const x = s * WORK;
+  return (
+    <group>
+      <mesh position={[x, 0.44, 0.4]} castShadow receiveShadow>
+        <boxGeometry args={[1.5, 0.88, 2.2]} />
+        <meshStandardMaterial color={P.steelDk} roughness={0.8} metalness={0.3} />
+      </mesh>
+      {/* The plate. Dark, flat, and the only near-specular surface in the
+          building -- granite lapped to a few microns is what "measured" looks
+          like as an object. */}
+      <mesh position={[x, 0.94, 0.4]} castShadow receiveShadow>
+        <boxGeometry args={[1.62, 0.12, 2.32]} />
+        <meshStandardMaterial color={"#26262b"} roughness={0.18} metalness={0.15} />
+      </mesh>
+      {/* Column and probe arm standing on it. */}
+      <mesh position={[x - 0.6, 1.6, -0.3]} castShadow>
+        <boxGeometry args={[0.12, 1.2, 0.12]} />
+        <meshStandardMaterial color={P.machine} roughness={0.4} metalness={0.6} />
+      </mesh>
+      <mesh position={[x - 0.2, 2.12, -0.3]} castShadow>
+        <boxGeometry args={[0.9, 0.09, 0.09]} />
+        <meshStandardMaterial color={P.machine} roughness={0.4} metalness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
+/* A desk, for the room the reader leaves from. */
+function Desk({ side }) {
+  const s = side || 1;
+  const x = (side === 0 ? 1 : s) * (WORK - 0.4);
+  return (
+    <group>
+      <mesh position={[x, 0.72, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.6, 0.06, 0.8]} />
+        <meshStandardMaterial color={P.steel} roughness={0.65} metalness={0.3} />
+      </mesh>
+      {[-0.7, 0.7].map((d, i) => (
+        <mesh key={i} position={[x + d, 0.35, 0]} castShadow>
+          <boxGeometry args={[0.06, 0.7, 0.7]} />
+          <meshStandardMaterial color={P.steelDk} roughness={0.8} metalness={0.3} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+export default function Rooms() {
+  return (
+    <group>
+      {ROOMS.map(r => {
+        const z = -r.at * PITCH;
+        const side = r.side === 0 ? 1 : r.side;
+        const deep = 7.0;
+        return (
+          <group key={r.id} position={[0, 0, z]}>
+            <Shell side={side} deep={deep} />
+            {r.id === "work"     && <Racking side={side} bays={3} deep={deep} />}
+            {r.id === "stack"    && <Racking side={side} bays={3} deep={deep} />}
+            {r.id === "measured" && <Metrology side={side} />}
+            {(r.id === "contact" || r.id === "entry") && <Desk side={side} />}
+            {r.id === "path"     && (
+              /* A history wall: one long plate, lit, nothing on it. What is
+                 written on it is the panel; a wall with painted text would be
+                 a picture of the reading sitting next to the reading. */
+              <mesh position={[side * (AISLE / 2 + BAY_D - 0.05), 1.7, 0]}
+                    rotation-y={-side * Math.PI / 2}>
+                <planeGeometry args={[5.4, 2.2]} />
+                <meshStandardMaterial color={P.steel} roughness={0.55} metalness={0.35} />
+              </mesh>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}

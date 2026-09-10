@@ -56,7 +56,11 @@ export default function Panel({ id }) {
   if (id === "measured") {
     return (
       <div className="panel panel--wide">
-        {CONTENT.measured.lede.map((p, i) => <p key={i} className="lede">{p}</p>)}
+        {/* No lede here. The plate above already carries it -- it is the
+            stop's own note in plan.js and the section's opening line in
+            written.html, which are the same sentence -- so printing both
+            showed the reader "Claims I could check, checked" twice, once
+            under the heading and once under the rule. */}
         {CONTENT.measured.tables.map((t, i) => (
           <figure key={i} className="bench">
             <figcaption><h3>{t.title}</h3><p>{t.note}</p></figcaption>

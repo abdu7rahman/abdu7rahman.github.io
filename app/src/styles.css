@@ -92,7 +92,7 @@ canvas { display: block; touch-action: pan-y; }
    surface now, opaque where words are and nowhere else, which is the same
    answer the document site arrived at and for the same reason. */
 .plate--room {
-  left: auto; right: clamp(16px, 4vw, 72px);
+  left: auto; right: clamp(16px, 3vw, 48px);
   transform: none; text-align: left;
   width: min(52vw, 620px);
   top: 92px; bottom: 92px;
