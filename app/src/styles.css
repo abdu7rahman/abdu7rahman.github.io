@@ -72,3 +72,82 @@ canvas { display: block; touch-action: pan-y; }
   .plate { animation: none; }
   html { scroll-behavior: auto; }
 }
+
+/* ── what is written in a room ──────────────────────────────────────────
+   A cell's plate is a caption and stays centred at the bottom of the frame.
+   A room's is the reading, so it takes a column, scrolls inside itself, and
+   sits on a backing dark enough to hold body text over a lit floor. */
+.plate--room {
+  left: auto; right: clamp(16px, 4vw, 72px);
+  transform: none; text-align: left;
+  width: min(52vw, 620px);
+  top: 92px; bottom: 92px;
+  display: flex; flex-direction: column;
+  animation: room-in 460ms cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes room-in { from { opacity: 0; transform: translateX(14px); }
+                     to   { opacity: 1; transform: none; } }
+.plate--room h1 { font-size: clamp(26px, 3.4vw, 40px); }
+.plate--room .lede { margin-left: 0; max-width: 46ch; }
+.plate--room.plate--wide, .plate--room:has(.panel--wide) { width: min(64vw, 860px); }
+
+.panel {
+  margin-top: 18px; padding: 18px 20px 22px;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: linear-gradient(to bottom, rgba(9,9,10,.90), rgba(9,9,10,.82));
+  border-top: 2px solid var(--hazard);
+  font-size: 14px; line-height: 1.55; color: #d6d6da;
+}
+.panel p { margin: 0 0 12px; }
+.panel .lede { color: var(--ink); font-size: 15px; }
+.panel h3 { margin: 0 0 4px; font: 700 14px/1.2 var(--ui);
+            letter-spacing: .01em; color: var(--ink); text-transform: none; }
+
+.panel .stack { margin: 0; }
+.panel .stack > div { display: grid; grid-template-columns: 116px 1fr; gap: 14px;
+                      padding: 9px 0; border-top: 1px solid #26262a; }
+.panel .stack > div:first-child { border-top: 0; }
+.panel dt { color: var(--accent); font: 600 11px/1.4 var(--mono);
+            letter-spacing: .08em; text-transform: uppercase; }
+.panel dd { margin: 0; }
+
+.panel .cards, .panel .tl, .panel .rows { list-style: none; margin: 0; padding: 0; }
+.panel .card { display: grid; grid-template-columns: 26px 1fr auto; gap: 12px;
+               padding: 14px 0; border-top: 1px solid #26262a; }
+.panel .card:first-child { border-top: 0; }
+.panel .idx { color: var(--hazard); font: 700 11px/1.6 var(--mono); }
+.panel .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 5px;
+                margin: 8px 0 0; padding: 0; }
+.panel .chips li { border: 1px solid #303036; border-radius: 999px;
+                   padding: 2px 8px; font: 500 11px/1.5 var(--ui); color: #a8a8ad; }
+.panel .stats { margin: 0; display: flex; gap: 16px; align-items: flex-start; }
+.panel .stat dd { font: 700 17px/1.1 var(--ui); color: var(--ink); }
+
+.panel .bench { margin: 0 0 22px; }
+.panel .bench figcaption p { color: #9a9aa0; font-size: 12px; margin: 0 0 8px; }
+.panel table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.panel th, .panel td { text-align: left; padding: 6px 10px 6px 0;
+                       border-bottom: 1px solid #212125; }
+.panel thead th { color: var(--accent); font: 600 10px/1.4 var(--mono);
+                  letter-spacing: .09em; text-transform: uppercase; }
+.panel tbody th { color: var(--ink); font-weight: 600; }
+.panel td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.panel .tail { color: #9a9aa0; font-size: 12.5px; margin-top: 8px; }
+
+.panel .tl > li { display: grid; grid-template-columns: 92px 1fr; gap: 14px;
+                  padding: 13px 0; border-top: 1px solid #26262a; }
+.panel .tl > li:first-child { border-top: 0; }
+.panel .when { color: var(--accent); font: 600 11px/1.5 var(--mono); margin: 0; }
+
+.panel .rows li { padding: 9px 0; border-top: 1px solid #26262a; }
+.panel .rows li:first-child { border-top: 0; }
+.panel .rows a { color: var(--ink); text-decoration: none;
+                 border-bottom: 1px solid var(--hazard); }
+.panel .rows a:hover { color: var(--accent); }
+.panel .where { color: #9a9aa0; }
+
+@media (max-width: 980px) {
+  .plate--room, .plate--room:has(.panel--wide) {
+    left: 12px; right: 12px; width: auto; top: 76px; bottom: 12px;
+  }
+}

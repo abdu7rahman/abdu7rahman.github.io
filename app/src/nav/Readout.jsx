@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { STOPS, PITCH, RUN } from "../lib/plan.js";
+import Panel from "./Panel.jsx";
 
 /* The one piece of chrome: where you are in the building, named.
  *
@@ -50,11 +51,16 @@ export default function Readout() {
         </ol>
       </nav>
 
-      <div className="plate" key={stop.id}>
+      {/* A rig gets a plate on the aisle; a room gets the reading itself.
+          The distinction is the building's own: you glance at a cell in
+          passing and you stop in a room, so a cell's caption is one line and
+          a room's is everything it holds. */}
+      <div className={"plate" + (stop.kind === "room" ? " plate--room" : "")} key={stop.id}>
         <p className="kind">{stop.kind === "rig" ? "Test cell" : "Room"}</p>
         <h1>{stop.title}</h1>
         {stop.sub && <p className="sub">{stop.sub}</p>}
         <p className="lede">{stop.note || stop.lede}</p>
+        {stop.kind === "room" && <Panel id={stop.id} />}
       </div>
     </>
   );
