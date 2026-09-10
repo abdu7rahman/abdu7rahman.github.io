@@ -43,10 +43,19 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   pg.on('pageerror', e => errs.push(String(e).slice(0, 200)));
   await pg.goto(`http://127.0.0.1:${port}/?lab=high`, { waitUntil: 'load' });
   await pg.waitForTimeout(14000);
-  const title = () => pg.evaluate(() => (document.querySelector('.plate h1') || {}).textContent);
+  /* Where you are, read off the index rather than off the reading: the
+     reading is shut by default now, so a test that asks the plate for the
+     station name is asking something that is not on screen. */
+  const title = () => pg.evaluate(() =>
+    (document.querySelector('.index li.on .t') || {}).textContent);
 
   console.log('\nA. the canvas gets the pointer at all');
   {
+    // The reading is closed until it is asked for, so ask: the point of the
+    // third check is that an open column takes its own clicks, and there is
+    // nothing to check while it is shut.
+    await pg.click('.ask');
+    await pg.waitForTimeout(1200);
     const hit = await pg.evaluate(() => {
       const at = (x, y) => { const e = document.elementFromPoint(x, y);
         return e ? e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : '') : 'none'; };
@@ -57,6 +66,28 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     ok('mid frame is the canvas', hit.mid === 'canvas', hit.mid);
     ok('lower left is the canvas', hit.low === 'canvas', hit.low);
     ok('the reading column still takes its own clicks', /plate|panel|h1|p|div/.test(hit.plate), hit.plate);
+    // And put it away again, so everything after this is measured against
+    // the building rather than against a column over it.
+    await pg.click('.ask');
+    await pg.waitForTimeout(900);
+  }
+
+  console.log('\nA1. and it is shut until it is asked for');
+  {
+    const st = await pg.evaluate(() => ({
+      plate: !!document.querySelector('.plate'),
+      ask: (document.querySelector('.ask') || {}).textContent || null
+    }));
+    ok('no reading on screen by default', !st.plate, JSON.stringify(st));
+    ok('and something says how to get it', /read/i.test(st.ask || ''), String(st.ask));
+    await pg.keyboard.press('r');
+    await pg.waitForTimeout(1000);
+    const on = await pg.evaluate(() => !!document.querySelector('.plate'));
+    ok('the keyboard opens it', on);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(1000);
+    const off = await pg.evaluate(() => !!document.querySelector('.plate'));
+    ok('and escape puts it away', !off);
   }
 
   console.log('\nB. the floor answers the cursor');
