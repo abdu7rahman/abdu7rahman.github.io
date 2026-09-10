@@ -3,24 +3,40 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
-import { lerpQ, clear, replan } from "./demos/via.js";
+import { lerpQ, clear, clearance, replan } from "./demos/via.js";
 import { register, isRunning } from "./console.js";
+import { useSim } from "../sim/useSim.js";
+import { replanScene } from "../sim/models.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
-/* The replan cell, replanning.
+/* The replan cell, replanning -- and now executing what it replans.
  *
  * The arm runs between two of its own poses on a straight line in joint
  * space. Put something in the way -- the cursor is the something -- and the
  * plan in flight is checked, found dead, cancelled, and replaced by the
- * cheapest clear detour a sampler can find. What is drawn is the tool centre
- * of the plan that is actually being executed, so the line going red and
- * bending is the controller changing its mind, not a caption saying it did.
+ * cheapest clear detour a sampler can find.
  *
- * Interactive because the written section is: block the arm and watch it
- * cancel. With no cursor on the bench the obstacle drifts through the
- * workspace on its own so the cell is doing something for somebody walking
- * past, which is the same rule the local control bay uses for its goal.
+ * What changed is the half after the plan. The plan used to be written
+ * straight into the joint angles the mesh was drawn at, so the arm was
+ * exactly where the planner said and could not be anywhere else. It is a
+ * command now: sim/models.js builds this cell as MJCF, MuJoCo integrates a
+ * 20.7 kg arm on position servos, and the mesh is drawn at whatever the
+ * simulation says the joints actually are. The difference is on the console
+ * as `lag`, and it is never zero -- a servo tracking a moving target runs
+ * behind it, and an arm holding a horizontal pose sags into it. Neither of
+ * those was expressible before because there was nothing to disagree with.
+ *
+ * The obstacle is a mocap body, so it moves the robot and the robot does not
+ * move it. Which means the failure this cell exists to show is now a real
+ * one: if the planner misses, the arm hits the sphere, the solver resolves
+ * the contact, and the contact count on the console goes up. It used to pass
+ * through it.
+ *
+ * The planner is unchanged and still runs on the analytic kinematics rather
+ * than on the simulation. That is not laziness, it is the architecture every
+ * real system has: a planner reasons about a model, a controller commands a
+ * plant, and the plant is the part that is allowed to disagree.
  */
 const TICK = 1 / 30;
 const SPEED = 0.55;          // fraction of the plan traversed per second
@@ -55,24 +71,31 @@ export default function ForeseeRig({ stop }) {
 
   const kit = useMemo(() => {
     const frames = Array.from({ length: 6 }, () => new THREE.Matrix4());
-    const wrist = new THREE.Vector3(), tool = new THREE.Vector3();
+    /* Five points down the arm, not two: the elbow and the three wrist
+       origins as well as the tool centre. The two-point version let an elbow
+       sweep straight through the obstacle while the console reported the
+       plan as direct -- invisible until the cell started simulating, and
+       then extremely visible, because MuJoCo resolved the contact. */
+    const pts = Array.from({ length: 5 }, () => new THREE.Vector3());
     const scratch = { q: new Float32Array(6) };
-    /* One scratch pair, returned by reference. The planner calls this a few
-       thousand times a replan and allocating two vectors per call is the
-       kind of garbage that turns a 4 ms plan into a stutter. */
     const fk = (q) => {
       linkFrames(q, frames);
-      wrist.setFromMatrixPosition(frames[4]);
-      toolPoint(frames, tool);
-      return [wrist, tool];
+      for (let i = 0; i < 4; i++) pts[i].setFromMatrixPosition(frames[i + 2]);
+      toolPoint(frames, pts[4]);
+      return pts;
     };
     return { frames, scratch, fk, rand: seeded(0x1F2E3D4C),
              a: Float32Array.from(ENDS[0]), b: Float32Array.from(ENDS[1]),
              via: null, u: 0, dead: false, hold: 0, acc: 0, dir: 1,
-             r: OBS_R };
+             r: OBS_R, lag: 0, touch: 0, gap: 0, ready: false };
   }, []);
 
-  const q = useRef(Float32Array.from(ENDS[0]));
+  /* Two joint vectors now, and keeping them apart is the point. `cmd` is
+     what the planner wants and what goes to the actuators; `act` is what the
+     simulation says the arm did, and it is the one the mesh is drawn at. */
+  const cmd = useRef(Float32Array.from(ENDS[0]));
+  const act = useRef(Float32Array.from(ENDS[0]));
+  const [sim, simReady] = useSim(replanScene, []);
   const obs = useRef(new THREE.Vector3(0.45, 0.0, 0.55));
   const held = useRef(99);
   const ball = useRef();
@@ -118,7 +141,8 @@ export default function ForeseeRig({ stop }) {
     actions: [{ label: "Reset", on: () => {
       kit.a = Float32Array.from(ENDS[0]); kit.b = Float32Array.from(ENDS[1]);
       kit.via = null; kit.u = 0; kit.dead = false; kit.dir = 1;
-      q.current.set(ENDS[0]); painted.current = false;
+      cmd.current.set(ENDS[0]); act.current.set(ENDS[0]); painted.current = false;
+      if (sim.current) { sim.current.reset(); for (let i = 0; i < 6; i++) sim.current.qpos[i] = ENDS[0][i]; }
     } }],
     choice: {
       get: () => kit.r,
@@ -129,13 +153,21 @@ export default function ForeseeRig({ stop }) {
         { value: 0.30, label: "Large" }
       ]
     },
+    /* Four numbers, and two of them could not exist before there was a
+       simulation to read them off. `lag` is the worst joint's distance from
+       its own command in millidegrees -- a servo behind a moving target --
+       and `touching` is how many contacts the solver is resolving, which is
+       zero unless the planner has actually failed and the arm has actually
+       hit something. */
     readout: () => [
       ["plan", kit.dead ? "blocked" : kit.via ? "detoured" : "direct"],
       ["obstacle", (kit.r * 2).toFixed(2) + " m"],
-      ["along", (kit.u * 100).toFixed(0) + "%"]
+      ["lag", kit.ready ? (kit.lag * 1000).toFixed(0) + " mdeg" : "--"],
+      ["clearance", kit.ready ? (kit.gap * 100).toFixed(0) + " cm" : "--"],
+      ["touching", kit.ready ? String(kit.touch) : "--"]
     ],
     hint: "Move the cursor across the cell to put your hand in the way."
-  }), [stop.id, kit]);
+  }), [stop.id, kit, sim]);
 
   useFrame(({ clock }, dt) => {
     const d = Math.min(0.1, dt);
@@ -162,7 +194,12 @@ export default function ForeseeRig({ stop }) {
       /* Check the part of the plan that has not been executed yet, which is
          the only part that can still be cancelled. Checking the whole plan
          would keep reporting a collision the arm has already driven past. */
-      const from = Float32Array.from(q.current);
+      /* From where the arm is, not from where it was told to be. Those are
+         the same number only when nothing is disagreeing with the command,
+         and the whole reason this cell now runs a simulation is that
+         something is. Replanning from the command would plan a detour
+         starting from a pose the arm is not in. */
+      const from = Float32Array.from(act.current);
       const rest = kit.via && kit.u < 0.5
         ? [[from, kit.via], [kit.via, kit.b]]
         : [[from, kit.b]];
@@ -212,7 +249,7 @@ export default function ForeseeRig({ stop }) {
          same to within float error, and after a cancelled detour they are
          not, and starting from the goal would teleport it. */
       kit.dir = -kit.dir;
-      kit.a = Float32Array.from(q.current);
+      kit.a = Float32Array.from(act.current);
       kit.b = Float32Array.from(ENDS[kit.dir > 0 ? 1 : 0]);
       kit.via = null; kit.u = 0;
       paintPlan();
@@ -220,12 +257,43 @@ export default function ForeseeRig({ stop }) {
 
     const u = kit.u;
     if (kit.via) {
-      if (u < 0.5) lerpQ(kit.a, kit.via, u * 2, q.current);
-      else lerpQ(kit.via, kit.b, (u - 0.5) * 2, q.current);
+      if (u < 0.5) lerpQ(kit.a, kit.via, u * 2, cmd.current);
+      else lerpQ(kit.via, kit.b, (u - 0.5) * 2, cmd.current);
     } else {
-      lerpQ(kit.a, kit.b, u, q.current);
+      lerpQ(kit.a, kit.b, u, cmd.current);
     }
 
+  });
+
+  /* The plant, in its own frame callback so it runs whether or not the
+     planner did anything this tick -- an arm holding a cancelled plan is
+     still an arm holding itself up against gravity, and that is exactly the
+     interval this cell is about. */
+  useFrame((_, dt) => {
+    const sm = sim.current;
+    if (!sm) return;
+    const d = Math.min(0.1, dt);
+    sm.setMocap("hand", obs.current.x, obs.current.y, obs.current.z);
+    /* The obstacle's size is a console control, and a geom's size is model
+       data rather than state, so it is written where the reader changes it
+       rather than being baked at compile time. */
+    if (kit.geomR !== kit.r) {
+      const g = sm.model.geom("handgeom");
+      g.size[0] = kit.r;
+      if (g.delete) g.delete();
+      kit.geomR = kit.r;
+    }
+    sm.command(cmd.current);
+    sm.step(d);
+    let worst = 0;
+    for (let i = 0; i < 6; i++) {
+      act.current[i] = sm.qpos[i];
+      worst = Math.max(worst, Math.abs(act.current[i] - cmd.current[i]));
+    }
+    kit.lag = worst;
+    kit.touch = sm.touching("handgeom");
+    kit.gap = clearance(act.current, obs.current, kit.r, kit.fk);
+    kit.ready = true;
   });
 
   // First paint happens on the first frame instead of in a memo: the mesh
@@ -272,7 +340,11 @@ export default function ForeseeRig({ stop }) {
                                 transparent opacity={0.42} />
         </mesh>
       </group>
-      <UR12e q={q} />
+      {/* Drawn at what the simulation says, which is the whole change. Until
+          the engine has loaded there is nothing to say, so UR12e falls back
+          to its own baked cycle -- the same thing it does in every cell that
+          is not driving it. */}
+      <UR12e q={simReady ? act : undefined} />
     </group>
   );
 }

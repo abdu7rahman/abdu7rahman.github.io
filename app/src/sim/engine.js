@@ -135,6 +135,51 @@ export class Sim {
       .set(xp[i * 3], xp[i * 3 + 1], xp[i * 3 + 2]).applyQuaternion(ZUP);
   }
 
+  /* A mocap body is driven, not simulated: whatever writes here decides
+     where it is and the solver never pushes back. That is what a reader's
+     cursor is in a workspace -- it moves the robot and the robot does not
+     move it. The index is the model's mocap index, which is not the body
+     index, and confusing the two writes over a different body's pose. */
+  setMocap(name, x, y, z) {
+    if (!this._mocap) this._mocap = new Map();
+    let m = this._mocap.get(name);
+    if (m === undefined) {
+      m = this.model.body_mocapid[this.bodyId(name)];
+      this._mocap.set(name, m);
+    }
+    if (m < 0) return;
+    const p = this.data.mocap_pos;
+    p[m * 3] = x; p[m * 3 + 1] = y; p[m * 3 + 2] = z;
+  }
+
+  /* How many contacts the solver is currently resolving, in total. */
+  get contacts() { return this.data.ncon; }
+
+  /* And how many of them involve one named geom, which is the number a cell
+     actually wants. The total is never zero in a scene with anything resting
+     on anything -- a box on a bench is four contacts before the robot has
+     done a thing -- so reporting it as "is the arm touching the obstacle"
+     reports 4 for a cell where nothing has gone wrong. */
+  touching(geomName) {
+    if (!this._geoms) this._geoms = new Map();
+    let g = this._geoms.get(geomName);
+    if (g === undefined) {
+      const h = this.model.geom(geomName);
+      g = h.id;
+      if (h.delete) h.delete();
+      this._geoms.set(geomName, g);
+    }
+    const n = this.data.ncon;
+    const vec = this.data.contact;
+    let hit = 0;
+    for (let i = 0; i < n; i++) {
+      const c = vec.get(i);
+      if (c.geom1 === g || c.geom2 === g) hit++;
+      if (c.delete) c.delete();
+    }
+    return hit;
+  }
+
   get qpos() { return this.data.qpos; }
   get qvel() { return this.data.qvel; }
   get ctrl() { return this.data.ctrl; }

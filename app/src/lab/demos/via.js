@@ -19,10 +19,15 @@
  * position, because an arm that keeps moving into something it cannot get
  * around is the failure this is supposed to prevent.
  *
- * Collision is checked at the wrist centre and the tool centre rather than
- * over the whole hull. Two spheres down the last links is what the written
- * section's own pipeline checks and it is what is stated here; a swept hull
- * would be more correct and it would also be a claim this file cannot back.
+ * Collision is checked at a set of points down the arm rather than over the
+ * whole hull, and the caller decides which points. It was two -- the wrist
+ * centre and the tool centre -- and that was defensible until the cell
+ * started simulating: with MuJoCo underneath, an elbow sweeping through the
+ * obstacle is a contact the solver resolves and the reader watches, while
+ * the planner reports the path as direct because neither of its two points
+ * ever entered the sphere. So the caller now hands down every joint origin
+ * from the elbow out. A swept hull would still be more correct and would
+ * still be a claim this file cannot back.
  */
 
 export function lerpQ(a, b, u, out) {
@@ -30,16 +35,29 @@ export function lerpQ(a, b, u, out) {
   return out;
 }
 
-/* Does the straight line from a to b keep both checked points clear of a
-   sphere. `fk` fills a scratch pair of positions for a configuration. */
+/* Does the straight line from a to b keep every checked point clear of a
+   sphere. `fk` fills and returns a scratch array of positions for a
+   configuration -- by reference, because this is called a few thousand times
+   a replan and a fresh array per call is the kind of garbage that turns a
+   4 ms plan into a stutter. */
 export function clear(a, b, obs, r, fk, scratch, steps = 18) {
   const q = scratch.q;
   for (let k = 0; k <= steps; k++) {
     lerpQ(a, b, k / steps, q);
-    const [w, t] = fk(q);
-    if (w.distanceTo(obs) < r || t.distanceTo(obs) < r) return false;
+    const pts = fk(q);
+    for (let i = 0; i < pts.length; i++) if (pts[i].distanceTo(obs) < r) return false;
   }
   return true;
+}
+
+/* The signed clearance of a configuration: how far the nearest checked point
+   is from the obstacle's surface, negative when it is inside. The planner
+   only needs the sign; a cell reporting to a reader wants the number. */
+export function clearance(q, obs, r, fk) {
+  const pts = fk(q);
+  let d = Infinity;
+  for (let i = 0; i < pts.length; i++) d = Math.min(d, pts[i].distanceTo(obs));
+  return d - r;
 }
 
 export function jointLength(a, b) {

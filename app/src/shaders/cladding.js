@@ -108,11 +108,24 @@ export function cladding(material, opt = {}) {
     );
 
     shader.fragmentShader = DECL_F + shader.fragmentShader;
+    /* The profile is computed once, at the colour hook, and used twice.
+    
+       It used to be pasted into both hooks, and both hooks are at the top
+       level of main(), so every one of these materials failed to link with
+       `'clad_u' : redefinition` -- and a material whose program does not
+       link draws nothing at all. That is not a subtle fault and it was
+       invisible for a long time: the surfaces it happened to be on were
+       dark, the one it was obvious on was read as a depth-sorting problem,
+       and nothing in the page said a word. It surfaced from a console
+       listener added for something else entirely.
+    
+       The order is three's and it matters: color_fragment runs before
+       normal_fragment_begin in meshphysical, so declaring at the first and
+       reading at the second is the only way round that compiles. */
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <normal_fragment_begin>",
       /* glsl */`
       #include <normal_fragment_begin>
-      ${PROFILE}
       normal = normalize(normal - vCladT * clad_slope);
       `
     );

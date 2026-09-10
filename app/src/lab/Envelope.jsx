@@ -74,20 +74,18 @@ function Wall({ x, z, w, h, ry = 0, colour = P.steelDk, dado = 2.35 }) {
  * in a reveal is a hole in a building.
  */
 function Shutter({ x, z, ry, w = 4.4, h = 4.6, open = 0 }) {
-  /* Plain, and not the cladding patch, and this is a known unknown rather
-     than a preference.
+  /* Slats, from the same patch the walls use with its axis turned.
   
-     The curtain wants horizontal slats, which is what shaders/cladding.js
-     does on the walls with its axis turned. Patched, this mesh draws
-     nothing: not dark, not wrong, absent -- the doorway behind it shows
-     through, a raycast puts it 2 cm in front of that doorway, and swapping
-     in a plain material with no other change fills 2364 of 2394 pixels in
-     the same window. Giving the patch a per-configuration program cache key
-     did not change it either. Whatever it is, it is in the patch and not in
-     this file, so this runs plain until somebody finds it. */
-  const curtain = useMemo(() => new THREE.MeshStandardMaterial({
+     This ran a plain material for a while with a note saying the patched one
+     drew nothing and nobody knew why. Somebody knows why now: cladding.js was
+     pasting its profile into two shader hooks in the same scope, so every
+     material it touched failed to link with a redefinition error and drew
+     nothing -- on this mesh it was obvious, because a doorway was behind it.
+     */
+  const curtain = useMemo(() => cladding(new THREE.MeshStandardMaterial({
     color: new THREE.Color("#33363b"), roughness: 0.62, metalness: 0.45
-  }), []);
+  }), { axis: new THREE.Vector3(0, 1, 0), pitch: 0.115, crown: 0.62,
+        ramp: 0.14, depth: 0.022, seam: 0, dado: -1 }), []);
   useEffect(() => () => curtain.dispose(), [curtain]);
   const drop = h * (1 - open);
   return (
