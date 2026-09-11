@@ -28,10 +28,23 @@ import { WORK } from "../lib/plan.js";
    A Burger's ceiling is 0.22 m/s. A 1.5 s rollout is 0.33 m of arc, and 0.33
    m on a 2.3 m course is a smudge in front of the robot -- the fan was there
    and it was unreadable. The horizon goes to 2.6 s, which is 0.57 m, and the
-   course comes in to 1.75 by 2.05 so that is a third of it. Neither number
-   is the robot's; both are the bench's, and the bench is the only thing here
-   that gets to be sized for the shot. */
-const COURSE_X = 1.75, COURSE_Y = 2.05;
+   course comes in so that is half of it. Neither number is the robot's; both
+   are the bench's, and the bench is the only thing here that gets to be
+   sized for the shot.
+
+   1.14 by 1.33, which is that reasoning carried the rest of the way. At 1.75
+   it was still a 0.178 m robot on a course ten times its own width, and from
+   where a visitor actually stands -- nav/stations.js puts the lens about four
+   metres off -- the Burger came out forty pixels across a 1440 pixel frame,
+   with the fan smaller than that. The whole demo is the subject of this bay
+   and it was occupying two per cent of it.
+
+   Nothing about the robot moves for this. Its size, its top speed and the
+   0.09 m the controller plans it as are a Burger's and stay a Burger's; what
+   changes is how much floor it is given, which is a property of the test and
+   not of the machine. A smaller course is a smaller test area, and the only
+   thing that becomes untrue is nothing. */
+const COURSE_X = 1.14, COURSE_Y = 1.33;
 const HORIZON = 2.6;
 const TICK = 1 / 20;          // 20 Hz, which is the rate the written
                               // benchmarks time this controller at
@@ -41,10 +54,10 @@ const TICK = 1 / 20;          // 20 Hz, which is the rate the written
    clearance term is a point-to-circle distance and a circle is the shape
    that makes that exact rather than conservative. */
 const OBS0 = [
-  [-0.44,  0.42, 0.11],
-  [ 0.40,  0.22, 0.13],
-  [-0.14, -0.42, 0.12],
-  [ 0.50, -0.62, 0.10]
+  [-0.29,  0.27, 0.11],
+  [ 0.26,  0.14, 0.13],
+  [-0.09, -0.27, 0.12],
+  [ 0.33, -0.40, 0.10]
 ];
 const OBS_R = 0.12;          // what a placed one is, in metres
 
@@ -62,9 +75,9 @@ export default function DriveRig({ stop }) {
     return new Local({ maxV: MAX_V, maxW: MAX_W, horizon: HORIZON,
                        nv: odd(7 * w), nw: odd(21 * w) });
   }, []);
-  const pose = useRef({ x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 });
+  const pose = useRef({ x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 });
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
-  const goal = useRef(new THREE.Vector2(0.8, 0.9));
+  const goal = useRef(new THREE.Vector2(0.40, 0.49));
   /* Seconds since the cursor left the bench, and whether it is on it at all.
    *
    * These used to be one number reset by pointer movement, which made
@@ -146,7 +159,7 @@ export default function DriveRig({ stop }) {
     title: "Velocity-space sampling",
     actions: [
       { label: "Reset", on: () => {
-          pose.current = { x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 };
+          pose.current = { x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 };
           cmd.current = { v: 0, w: 0, acc: 0 };
           obs.current = OBS0.map(o => o.slice());
           setObsN(n => n + 1);
@@ -185,7 +198,7 @@ export default function DriveRig({ stop }) {
     if (!over.current) held.current += d; else held.current = 0;
     if (held.current > 1.2) {
       const a = clock.elapsedTime * 0.42;
-      goal.current.set(Math.cos(a) * 0.62, Math.sin(a) * 0.76);
+      goal.current.set(Math.cos(a) * 0.40, Math.sin(a) * 0.49);
     }
 
     // The controller runs on its own clock, not the frame's: a 20 Hz plan is

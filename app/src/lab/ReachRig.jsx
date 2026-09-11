@@ -23,20 +23,75 @@ import { WORK } from "../lib/plan.js";
  * cloud that is already finished when you arrive says nothing about where it
  * came from, and this bay is about where it came from.
  */
-/* 70,000 rather than 24,000, and smaller, because at 24,000 the cloud read
-   as sparks rather than as a surface. A shell is a shape and a shape needs
-   enough samples that the eye stops resolving individual ones -- which is
-   the same reason a Monte Carlo integral needs more than a handful and not a
-   different reason dressed up. Eight seconds to fill at this rate. */
+/* The samples build a surface now, not a cloud.
+ *
+ * 70,000 points at a third of an alpha, drawn without depth, against a dark
+ * wall at the back of a bay, is grain. It reads as a broken render -- dead
+ * pixels on the camera -- rather than as the shape of what an arm can touch,
+ * which is the one thing this bay exists to show. More points and smaller
+ * points had already been tried; the problem is not the sampling, it is that
+ * a translucent unlit cloud has no silhouette and nothing to catch a light.
+ *
+ * So the samples are binned into a surface and the surface is drawn. The set
+ * is star-shaped about the shoulder -- along any ray out of it the reachable
+ * radii form one interval -- so a direction and a radius describe it
+ * completely: bin by direction, keep the furthest and nearest radius seen in
+ * each bin, and the two of those are the outer shell and the cavity the
+ * shoulder singularity leaves inside it. Nothing is placed and nothing is
+ * fitted. Every vertex is the furthest a sample actually got in that
+ * direction, from the same forward kinematics the arm beside it is posed
+ * with.
+ *
+ * It still builds while somebody is standing there, for the same reason it
+ * did before: a shape that is finished when you arrive says nothing about
+ * where it came from.
+ */
 const N = 70000;
 const PER_S = 9000;
-/* Metres, for the colour ramp only. The band starts at 0.45 rather than at
-   0 so the ramp spends its range on the shell rather than on the empty
-   middle -- measured on this rig's own sampling, 19.3% of points fall
-   inside 0.45 m and clamp to the floor of the ramp, and 12.2% clamp at the
-   1.30 m ceiling. Both ends are a clamp and not a gradient, which is the
-   right trade for a colour that is only there to give the shell depth. */
-const REACH_LO = 0.45, REACH_HI = 1.30;
+
+/* The direction grid, and it is coarser than it wants to be for a reason
+   that is about statistics and not about resolution.
+ *
+ * Each bin's radius is the furthest of the samples that landed in it, and the
+ * maximum of a handful of draws is a bad estimate of a true maximum -- biased
+ * low and noisy. 96 by 48 is 4,608 bins, which over 70,000 samples is fifteen
+ * each, and fifteen draws produced a sea urchin: every bin undershot by a
+ * different amount and the surface between them was all spike. 48 by 24 is
+ * sixty draws a bin, and sixty is where the estimate settles down.
+ *
+ * A bin still needs to have been reached enough times to be trusted, so
+ * MIN_HITS is the floor below which a bin is treated as unreached and its
+ * quads are not emitted -- which also keeps the shell from growing spines
+ * while it is still filling. */
+const RES_U = 48, RES_V = 24;
+const MIN_HITS = 6;
+
+/* Passes of neighbour averaging over the radius field before it is drawn.
+   The residual scatter between neighbouring bins is estimator noise rather
+   than shape -- the arm's real envelope has no 3.75 degree features on it --
+   so smoothing it is removing error, not detail. Wrapped in longitude,
+   clamped in latitude. */
+const SMOOTH = 2;
+
+/* How often the surface is rebuilt from the bins, in seconds. Rebuilding is
+   a couple of thousand quads of arithmetic and no allocation, which is cheap,
+   but doing it on a frame that added 150 samples out of 70,000 is 150
+   samples' worth of change for a whole rebuild. Four times a second is
+   faster than the eye asks and a twentieth of the work. */
+const REBUILD = 0.25;
+/* Metres above the bench, for the colour ramp.
+ *
+ * The ramp used to run on radius from the shoulder, which was right for a
+ * cloud -- a cloud has samples at every radius, so the colour told you how
+ * far out you were looking. An outer shell does not: every point on it is at
+ * the furthest radius by construction, so the same ramp painted the whole
+ * dome one flat orange and said nothing.
+ *
+ * Height does vary over the shell and is a fact about the machine rather than
+ * about the plot: how high the arm can get at this bearing against how low.
+ * The band is the swept set's own z range as this rig samples it, -0.685 to
+ * 1.662 m from the shoulder, taken to the bench. */
+const REACH_LO = -0.50, REACH_HI = 1.70;
 
 /* Sobol would be better and is forty lines; this is a stratified shuffle over
    four axes, which for a cloud whose only job is to show a shell is
@@ -74,6 +129,89 @@ function seeded(a) {
 const LO = [-Math.PI, -Math.PI, -Math.PI, -Math.PI, -1.9, 0];
 const HI = [ Math.PI,  0.0,      Math.PI,  Math.PI, -1.2, 0];
 
+/* One bin's direction, as a unit vector. The inverse of the binning above,
+   taken at the bin's own corner rather than its centre so that neighbouring
+   quads share an edge exactly and the surface has no cracks in it. */
+function dirOf(u, v, out) {
+  const az = (u / RES_U - 0.5) * Math.PI * 2;
+  const cz = (v / RES_V) * 2 - 1;                 // cos of the polar angle
+  const sr = Math.sqrt(Math.max(0, 1 - cz * cz));
+  return out.set(Math.cos(az) * sr, Math.sin(az) * sr, cz);
+}
+
+const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _c = new THREE.Vector3(), _d = new THREE.Vector3();
+const _n = [_a, _b, _c, _d];
+
+/* Average each bin's radius with its neighbours, into a second field so the
+   measurements themselves are never overwritten. Longitude wraps; latitude
+   clamps. Only bins with enough samples take part, and only they are
+   averaged into -- an unreached bin must stay unreached or the shell grows
+   into the space the arm could not get to. */
+function blur(kit) {
+  const src = kit.far, dst = kit.smooth, hit = kit.hit;
+  dst.set(src);
+  for (let pass = 0; pass < SMOOTH; pass++) {
+    for (let v = 0; v < RES_V; v++) {
+      for (let u = 0; u < RES_U; u++) {
+        const b = v * RES_U + u;
+        if (hit[b] < MIN_HITS) { dst[b] = 0; continue; }
+        let sum = dst[b], k = 1;
+        const add = (uu, vv) => {
+          if (vv < 0 || vv >= RES_V) return;
+          const j = vv * RES_U + ((uu + RES_U) % RES_U);
+          if (hit[j] < MIN_HITS) return;
+          sum += dst[j]; k++;
+        };
+        add(u - 1, v); add(u + 1, v); add(u, v - 1); add(u, v + 1);
+        dst[b] = sum / k;
+      }
+    }
+  }
+}
+
+/* Turn a radius per direction into triangles.
+ *
+ * A quad is emitted only where all four of its corner bins were reached
+ * often enough to be believed, so the shell ends where the arm's does.
+ */
+function surface(kit, geo, radius, tint) {
+  const pos = geo.attributes.position.array;
+  const col = geo.attributes.color.array;
+  let k = 0;
+  for (let v = 0; v < RES_V - 1; v++) {
+    for (let u = 0; u < RES_U; u++) {
+      const u1 = (u + 1) % RES_U;
+      const b0 = v * RES_U + u, b1 = v * RES_U + u1;
+      const b2 = (v + 1) * RES_U + u1, b3 = (v + 1) * RES_U + u;
+      if (kit.hit[b0] < MIN_HITS || kit.hit[b1] < MIN_HITS ||
+          kit.hit[b2] < MIN_HITS || kit.hit[b3] < MIN_HITS) continue;
+      dirOf(u, v, _a).multiplyScalar(radius[b0]);
+      dirOf(u + 1, v, _b).multiplyScalar(radius[b1]);
+      dirOf(u + 1, v + 1, _c).multiplyScalar(radius[b2]);
+      dirOf(u, v + 1, _d).multiplyScalar(radius[b3]);
+      const order = [0, 1, 2, 0, 2, 3];
+      for (let i = 0; i < 6; i++) {
+        const p = _n[order[i]];
+        pos[k] = p.x; pos[k + 1] = p.y; pos[k + 2] = p.z + SHOULDER;
+        /* Coloured by height, which is the thing about this shape a
+           silhouette alone does not carry. */
+        const t = (p.z + SHOULDER - REACH_LO) / (REACH_HI - REACH_LO);
+        tint.copy(kit.tealC).lerp(kit.hazardC, Math.max(0, Math.min(1, t)));
+        col[k] = tint.r; col[k + 1] = tint.g; col[k + 2] = tint.b;
+        k += 3;
+      }
+    }
+  }
+  geo.setDrawRange(0, k / 3);
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.computeBoundingSphere();
+}
+
+/* The shoulder height, module scope because `surface` needs it too. */
+const SHOULDER = 0.1807;
+
 export default function ReachRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
@@ -87,21 +225,59 @@ export default function ReachRig({ stop }) {
   const n = Math.round(N * cap);
 
   const kit = useMemo(() => {
-    const pos = new Float32Array(n * 3);
-    const col = new Float32Array(n * 3);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    g.setDrawRange(0, 0);
+    const bins = RES_U * RES_V;
+    /* One surface: the furthest a sample got in each direction. A bin that
+       has not been reached enough times to be believed is left out and the
+       quads that touch it are not emitted, which leaves the underside of the
+       workspace open where the arm genuinely cannot go rather than closing
+       it with a lid the arithmetic never found.
+    
+       There was a second surface here, built from the nearest radius in each
+       bin, on the idea that it would show the cavity the shoulder
+       singularity leaves. It does not: the minimum of a set of samples
+       converges to an inner boundary only where there is one, and everywhere
+       else it converges to whatever sample happened to pass closest to the
+       shoulder. Drawn, it was a teal starburst through the middle of the
+       shell -- an artefact of the sampler presented as a feature of the
+       robot, which is the one thing this bay must not do. */
+    const far = new Float32Array(bins);
+    const smooth = new Float32Array(bins);
+    const hit = new Uint16Array(bins);
+    /* Room for every quad of both surfaces as loose triangles. Indexed would
+       be smaller and cannot be used: a vertex on the seam belongs to two
+       directions and a vertex beside a hole belongs to fewer quads than its
+       neighbours, so the index list would have to be rebuilt as often as the
+       positions are. */
+    const cap3 = bins * 6 * 3;
+    const geoOut = new THREE.BufferGeometry();
+    const mk = g => {
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(cap3), 3));
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(cap3), 3));
+      g.setDrawRange(0, 0);
+      return g;
+    };
     return {
-      geo: g, pos, col, n: 0, lockBase: false, rand: seeded(0x9E3779B9),
+      geoOut: mk(geoOut),
+      far, smooth, hit, bins,
+      n: 0, lockBase: false, rand: seeded(0x9E3779B9),
+      since: 1e9,
       q: new Float32Array(6),
       frames: Array.from({ length: 6 }, () => new THREE.Matrix4()),
       v: new THREE.Vector3(),
-      near: new THREE.Color(P.teal),
-      far: new THREE.Color(P.hazard)
+      tealC: new THREE.Color(P.teal),
+      hazardC: new THREE.Color(P.hazard),
+      reset() {
+        this.n = 0; this.since = 1e9;
+        this.far.fill(0); this.hit.fill(0);
+        this.geoOut.setDrawRange(0, 0);
+      }
     };
   }, [n]);
+
+  /* Every direction and radius in here is measured from the shoulder: the
+     base plate is not the centre of the workspace, and a ramp centred on it
+     puts its midpoint somewhere the arm never is. */
+  const SHOULDER_Z = SHOULDER;
 
   const tint = useMemo(() => new THREE.Color(), []);
 
@@ -113,10 +289,10 @@ export default function ReachRig({ stop }) {
      is a different and more legible fact about the machine. */
   useEffect(() => register(stop.id, {
     title: "Reachable set, sampled",
-    actions: [{ label: "Rebuild", on: () => { kit.n = 0; kit.geo.setDrawRange(0, 0); } }],
+    actions: [{ label: "Rebuild", on: () => kit.reset() }],
     choice: {
       get: () => kit.lockBase,
-      set: (v) => { kit.lockBase = v; kit.n = 0; kit.geo.setDrawRange(0, 0); },
+      set: (v) => { kit.lockBase = v; kit.reset(); },
       options: [
         { value: false, label: "All six" },
         { value: true, label: "Base locked" }
@@ -127,7 +303,7 @@ export default function ReachRig({ stop }) {
       ["of", n.toLocaleString("en")],
       ["joints swept", kit.lockBase ? "4" : "5"]
     ],
-    hint: "Every point is a tool centre from the arm's own forward kinematics."
+    hint: "The shell is the furthest the tool centre got in each direction, from the arm's own forward kinematics."
   }), [stop.id, kit]);
 
   useFrame((_, dt) => {
@@ -142,20 +318,28 @@ export default function ReachRig({ stop }) {
       if (kit.lockBase) kit.q[0] = 0;
       linkFrames(kit.q, kit.frames);
       toolPoint(kit.frames, kit.v);
-      const k = kit.n * 3;
-      kit.pos[k] = kit.v.x; kit.pos[k + 1] = kit.v.y; kit.pos[k + 2] = kit.v.z;
-      // Reach from the shoulder, not from the origin: the base plate is not
-      // the centre of the workspace and colouring from it puts the ramp's
-      // midpoint somewhere the arm never is.
-      const r = (Math.hypot(kit.v.x, kit.v.y, kit.v.z - 0.1807) - REACH_LO)
-                / (REACH_HI - REACH_LO);
-      tint.copy(kit.near).lerp(kit.far, Math.max(0, Math.min(1, r)));
-      kit.col[k] = tint.r; kit.col[k + 1] = tint.g; kit.col[k + 2] = tint.b;
+      /* Direction and radius from the shoulder, and the bin they fall in.
+         v is the latitude by cos so the bins are equal solid angle -- an
+         even grid in the angle itself crowds the poles and starves the
+         equator, which on this shape is exactly where the surface is. */
+      const dx = kit.v.x, dy = kit.v.y, dz = kit.v.z - SHOULDER_Z;
+      const r = Math.hypot(dx, dy, dz);
       kit.n++;
+      if (r < 1e-4) continue;
+      let u = Math.floor((Math.atan2(dy, dx) / (Math.PI * 2) + 0.5) * RES_U);
+      let vv = Math.floor((dz / r * 0.5 + 0.5) * RES_V);
+      if (u < 0) u = 0; else if (u >= RES_U) u = RES_U - 1;
+      if (vv < 0) vv = 0; else if (vv >= RES_V) vv = RES_V - 1;
+      const b = vv * RES_U + u;
+      if (r > kit.far[b]) kit.far[b] = r;
+      if (kit.hit[b] < 65535) kit.hit[b]++;
     }
-    kit.geo.setDrawRange(0, kit.n);
-    kit.geo.attributes.position.needsUpdate = true;
-    kit.geo.attributes.color.needsUpdate = true;
+
+    kit.since += dt;
+    if (kit.since < REBUILD) return;
+    kit.since = 0;
+    blur(kit);
+    surface(kit, kit.geoOut, kit.smooth, tint);
   });
 
   return (
@@ -163,10 +347,15 @@ export default function ReachRig({ stop }) {
       {/* The cloud is in the arm's own frame, so it is rotated by the same
           UPRIGHT the arm is rather than being placed to look right. */}
       <group rotation-x={-Math.PI / 2}>
-        <points geometry={kit.geo} frustumCulled={false}>
-          <pointsMaterial size={0.0075} vertexColors transparent opacity={0.34}
-                          sizeAttenuation depthWrite={false} />
-        </points>
+        {/* The outer shell, lit and solid enough to have a silhouette, and
+            translucent enough that the arm inside it is still the subject.
+            Both sides are drawn because the shell is open underneath and the
+            inside of it is visible through that opening. */}
+        <mesh geometry={kit.geoOut} frustumCulled={false}>
+          <meshStandardMaterial vertexColors transparent opacity={0.30}
+                                roughness={0.55} metalness={0.0}
+                                side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
       </group>
       <UR12e phase={(stop.at * 0.37) % 2} />
     </group>

@@ -25,9 +25,19 @@ import { WORK } from "../lib/plan.js";
  * only honest way to compare them: distance travelled, not distance along
  * the reference, so a controller that wanders pays for it.
  */
-const COURSE_X = 2.30, COURSE_Y = 2.70;
+/* 1.45 by 1.70, in from 2.30 by 2.70, for the same reason the drive cell's
+   course came in: the machines racing on it are 0.178 m Burgers and from
+   where a visitor stands the four of them were a single grey knot in a
+   corner of an otherwise empty table. Four robots on a 2.3 m track is four
+   robots each a thirteenth of the track's width; on 1.45 they are an eighth,
+   which is the difference between a cluster of shapes and a smudge.
+
+   Nothing about the machines changes. The course is the test and the test is
+   allowed to be the size that lets somebody see it; the superellipse below
+   comes in with it so the corners stay the same corners. */
+const COURSE_X = 1.45, COURSE_Y = 1.70;
 const TICK = 1 / 20;
-const LEAD = 0.42;           // metres between the machines at the start
+const LEAD = 0.26;           // metres between the machines at the start
 
 function seeded(a) {
   return function () {
@@ -45,7 +55,7 @@ function seeded(a) {
    enough to separate a cutter from a tracker. */
 function makePath() {
   const pts = [];
-  const A = 0.82, B = 1.02, n = 3.2;
+  const A = 0.52, B = 0.64, n = 3.2;
   for (let i = 0; i < 240; i++) {
     const t = (i / 240) * Math.PI * 2;
     const c = Math.cos(t), s = Math.sin(t);

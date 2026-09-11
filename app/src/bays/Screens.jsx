@@ -5,6 +5,7 @@ import { STOPS, PITCH, WORK } from "../lib/plan.js";
 import { P } from "../lib/palette.js";
 import { BUNDLES, BUNDLE_OF, acquire, release, bundle, expose } from "./runtime.js";
 import { openCell, hint } from "./overlay.js";
+import { controls, isRunning } from "../lab/console.js";
 
 /* The demos, on the monitors, seen from the aisle.
  *
@@ -185,23 +186,89 @@ const UPLOAD_MS = 66;
    is set through setRGB rather than from a hex, which would clamp at 1. */
 const SCREEN_GAIN = new THREE.Color().setRGB(1.5, 1.5, 1.5, THREE.LinearSRGBColorSpace);
 
+/* The screen a cell has before its demo does.
+ *
+ * A bundle is demo.html in an iframe, and demo.html downloads Pyodide from a
+ * CDN and then eight files of Python from the author's own repositories
+ * before it can paint anything. That is the right way round -- the demos are
+ * the real thing and they are not being reimplemented here -- but it means
+ * the first thing a visitor sees at every cell is a blank grey rectangle, for
+ * as long as that takes, and forever if any of those ten requests does not
+ * come back. Measured in this sandbox, where the CDN is unreachable: all
+ * seven monitors blank, indefinitely, with the cell running perfectly on the
+ * bench in front of them.
+ *
+ * So a monitor paints its own cell's readout instead, locally, with no
+ * network at all. It is the same rows the console beside it shows, which are
+ * the cell's own live state -- so the screen is never lying and never empty,
+ * and when the demo does arrive it simply takes the surface over.
+ */
+const CARD_W = 640, CARD_H = 372;
+
+function readoutCanvas(stop, cv) {
+  const g = cv.getContext("2d");
+  const cell = controls(stop.id);
+  g.fillStyle = "#101114";
+  g.fillRect(0, 0, CARD_W, CARD_H);
+  // A rule down the left, the same one the signs and the console use.
+  g.fillStyle = P.hazard;
+  g.fillRect(0, 0, 6, CARD_H);
+
+  g.fillStyle = P.hazard;
+  g.font = "500 17px ui-monospace, monospace";
+  g.fillText(String(stop.title || stop.id).toUpperCase(), 34, 44);
+
+  const rows = cell && cell.readout ? cell.readout() : [];
+  g.font = "400 21px ui-monospace, monospace";
+  let y = 96;
+  for (const r of rows.slice(0, 7)) {
+    const [k, v] = Array.isArray(r) ? r : [String(r), ""];
+    g.fillStyle = "#8b8f98";
+    g.fillText(String(k), 34, y);
+    g.fillStyle = P.ink;
+    const t = String(v);
+    g.fillText(t, CARD_W - 34 - g.measureText(t).width, y);
+    g.fillStyle = "#24262b";
+    g.fillRect(34, y + 12, CARD_W - 68, 1);
+    y += 42;
+  }
+  if (!rows.length) {
+    g.fillStyle = "#8b8f98";
+    g.fillText("standing by", 34, 96);
+  }
+  g.fillStyle = isRunning(stop.id) ? P.teal : "#8b8f98";
+  g.beginPath();
+  g.arc(44, CARD_H - 32, 5, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#8b8f98";
+  g.font = "400 15px ui-monospace, monospace";
+  g.fillText(isRunning(stop.id) ? "live on the bench" : "stopped", 60, CARD_H - 27);
+}
+
 function Monitor({ stop }) {
   const ring = useRef();
   const [tex, setTex] = useState(null);
   const [fit, setFit] = useState(null);
   const last = useRef(0);
   const { pos, ry } = useMemo(() => monitorAt(stop), [stop]);
+  /* The local card, made once and reused. A canvas per monitor is seven
+     canvases for the building, which is nothing beside the seven iframes. */
+  const card = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const cv = document.createElement("canvas");
+    cv.width = CARD_W; cv.height = CARD_H;
+    return cv;
+  }, []);
 
   useEffect(() => () => { if (tex) tex.dispose(); }, [tex]);
 
   useFrame(() => {
     const b = bundle(BUNDLE_OF[stop.id]);
-    const c = b && b.isPainted(stop.id) ? b.canvases[stop.id] : null;
-
-    if (!c) {
-      if (tex) { setTex(null); setFit(null); }
-      return;
-    }
+    const demo = b && b.isPainted(stop.id) ? b.canvases[stop.id] : null;
+    /* The demo when there is one, the cell's own readout when there is not.
+       Swapping between them is the same path as swapping between two demos,
+       so nothing below has to know which it is looking at. */
+    const c = demo || card;
     if (!tex || tex.image !== c) {
       const t = new THREE.CanvasTexture(c);
       /* No mipmaps, and that is the whole cost of this texture. A canvas
@@ -221,13 +288,16 @@ function Monitor({ stop }) {
       return;
     }
 
-    /* Uploaded on a clock, and only while the demo behind it is awake. A
-       sleeping section's canvas does not change, so an upload of it is a
-       megabyte of bus traffic for an image the GPU already has. */
-    if (!b.isAwake(stop.id)) return;
+    /* Uploaded on a clock, and for a demo only while it is awake: a sleeping
+       section's canvas does not change, so an upload of it is a megabyte of
+       bus traffic for an image the GPU already has. The local card has no
+       sleep gate -- it is repainted here, so it is only ever redrawn on the
+       same clock the upload runs on. */
+    if (demo && !b.isAwake(stop.id)) return;
     const now = performance.now();
     if (now - last.current < UPLOAD_MS) return;
     last.current = now;
+    if (!demo) readoutCanvas(stop, card);
     tex.needsUpdate = true;
   });
 
