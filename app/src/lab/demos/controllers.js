@@ -143,6 +143,17 @@ export class MPPI {
     this.cost = new Float32Array(this.K);
   }
 
+  /* Back to the opening guess. MPPI warm starts -- each tick shifts the
+     control sequence it settled on last time and re-samples around it, which
+     is most of why it commits earlier than a sampler that starts cold. That
+     memory is exactly wrong across a restart: it holds the plan for a corner
+     the machine is no longer standing at, and the first second of the new
+     run is spent unwinding the last one. */
+  reset() {
+    this.nomV.fill(this.maxV * 0.6);
+    this.nomW.fill(0);
+  }
+
   // Box-Muller, because a sum of uniforms is not a Gaussian and the weights
   // below are only meaningful if the noise is the one in the derivation.
   gauss(rand) {

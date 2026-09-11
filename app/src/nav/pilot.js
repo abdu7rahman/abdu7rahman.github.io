@@ -34,8 +34,8 @@ import { Router } from "./route.js";
    reads as a machine being teleported. Braking is allowed to be harder than
    accelerating, because stopping short of something is not a comfort
    question. */
-const ACC = 1.8;
-const BRAKE = 3.2;
+const ACC = 2.4;
+const BRAKE = 3.8;
 
 /* How far ahead the carrot sits, as a floor. The real number is worked out
  * from the controller, because a carrot and a rollout horizon are not two
@@ -80,7 +80,7 @@ export class Pilot {
        whichever way the guide is facing, which is the other reason a
        carried board is held upright and in close rather than out in front. */
     this.local = new Local({
-      maxV: opts.maxV ?? 1.45, maxW: opts.maxW ?? 1.9,
+      maxV: opts.maxV ?? 1.90, maxW: opts.maxW ?? 2.20,
       nv: 6, nw: 17, horizon: 2.0, steps: 12,
       radius: this.radius, clearCap: 1.1,
       wHead: 1.0, wClear: 0.42, wSpeed: 0.30,

@@ -65,6 +65,10 @@ function seeded(a) {
   };
 }
 
+/* How far out from the arm the cursor's sheet stands, in the arm's own
+   frame. The pad is drawn at this depth and the obstacle rides on it. */
+const OBS_DEPTH = 0.34;
+
 export default function ForeseeRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
@@ -316,7 +320,13 @@ export default function ForeseeRig({ stop }) {
   const painted = useRef(false);
 
   return (
-    <group position={[x, 0.9, 0]}>
+    /* Turned to face the aisle. Every cell in here placed itself with
+       x = side * WORK and no rotation, so all seven pointed the same
+       absolute way and whichever side of the lane a cell stood on decided
+       whether a visitor met its front or its back. Standing at this one you
+       were behind the arm, looking at its base, with the workspace it is
+       supposed to let you reach into on the far side of it. */
+    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
       <group rotation-x={-Math.PI / 2}>
         {/* What the cursor talks to: an invisible sheet standing through the
             workspace, so a pointer moving across the bay maps to a point in
@@ -333,7 +343,16 @@ export default function ForeseeRig({ stop }) {
           onPointerMove={(e) => {
             e.stopPropagation();
             const p = e.object.worldToLocal(e.point.clone());
-            obs.current.set(0.34 + p.y * 0.0, p.x, 0.62 - p.y);
+            /* p.y * 0.0 was in here, which is a multiply by zero: the
+               obstacle's distance from the arm was pinned at 0.34 m and the
+               cursor could only ever move it in two of the three axes it
+               appears to move in. The pad is a vertical sheet through the
+               workspace, so across is the arm's y and up is its z, and how
+               far out it sits is the one thing the reader cannot point at --
+               it rides at the depth of the sheet, which is what the sheet is
+               for. Said with a constant rather than with arithmetic that
+               cancels. */
+            obs.current.set(OBS_DEPTH, p.x, 0.62 - p.y);
             over.current = true;
             held.current = 0;
           }}

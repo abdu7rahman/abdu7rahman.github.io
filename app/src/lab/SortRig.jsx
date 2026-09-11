@@ -79,6 +79,22 @@ const REACH = 0.95;          // how far from its own base an arm will go
  * wider than the droop. It is also what anybody does before a blind approach:
  * open the hand all the way.
  */
+/* How fast each joint's command may walk, in rad/s, and these are Universal
+ * Robots' own published maxima rather than one number for all six.
+ *
+ * It was a single 1.9 for every joint, which is a reasonable stand-in for the
+ * three big ones and less than two thirds of what the three wrists can do --
+ * a UR12e is specified at 120 degrees a second on the base, shoulder and
+ * elbow and 180 on the wrists. A cell whose every reorientation ran at the
+ * shoulder's limit was slow for no reason anybody could point at: the wrist
+ * roll that turns the jaw square to a tool is most of the move between
+ * picking one up and putting it down, and it was crawling.
+ *
+ * So the table is the machine's. It is both faster and more nearly true,
+ * which is the only kind of speed-up worth making here.
+ */
+const RATE = [2.094, 2.094, 2.094, 3.142, 3.142, 3.142];
+
 const GRIP_OPEN = 0.044, GRIP_SHUT = 0.002;
 
 /* Scene coordinates from simulation coordinates: MuJoCo is z-up, the scene is
@@ -553,7 +569,7 @@ export default function SortRig({ stop }) {
           roll(kit.want[arm], kit.jaw);
         }
       }
-      /* How fast the command may walk, in rad/s. Gentler while something is
+      /* How fast the command may walk. Gentler while something is
          held: a tool is gripped wherever the jaws happened to land on it,
          which on a 22 mm bar lying on a bench is a pinch near its top, and a
          pinch survives being carried but not being thrown. Measured, tools
@@ -561,8 +577,9 @@ export default function SortRig({ stop }) {
          them by the end of the lift -- the jaw command reads 4 mm, fully
          shut on nothing, at the top of a 620 mm move made at full command
          rate. Half rate while the gripper is closed. */
-      const lim = (spec.grip ? 0.95 : 1.9) * d;
+      const hold = spec.grip ? 0.5 : 1;
       for (let i = 0; i < 6; i++) {
+        const lim = RATE[i] * hold * d;
         const e = kit.want[arm][i] - kit.cmd[arm][i];
         kit.cmd[arm][i] += Math.max(-lim, Math.min(lim, e));
       }
@@ -736,7 +753,11 @@ export default function SortRig({ stop }) {
   );
 
   return (
-    <group position={[x, 0.9, 0]}>
+    /* Turned to face the aisle, by the same rule as the other arm cells:
+       every rig placed itself with x = side * WORK and no rotation, so all
+       seven pointed the same absolute way and which side of the lane a cell
+       stood on decided whether a visitor met its front or its back. */
+    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
       {[SORT.base, -SORT.base].map((b, i) => (
         <mesh key={i} position={toScene(0, b, SORT.mount / 2)} castShadow receiveShadow>
           <cylinderGeometry args={[0.09, 0.09, SORT.mount, 12]} />

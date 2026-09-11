@@ -4,7 +4,7 @@ import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { Local } from "./demos/dwa.js";
 import { useSim } from "../sim/useSim.js";
-import { wheeledScene, wheelsFor } from "../sim/models.js";
+import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
@@ -171,10 +171,17 @@ export default function DriveRig({ stop }) {
   useEffect(() => register(stop.id, {
     title: "Velocity-space sampling",
     actions: [
+      /* Reset puts the machine back, and that means moving the body rather
+         than the bookkeeping. Writing pose.current was right while this cell
+         was arithmetic and became a no-op the moment it went onto MuJoCo:
+         the next frame reads the simulation's own answer straight back over
+         it, so the button did nothing. */
       { label: "Reset", on: () => {
           pose.current = { x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 };
           cmd.current = { v: 0, w: 0, acc: 0 };
           obs.current = OBS0.map(o => o.slice());
+          const sm = sim.current;
+          if (sm) sm.place("tb0_free", -0.40, -0.52, BURGER.tyre, 0.6);
           setObsN(n => n + 1);
         } }
     ],

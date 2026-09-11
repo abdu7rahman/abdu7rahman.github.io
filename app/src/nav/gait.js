@@ -72,14 +72,18 @@ export class Gait {
        what the leg can reach: the foot swings half the stance excursion
        either side of the hip, so stride is bounded by 2 * maxHalf / DUTY. */
     this.strideCap = this.maxHalf * 2 / DUTY * 0.9;
-    /* 0.72 m, against a ceiling of 0.79. A guide showing somebody around a
-       66 m building at a 0.50 m stride is a machine on a stroll, and the
-       walk from the door to the office took three quarters of a minute of
-       watching it. Stride and top speed set the cadence between them --
-       cadence is speed over stride -- so both go up together: at 1.45 m/s on
-       a 0.72 m stride the cycle is 2.01 Hz, which is a person walking
-       briskly. Raising speed alone would have given 2.9 Hz, a scuttle. */
-    this.stride = Math.min(opts.stride ?? 0.72, this.strideCap);
+    /* 0.78 m, against a ceiling of 0.79, and it is at the ceiling on purpose.
+       
+       Cadence is speed over stride, so the two have to move together or the
+       walk stops looking like a walk: at 1.45 m/s on 0.72 m the cycle was
+       2.01 Hz, a brisk walk, and it was still three quarters of a minute
+       from the door to the office. Speed goes to 1.9 m/s in nav/pilot.js and
+       the stride comes with it to the most the leg can reach, which puts the
+       cycle at 2.44 Hz. That is a fast walk rather than a scuttle, and 1.9
+       m/s is inside what a G1 is published as doing. There is no stride left
+       above this -- the cap is what the leg can swing -- so anything faster
+       from here is cadence alone and would start to look wrong. */
+    this.stride = Math.min(opts.stride ?? 0.78, this.strideCap);
     /* A longer step needs more air under the foot: the swing arc is the same
        shape stretched over a longer base, so at 0.055 m the toe grazed the
        slab through the middle third of swing. Scaled off stride, at the same

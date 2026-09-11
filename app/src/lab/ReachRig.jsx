@@ -354,7 +354,11 @@ export default function ReachRig({ stop }) {
   });
 
   return (
-    <group position={[x, 0.9, 0]}>
+    /* Turned to face the aisle, by the same rule as the other arm cells:
+       every rig placed itself with x = side * WORK and no rotation, so all
+       seven pointed the same absolute way and which side of the lane a cell
+       stood on decided whether a visitor met its front or its back. */
+    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
       {/* The cloud is in the arm's own frame, so it is rotated by the same
           UPRIGHT the arm is rather than being placed to look right. */}
       <group rotation-x={-Math.PI / 2}>

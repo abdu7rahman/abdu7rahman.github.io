@@ -5,7 +5,7 @@ import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { purePursuit, stanley, MPPI, nearest, ahead } from "./demos/controllers.js";
 import { Local } from "./demos/dwa.js";
 import { useSim } from "../sim/useSim.js";
-import { wheeledScene, wheelsFor } from "../sim/models.js";
+import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
@@ -112,7 +112,8 @@ export default function RaceRig({ stop }) {
           return [v, w];
         } },
       { name: "mppi", col: "#9b8cff",
-        step: (st) => mppi.step(st, path, rand) }
+        step: (st) => mppi.step(st, path, rand),
+        reset: () => mppi.reset() }
     ];
     return { path, runners, rand };
   }, []);
@@ -235,8 +236,17 @@ export default function RaceRig({ stop }) {
   const _p = useMemo(() => new THREE.Vector3(), []);
   const _h = useMemo(() => new THREE.Vector3(), []);
 
+  /* Restart, and it has to move the bodies rather than the bookkeeping.
+   *
+   * This wrote the pose objects and nothing else, which was right while the
+   * race was arithmetic and became a no-op the moment it went onto MuJoCo:
+   * the machines are in the simulation now, so the next frame read their
+   * real positions straight back over everything this had just set and the
+   * button did nothing at all. The pose objects are a copy of the
+   * simulation's answer, not the state. */
   function reset() {
     const p = kit.path;
+    const sm = sim.current;
     poses.current.forEach((q, i) => {
       let acc = 0, k = 0;
       while (k < p.length - 2 && acc < i * LEAD) {
@@ -246,9 +256,16 @@ export default function RaceRig({ stop }) {
       q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
       q.travel = 0; q.turned = 0; q.v = 0; q.w = 0; q.off = 0; q.worst = 0;
       q.lap = 0; q.idx = k;
+      if (sm) sm.place(`tb${i}_free`, q.x, q.y, BURGER.tyre, q.psi);
       const t = trails[i];
       if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
     });
+    /* And the controllers' own memory. MPPI carries a warm-started control
+       sequence between ticks, so a restart that leaves it holding the plan
+       for a corner the machine is no longer at spends the first second of
+       the new race unwinding the last one. */
+    kit.runners.forEach(r => { if (r.reset) r.reset(); });
+    acc.current = 0;
   }
 
   useFrame(({ camera }, dt) => {

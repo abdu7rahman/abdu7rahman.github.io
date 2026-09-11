@@ -112,6 +112,21 @@ export class Local {
      with a `field`, ignored in favour of it. */
   plan(state, goal, obs) {
     const { nv, nw, steps, horizon, radius, clearCap } = this;
+    /* The radius the rollouts are actually checked against, which is the
+     * machine's own plus half the gap between the points it is sampled at.
+     *
+     * A rollout is a handful of points on an arc, not the arc: at this bay's
+     * numbers, 12 steps over a 2.6 s horizon at 0.22 m/s is a point every
+     * 48 mm. Checking clearance at the points and nowhere between them means
+     * an arc can pass within a couple of centimetres of a drum and still
+     * come back clear, which is how a controller that rejects every
+     * colliding trajectory still grazes things. Half the spacing is the most
+     * the true path can bow away from the samples, so adding it makes the
+     * discrete check a sound test of the continuous arc rather than an
+     * optimistic one. It is the same correction as the one-cell inflation in
+     * the search bay and for the same reason: a plan for a point is not a
+     * plan for a robot. */
+    const grip = radius + (this.maxV * horizon) / Math.max(1, steps) / 2;
     const field = this.field;
     const span = (steps + 1) * 2;
     let best = null, bestCost = Infinity, n = 0;
@@ -127,8 +142,8 @@ export class Local {
         rollout(state, v, w, horizon, steps, this.buf);
         this.fan.set(this.buf, n * span);
 
-        const cl = field ? fieldClearance(this.buf, steps, field, radius, clearCap)
-                         : clearance(this.buf, steps, obs, radius, clearCap);
+        const cl = field ? fieldClearance(this.buf, steps, field, grip, clearCap)
+                         : clearance(this.buf, steps, obs, grip, clearCap);
         this.fanOk[n] = cl < 0 ? 0 : 1;
         if (cl >= 0) {
           const ex = this.buf[steps * 2], ey = this.buf[steps * 2 + 1];

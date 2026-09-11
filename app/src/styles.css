@@ -328,9 +328,13 @@ canvas { display: block; touch-action: pan-y; }
 .console {
   position: fixed; right: clamp(14px, 2vw, 34px); bottom: 14px; z-index: 5;
   min-width: 232px; max-width: min(38vw, 320px);
-  padding: 11px 14px 12px 12px;
-  background: linear-gradient(to bottom, rgba(9,9,10,.90), rgba(9,9,10,.84));
+  padding: 13px 16px 14px 14px;
+  background: linear-gradient(to bottom, rgba(12,12,14,.86), rgba(9,9,10,.82));
+  border: 1px solid rgba(255,255,255,.08);
   border-left: 2px solid var(--hazard);
+  border-radius: 14px;
+  backdrop-filter: blur(16px) saturate(1.1);
+  box-shadow: 0 26px 60px -26px rgba(0,0,0,.9);
   font: 600 10px/1.6 var(--mono); letter-spacing: .10em; text-transform: uppercase;
 }
 .console__id { margin: 0 0 9px; color: var(--hazard); }
@@ -367,8 +371,12 @@ canvas { display: block; touch-action: pan-y; }
    and above it, because it is the thing somebody who has just walked up
    needs and the numbers are the thing they want second. */
 .console__say {
-  margin: 10px 0 0; color: var(--ink);
+  /* The console is a panel of mono caps, which is right for labels and wrong
+     for a sentence: inherited, this line came out shouting. It is the one
+     thing in here written to be read rather than scanned. */
+  margin: 10px 0 2px; color: var(--ink);
   font: 500 15px/1.45 var(--ui); letter-spacing: -.005em;
+  text-transform: none;
 }
 .console__say::before {
   content: ""; display: inline-block; width: 6px; height: 6px;
