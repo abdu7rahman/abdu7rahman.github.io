@@ -303,6 +303,17 @@ export default function ReachRig({ stop }) {
       ["of", n.toLocaleString("en")],
       ["joints swept", kit.lockBase ? "4" : "5"]
     ],
+    /* What it is doing, in words, including how far through it is -- the
+       shell takes a few seconds to fill and an unfinished one looks broken
+       rather than unfinished. */
+    say: () => {
+      const n = kit.n || 0;
+      const total = Math.round(N * cap);
+      if (n >= total) return "Done. That shell is every place the tool centre reached.";
+      return `Solving the arm's forward kinematics at random joint angles -- `
+           + `${(100 * n / Math.max(1, total)).toFixed(0)} per cent of the way through. `
+           + `The shell is the furthest each direction got.`;
+    },
     hint: "The shell is the furthest the tool centre got in each direction, from the arm's own forward kinematics."
   }), [stop.id, kit]);
 

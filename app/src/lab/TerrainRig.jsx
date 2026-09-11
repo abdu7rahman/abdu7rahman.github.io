@@ -388,6 +388,16 @@ export default function TerrainRig({ stop }) {
       }
       return out;
     },
+    /* What it is doing, in words. */
+    say: () => {
+      const w = walk.current;
+      const label = COSTS[w.which] && COSTS[w.which].label;
+      if (w.fell) return `Walking the ${label} path. It has gone over ${w.fell} time`
+                       + (w.fell === 1 ? "" : "s") + " on this ground and got back up.";
+      if (w.done) return `Across. That was the ${label} path.`;
+      return `Walking the ${label} path -- one leg up at a time, feet on the ground the `
+           + `planners read. ${w.travel.toFixed(2)} m so far.`;
+    },
     hint: "Hover the ground to move the goal. Climb is what each path costs to walk, and the dog walks the one you pick."
   }), [stop.id, kit]);
 

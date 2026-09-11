@@ -18,6 +18,7 @@ import { controls, subscribe, isRunning, setRunning } from "../lab/console.js";
 export default function Console({ id, kind }) {
   const [, bump] = useState(0);
   const [rows, setRows] = useState([]);
+  const [say, setSay] = useState("");
   const spec = useRef(null);
 
   useEffect(() => subscribe(() => bump(n => n + 1)), []);
@@ -35,6 +36,7 @@ export default function Console({ id, kind }) {
       const c = controls(id);
       spec.current = c;
       setRows(c && c.readout ? (c.readout() || []) : []);
+      setSay(c && c.say ? (c.say() || "") : "");
     };
     tick();
     const h = setInterval(tick, 200);
@@ -49,6 +51,17 @@ export default function Console({ id, kind }) {
   return (
     <section className="console" aria-label="Cell controls">
       <p className="console__id">{c.title || "Controls"}</p>
+
+      {/* What the cell is doing, in words, right now.
+       *
+       * Every cell already published a readout, and a readout is a set of
+       * numbers for somebody who already knows what they are looking at. A
+       * visitor who has just been walked to a bench does not, and the site
+       * was leaving them to work it out from a grid of labels -- "expanded
+       * 74, open 17" says nothing about the fact that a search is running
+       * and about to hand a path to a robot. This is one line, in plain
+       * English, that the cell writes itself and changes as it works. */}
+      {say && <p className="console__say" aria-live="polite">{say}</p>}
 
       <div className="console__row">
         <button className="console__btn" onClick={() => setRunning(id, !run)}

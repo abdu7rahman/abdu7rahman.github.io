@@ -363,6 +363,18 @@ canvas { display: block; touch-action: pan-y; }
 }
 .console__out dt { color: #7d7e86; }
 .console__out dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* The one line that says what the cell is doing. Bigger than the readout
+   and above it, because it is the thing somebody who has just walked up
+   needs and the numbers are the thing they want second. */
+.console__say {
+  margin: 10px 0 0; color: var(--ink);
+  font: 500 15px/1.45 var(--ui); letter-spacing: -.005em;
+}
+.console__say::before {
+  content: ""; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--hazard); margin-right: 9px;
+  vertical-align: middle; transform: translateY(-1px);
+}
 .console__hint {
   margin: 9px 0 0; color: #7d7e86; text-transform: none;
   letter-spacing: 0; font-weight: 400; line-height: 1.5;

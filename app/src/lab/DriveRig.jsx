@@ -216,6 +216,15 @@ export default function DriveRig({ stop }) {
       }
       return out;
     },
+    /* What it is doing, in words. */
+    say: () => {
+      const n = ctrl.fanOk.slice(0, ctrl.count).reduce((a, b) => a + (b ? 1 : 0), 0);
+      if (!ctrl.count) return "Starting up.";
+      if (!n) return "Every arc it sampled hits something. Backing off.";
+      return over.current
+        ? `Following your cursor. ${n} of ${ctrl.count} arcs are clear; it is driving the cheapest.`
+        : `Nobody pointing, so it is circling a goal of its own. ${n} of ${ctrl.count} arcs clear.`;
+    },
     hint: "Hover to move the goal. Click the pad to drop an obstacle, click one to lift it."
   }), [stop.id, ctrl]);
 

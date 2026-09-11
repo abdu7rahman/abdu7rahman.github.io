@@ -253,6 +253,25 @@ export default function SortRig({ stop }) {
       ["right arm", kit.state[1] + (isFinite(kit.err[1]) ? "  " + (kit.err[1] * 1000).toFixed(0) + " mm" : "")],
       ["on the floor", String(kit.floor.size)]
     ],
+    /* What it is doing, in words, per arm. */
+    say: () => {
+      const done = kit.sorted ? kit.sorted.size : 0;
+      const w = (i) => {
+        const st = kit.state && kit.state[i];
+        const t = kit.claim && kit.claim[i];
+        if (!st) return "waiting";
+        if (st === "seek") return "looking for a tool";
+        if (st === "approach" || st === "poise" || st === "descend")
+          return "reaching for the " + (t || "next tool");
+        if (st === "close") return "closing on the " + (t || "tool");
+        if (st === "lift" || st === "carry") return "carrying the " + (t || "tool") + " to a bin";
+        if (st === "place" || st === "open") return "letting go over the bin";
+        return "going home";
+      };
+      return `${done} of ${SORT.tools.length} sorted. Left arm is ${w(0)}; `
+           + `right arm is ${w(1)}. `
+           + `Every tool is a free body, so a grasp can miss.`;
+    },
     hint: "Long tools to the far bin, short to the near one. Each arm takes whatever is nearest it.",
     /* Steppable from outside. See the note on tick(). */
     tick: (d) => { if (sim.current) tick(d); },

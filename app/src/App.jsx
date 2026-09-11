@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import * as THREE from "three";
 import Slab from "./lab/Slab.jsx";
 import Structure from "./lab/Structure.jsx";
+import KeyLight from "./lab/KeyLight.jsx";
 import Guarding from "./lab/Guarding.jsx";
 import Catwalk from "./lab/Catwalk.jsx";
 import Clutter from "./lab/Clutter.jsx";
@@ -72,22 +73,10 @@ export default function App() {
         {/* Almost nothing ambient. The brief asked for harder light and the
             way to get it is to refuse to fill the shadows. */}
         <ambientLight intensity={0.16} color={"#6d6a66"} />
-        {/* The key, and its map is the second lever. The shadow camera spans
-            48 m, so 2048 is 42.7 texels per metre and 1024 is 21.3 -- at
-            1024 a 0.42 m column edge is still nine texels across and a hard
-            edge, for a quarter of the memory and a quarter of the fill. */}
-        <directionalLight
-          position={[KEY.x, KEY.y, KEY.z]}
-          intensity={2.3}
-          color={"#fff0dc"}
-          castShadow={quality.keyShadow > 0}
-          shadow-mapSize={[quality.keyShadow || 1, quality.keyShadow || 1]}
-          shadow-camera-left={-24}
-          shadow-camera-right={24}
-          shadow-camera-top={24}
-          shadow-camera-bottom={-24}
-          shadow-camera-far={70}
-        />
+        {/* The key. Its box follows the visitor rather than sitting on the
+            origin -- see lab/KeyLight.jsx for what that was costing and what
+            the far end of the building was not getting. */}
+        <KeyLight size={quality.keyShadow || 1024} on={quality.keyShadow > 0} />
 
         <Suspense fallback={null}>
           <Slab />

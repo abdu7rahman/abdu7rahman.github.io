@@ -228,6 +228,17 @@ export default function SearchRig({ stop }) {
     },
     tick,
     sim: () => !!sim.current,
+    /* What it is doing, in words, for somebody who has just walked up to
+       a bench and does not yet know what "open 17" means. */
+    say: () => {
+      const r = run.current, se = kit.search;
+      if (r.phase === "search")
+        return se.done ? "Path found." : `Searching. ${se.expanded} cells expanded so far.`;
+      if (r.phase === "hold") return "Path found. Handing it to the robot.";
+      if (r.phase === "drive")
+        return `Driving the path it found. ${pose.current.travel.toFixed(2)} m so far.`;
+      return "Arrived. A new map in a moment.";
+    },
     hint: "Drag on the grid to build walls, drag from a wall to knock them down. It re-searches on every edit, and the faint collar is the inflation the planner keeps off them."
   }), [stop.id, kit]);
 

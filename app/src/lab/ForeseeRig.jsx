@@ -167,6 +167,16 @@ export default function ForeseeRig({ stop }) {
       ["clearance", kit.ready ? (kit.gap * 100).toFixed(0) + " cm" : "--"],
       ["touching", kit.ready ? String(kit.touch) : "--"]
     ],
+    /* What it is doing, in words. The whole point of this bay is a moment
+       that lasts about a second, and a readout row that flickers from
+       "direct" to "around" is not a way to notice it. */
+    say: () => {
+      if (kit.touch) return "Your hand is touching the arm. It has stopped.";
+      if (kit.blocked) return "Your hand is in the way. Cancelling the move and planning around it.";
+      return over.current
+        ? "Clear. Move across the cell and it will have to go round you."
+        : "Clear. The ball is drifting through the workspace on its own -- watch it cut the path.";
+    },
     hint: "Move the cursor across the cell to put your hand in the way."
   }), [stop.id, kit, sim]);
 

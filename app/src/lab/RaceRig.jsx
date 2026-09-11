@@ -23,9 +23,16 @@ import { WORK } from "../lib/plan.js";
  * rather than tracking a line, and MPPI averages over its rollouts instead
  * of picking one and commits earlier for it.
  *
- * The lap counter is what each machine's own odometer says, which is the
- * only honest way to compare them: distance travelled, not distance along
- * the reference, so a controller that wanders pays for it.
+ * What is compared is how far off the line each one gets, not how far it
+ * went, and that is a correction. Four controllers round one closed loop all
+ * travel very nearly the same distance -- that is what a closed loop is --
+ * so a board ranked on the odometer read as a four-way tie and said nothing
+ * about the four different things happening on the track. Cross-track error
+ * is the quantity that can disagree, nearest() was already computing it for
+ * the controllers and throwing it away, and over two minutes of laps it
+ * separates them by a factor of two and a half: Stanley holds to 51 mm at
+ * worst, pure pursuit 58, MPPI 113, the sampler 135. Which is the textbook
+ * ordering, arrived at by the machines rather than asserted.
  */
 /* 1.45 by 1.70, in from 2.30 by 2.70, for the same reason the drive cell's
    course came in: the machines racing on it are 0.178 m Burgers and from
@@ -185,20 +192,30 @@ export default function RaceRig({ stop }) {
     title: "Four controllers, one plan",
     actions: [{ label: "Restart", on: () => reset() }],
     readout: () => {
-      /* Ordered by how far round they are, which is what a race board says.
-         Laps first, then position along the plan; the distance beside it is
-         each machine's own odometer, so a controller that wandered pays for
-         the wandering. */
-      const N = kit.path.length;
+      /* Ranked on the worst each has been off the line, best first, because
+         that is the number beside it and a board sorted on something it does
+         not show is a board nobody can read. */
       const board = kit.runners.map((r, i) => ({
-        name: r.name, q: poses.current[i],
-        at: (poses.current[i].lap || 0) + (poses.current[i].idx || 0) / N
-      })).sort((a, b) => b.at - a.at);
+        name: r.name, q: poses.current[i]
+      })).sort((a, b) => (a.q.worst || 0) - (b.q.worst || 0));
       return board.map((b, k) =>
         [(k + 1) + "  " + b.name,
-         "lap " + ((b.q.lap || 0) + 1) + " \u00b7 " + b.q.travel.toFixed(1) + " m"]);
+         "lap " + ((b.q.lap || 0) + 1) + " \u00b7 off "
+           + ((b.q.off || 0) * 1000).toFixed(0) + " mm, worst "
+           + ((b.q.worst || 0) * 1000).toFixed(0)]);
     },
-    hint: "Each one on its own odometer, and the line it took this lap."
+    /* What it is doing, in words. */
+    say: () => {
+      const b = kit.runners.map((r, i) => ({ n: r.name, w: poses.current[i].worst || 0 }))
+        .sort((a, c) => a.w - c.w);
+      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan.";
+      return `Same plan, same clock, same robot. ${b[0].n} is holding the line best `
+           + `at ${(b[0].w * 1000).toFixed(0)} mm off; ${b[b.length - 1].n} is worst `
+           + `at ${(b[b.length - 1].w * 1000).toFixed(0)} mm.`;
+    },
+    tick: step,
+    sim: () => !!sim.current,
+    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. They all go the same distance; they do not all stay on the line."
   }), [stop.id, kit]);
 
   /* The starts, spaced along the path the same way reset() spaces them, so
@@ -227,7 +244,7 @@ export default function RaceRig({ stop }) {
       }
       q.x = p[k][0]; q.y = p[k][1];
       q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
-      q.travel = 0; q.turned = 0; q.v = 0; q.w = 0;
+      q.travel = 0; q.turned = 0; q.v = 0; q.w = 0; q.off = 0; q.worst = 0;
       q.lap = 0; q.idx = k;
       const t = trails[i];
       if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
@@ -235,9 +252,15 @@ export default function RaceRig({ stop }) {
   }
 
   useFrame(({ camera }, dt) => {
-    const d = Math.min(0.1, dt);
     surface.uEye.value.copy(camera.position);
     if (!isRunning(stop.id)) return;
+    step(Math.min(0.1, dt));
+  });
+
+  /* A frame of the race, out of useFrame so the suite can drive laps. Four
+     machines on one simulation at the headless page's frame rate would take
+     twenty minutes to finish a lap. */
+  function step(d) {
     acc.current += d;
     const tick = acc.current >= TICK;
     if (tick) acc.current -= TICK;
@@ -286,8 +309,22 @@ export default function RaceRig({ stop }) {
          start is an arbitrary node on a closed loop and a finish line at it
          would be a line four machines cross at four different angles. */
       const prev = q.idx === undefined ? 0 : q.idx;
-      const [idx] = nearest(kit.path, q.x, q.y);
+      const near = nearest(kit.path, q.x, q.y);
+      const idx = near[0];
       q.idx = idx;
+      /* How far off the line it is, which nearest() has been computing and
+         throwing away all along.
+       *
+       * The board used to rank on distance travelled, and that is the one
+       * quantity four controllers over one closed path cannot disagree
+       * about: they all go round the same loop, so after a lap they have all
+       * gone almost exactly the same distance and the board read as a
+       * four-way tie. What separates a pure pursuit from a Stanley from a
+       * sampler is not how far they went, it is how far off the line they
+       * got doing it -- corner cutting, overshoot, the wobble on the
+       * straight. That is the number now. */
+      q.off = near[2];
+      if (q.off > (q.worst || 0)) q.worst = q.off;
       const t = trails[i];
       if (prev > N * 0.75 && idx < N * 0.25) {
         q.lap = (q.lap || 0) + 1;
@@ -306,7 +343,7 @@ export default function RaceRig({ stop }) {
         t.lastX = q.x; t.lastY = q.y;
       }
     });
-  });
+  }
 
   return (
     <group position={[x, 0.9, 0]} rotation-x={-Math.PI / 2}>
