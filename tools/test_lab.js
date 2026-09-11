@@ -297,8 +297,24 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
         await pg.mouse.move(aim.x, aim.y); await pg.waitForTimeout(400);
         await pg.mouse.click(aim.x, aim.y);
       }
-      await pg.waitForTimeout(4500);
-      const after = await rows();
+      /* Waited for rather than timed.
+       *
+       * Every rig clamps its own step at 0.1 s so a dropped frame cannot
+       * teleport anything, which means simulated time advances at the frame
+       * rate rather than at the clock: this page runs at about 0.8 frames a
+       * second under the software rasteriser, so a fixed four and a half
+       * second wait buys 0.4 simulated seconds, and the race travels five
+       * centimetres in that -- under the 0.1 m its readout prints. It passed
+       * on the frames it happened to get and failed on the frames it did
+       * not. Polling to a generous ceiling asks the question the case is
+       * actually about, which is whether the cell responds at all, and a
+       * cell that is genuinely dead still fails it, forty seconds later. */
+      let after = before;
+      for (let i = 0; i < 27; i++) {
+        await pg.waitForTimeout(1500);
+        after = await rows();
+        if (before.length > 0 && after.some((r, k) => r !== before[k])) break;
+      }
       const moved = before.length > 0 && after.some((r, i) => r !== before[i]);
       const j2 = await J();
       ok(c.what, moved, (before[0] || '(no readout)') + '  ->  ' + (after[0] || '(none)') +

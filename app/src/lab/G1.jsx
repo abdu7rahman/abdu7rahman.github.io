@@ -21,8 +21,8 @@ import { P } from "../lib/palette.js";
  * answer is two traversals to get one; nesting means a hip rotation moves the
  * whole leg for free, which is the entire point of a kinematic tree.
  *
- * 630 KB, fetched once and cached at module scope however many are mounted --
- * the same rule UR12e.jsx follows, and for the same reason.
+ * 339 KB gzipped, fetched once and cached at module scope however many are
+ * mounted -- the same rule UR12e.jsx follows, and for the same reason.
  */
 let cached = null;
 let pending = null;
@@ -91,7 +91,13 @@ function build(tree) {
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      g.setAttribute("normal", new THREE.BufferAttribute(creaseNormals(pos, 62), 3));
+      /* 32 degrees, and the same 32 tools/refine_g1.py holds still while it
+         smooths -- the two thresholds are one decision about what is an edge
+         on this robot, and a renderer that welds up to 62 would shade an edge
+         the tool kept sharp as though it were a curve. part.f is passed as the
+         vertex identity so nothing is welded that the bake did not share. */
+      g.setAttribute("normal",
+        new THREE.BufferAttribute(creaseNormals(pos, 32, part.f), 3));
       const own = new THREE.Color(part.c[0] / 255, part.c[1] / 255, part.c[2] / 255);
       // Pulled toward the room's machine grey, the same 0.34 the arm uses, so
       // the guide stands in this building's light rather than in its own.
