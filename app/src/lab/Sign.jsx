@@ -37,15 +37,69 @@ import { P } from "../lib/palette.js";
  */
 export const SIGN_W = 0.64;
 export const SIGN_H = 0.42;
+/* Where the hands go: a grab rail across the back, near the bottom, which is
+ * how a hand-held site sign is actually held. Two pegs were tried first and
+ * are wrong for this robot -- the G1's hand is a moulded casting that closes
+ * one way, so it wants something to close around rather than something to
+ * poke at.
+ *
+ * RAIL_DROP is below the board's centre and RAIL_OUT behind its face, both
+ * far enough that the casting clears the panel: the hand is 133 mm long and
+ * its palm sits 119 mm from the wrist, so the rail has to stand off the back
+ * by more than the hand is thick or the fingers come through the front.
+ */
 const GRIP_HALF = 0.17;
+const RAIL_DROP = 0.15;
+const RAIL_OUT = 0.062;
+const RAIL_R = 0.016;
 
-/* Where it sits in the robot's own frame -- x forward, y left, z up, with
-   the pelvis origin at 0.793. Raised: out in front of the chest, tipped back
-   a little so it faces slightly up into the reader's eye line rather than
-   straight out at the middle of their chest. Lowered: down at the waist,
-   tipped flat, which is how you carry a board you are not showing anybody. */
-const UP = { x: 0.30, z: 0.93, tilt: -0.22 };
-const DOWN = { x: 0.225, z: 0.74, tilt: -1.18 };
+/* Two poses, and the carried one is a carried one now.
+ *
+ * Raised: out in front of the chest, tipped back a little so it faces
+ * slightly up into the reader's eye line rather than at the middle of their
+ * chest.
+ *
+ * Carried: upright and in close, which is the difference between a machine
+ * carrying a board and a machine holding a tray out in front of it while it
+ * walks. It is also what makes it fit through a gate. Held flat at the waist
+ * the board reaches 0.42 m in front of the body and its corners stand 0.53 m
+ * off the centre line -- wider than the guide itself, and wide enough that
+ * the 1.4 m gate at a bay mouth stops being a gate. Upright at 0.20 m the
+ * corners are 0.38 m out, which is 0.08 m more than the body and fits
+ * everywhere the body fits.
+ *
+ * The torso's front face is at x = 0.082 and the pelvis's at 0.071, measured
+ * off the bake, so 0.20 leaves the panel 0.11 m clear of the chest and the
+ * rail 0.06 m clear of it.
+ */
+const UP = { x: 0.30, z: 0.95, tilt: -0.22 };
+const DOWN = { x: 0.20, z: 0.86, tilt: 0.0 };
+
+/* How far the board reaches off the body's centre line, which is what the
+ * guide has to be planned as -- and it is two numbers, not one.
+ *
+ * `carried` is the walking case: the board is upright and in close, and its
+ * corners stand 0.38 m out against the body's own 0.30. That is the radius a
+ * route has to be planned for, because that is the shape that goes through
+ * the gates.
+ *
+ * `raised` is 0.48 m and only happens standing still, so it is not a
+ * planning radius -- it is what the standing spot in front of a cell has to
+ * have room for. Planning the whole route at 0.48 would refuse gates the
+ * machine walks through with the board down.
+ */
+function reachAt(a) {
+  const x = DOWN.x + (UP.x - DOWN.x) * a;
+  const tilt = DOWN.tilt + (UP.tilt - DOWN.tilt) * a;
+  // Half the panel's height leans forward by sin(tilt); the rail and the
+  // panel's own thickness lean the other way.
+  const fwd = x + Math.abs(Math.sin(tilt)) * SIGN_H / 2 + 0.01;
+  return Math.hypot(fwd, SIGN_W / 2);
+}
+
+export function footprint() {
+  return { carried: reachAt(0), raised: reachAt(1) };
+}
 
 /* Draw the caption. Canvas rather than a texture atlas because the text is
    different at every station and generated once when it changes. */
@@ -122,15 +176,37 @@ export default function Sign({ face, up, onGrips }) {
     const x = DOWN.x + (UP.x - DOWN.x) * a;
     const z = DOWN.z + (UP.z - DOWN.z) * a;
     yaw.current.position.set(x, z, 0);
-    tilt.current.rotation.x = DOWN.tilt + (UP.tilt - DOWN.tilt) * a;
+    const lean = DOWN.tilt + (UP.tilt - DOWN.tilt) * a;
+    tilt.current.rotation.x = lean;
     if (onGrips) {
-      /* The grips, in the robot's frame, taken from where the board actually
-         is this frame -- at the bottom corners and well behind the face,
-         because the hand mesh runs on past the wrist the solver targets and
-         at 45 mm of clearance the fingers came through the front of the sign
-         and sat on top of the word they were holding up. */
-      onGrips([x - 0.085, GRIP_HALF, z - 0.145],
-              [x - 0.085, -GRIP_HALF, z - 0.145], a);
+      /* Where the rail is, in the robot's own frame, and which way a hand
+       * has to be turned to hold it.
+       *
+       * Worked out here rather than read back off the scene graph, because
+       * the gait solves the arms before anything is rendered and a matrix
+       * read a frame late is a hand a frame behind the thing it is holding.
+       * The board's own axes map to the robot's as: panel width -> +y, panel
+       * up -> +z, panel normal -> +x, and the tilt turns the last two about
+       * the first.
+       */
+      const ct = Math.cos(lean), st = Math.sin(lean);
+      // Rail centre, offset down the panel and out behind it, then tilted.
+      const ly = -RAIL_DROP, lz = -(RAIL_OUT);
+      const railX = x + (ly * st + lz * ct);
+      const railZ = z + (ly * ct - lz * st);
+      // The fingers close toward the panel's face.
+      const close = [ct, 0, -st];
+      /* And the rail runs the opposite way for each hand, because two hands
+         on one bar are mirror images of each other. Asking both for the same
+         sense is asking the right arm for a pose that is not the mirror of
+         the left's, and it cannot get there: measured, it ran its wrist roll
+         and yaw hard against their limits and settled 56 to 76 degrees
+         rolled about the rail, holding the board with the back of its hand. */
+      onGrips({
+        amount: a,
+        left:  { p: [railX, GRIP_HALF, railZ], along: [0, 1, 0], close },
+        right: { p: [railX, -GRIP_HALF, railZ], along: [0, -1, 0], close }
+      });
     }
   });
 
@@ -150,12 +226,17 @@ export default function Sign({ face, up, onGrips }) {
           <planeGeometry args={[SIGN_W - 0.012, SIGN_H - 0.012]} />
           <meshBasicMaterial map={tex} toneMapped={false} />
         </mesh>
-        {/* Two grips, where the hands go, so the thing being held has
-            something to be held by. */}
-        {[-1, 1].map(s => (
-          <mesh key={s} position={[s * GRIP_HALF, -SIGN_H / 2 + 0.055, -0.036]}
+        {/* The rail. One bar rather than two pegs, because the hand that
+            holds it closes around things. */}
+        <mesh position={[0, -RAIL_DROP, -RAIL_OUT]} rotation-z={Math.PI / 2} castShadow>
+          <cylinderGeometry args={[RAIL_R, RAIL_R, GRIP_HALF * 2 + 0.075, 12]} />
+          <meshStandardMaterial color={P.steel} roughness={0.42} metalness={0.72} />
+        </mesh>
+        {/* And the two brackets that carry it back off the panel. */}
+        {[-1, 1].map(k => (
+          <mesh key={k} position={[k * (GRIP_HALF + 0.030), -RAIL_DROP, -RAIL_OUT / 2]}
                 rotation-x={Math.PI / 2} castShadow>
-            <cylinderGeometry args={[0.014, 0.014, 0.10, 10]} />
+            <boxGeometry args={[0.018, RAIL_OUT, 0.010]} />
             <meshStandardMaterial color={P.steel} roughness={0.5} metalness={0.7} />
           </mesh>
         ))}

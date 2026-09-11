@@ -44,9 +44,13 @@ export class Pilot {
     this.faceYaw = null;
     this.router = new Router(grid);
     /* A humanoid, not a TurtleBot: the ceilings are the guide's own and the
-       body radius is measured off the robot rather than assumed -- a G1's
-       shoulders span 0.45 m, so 0.30 m of radius clears them with the map's
-       own half-cell bias on top. */
+       radius is measured rather than assumed. A G1's shoulders span 0.45 m,
+       so 0.30 m clears the body with the map's own half-cell bias on top --
+       but the body is not the widest thing walking down the lane. Carrying
+       the sign, the board's corners stand further out than the shoulders do,
+       and the caller passes that instead. A circle is the right shape for it
+       whichever way the guide is facing, which is the other reason a
+       carried board is held upright and in close rather than out in front. */
     this.local = new Local({
       maxV: opts.maxV ?? 0.85, maxW: opts.maxW ?? 1.5,
       nv: 6, nw: 17, horizon: 2.0, steps: 12,

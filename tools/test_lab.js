@@ -342,6 +342,73 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        r.err || ('sorted ' + r.of + ' in 200 simulated seconds, ' + r.floor + ' on the floor'));
   }
 
+  console.log('\nF2. and it holds the sign in its hands');
+  {
+    /* Four things, and all of them were wrong at some point.
+     *
+     * The hand is a 133 mm casting and the solve used to put the wrist on
+     * the rail, which puts the rail through the back of the hand. The two
+     * hands are mirror images on one bar and were both asked for the same
+     * sense, which the right arm cannot reach -- it ran its wrist roll and
+     * yaw hard against their limits and held the board with the back of its
+     * hand, 70 degrees rolled. And a seven joint arm doing a six number task
+     * has one degree of freedom spare that nothing was using, so the elbows
+     * ended up 3 mm inside the chest.
+     */
+    const r = await pg.evaluate(() => {
+      const L = window.__lab, T = L.THREE, g = L.gaitOf && L.gaitOf();
+      if (!g || g.hold < 0.5) return { err: 'not holding (hold ' + (g ? g.hold.toFixed(2) : 'no gait') + ')' };
+      const out = { palm: 0, axis: 0, curl: 0, inside: 0, elbow: 9 };
+      /* The body, as the two boxes it actually occupies, taken from the bake
+         at the pose it is in rather than from a radius somebody chose. */
+      const K = L.g1kin;
+      const f = K.newFrames(L.g1tree);
+      K.frames(L.g1tree, g.q, f);
+      const box = name => {
+        const i = K.indexByLink(L.g1tree)[name];
+        const l = L.g1tree.links[i], m = f[i];
+        const b = new T.Box3();
+        for (const p of l.parts) {
+          for (let k = 0; k < p.v.length; k += 3) {
+            b.expandByPoint(new T.Vector3(p.v[k], p.v[k + 1], p.v[k + 2])
+              .multiplyScalar(L.g1tree.unit).applyMatrix4(m));
+          }
+        }
+        return b;
+      };
+      const body = [box('torso_link'), box('pelvis')];
+      const LK = K.indexByLink(L.g1tree);
+      for (const side of ['left', 'right']) {
+        const ik = g.armIK[side], a = g.m.arms[side], gr = g.grasp[side];
+        const palm = ik.fk(g.q, new T.Vector3());
+        out.palm = Math.max(out.palm, palm.distanceTo(new T.Vector3(gr.p[0], gr.p[1], gr.p[2])));
+        const m = ik.frame(a.end);
+        const zc = new T.Vector3(m.elements[8], m.elements[9], m.elements[10]);
+        const yc = new T.Vector3(m.elements[4], m.elements[5], m.elements[6])
+                     .multiplyScalar(a.hand.close.y);
+        out.axis = Math.max(out.axis, zc.angleTo(new T.Vector3(gr.along[0], gr.along[1], gr.along[2])) * 57.3);
+        out.curl = Math.max(out.curl, yc.angleTo(new T.Vector3(gr.close[0], gr.close[1], gr.close[2])) * 57.3);
+        for (const n of ['_elbow_link', '_wrist_roll_link', '_wrist_pitch_link', '_wrist_yaw_link']) {
+          const p = new T.Vector3().setFromMatrixPosition(f[LK[side + n]]);
+          if (body.some(b => b.containsPoint(p))) out.inside++;
+          if (n === '_elbow_link') out.elbow = Math.min(out.elbow, p.x - body[0].max.x);
+        }
+      }
+      return out;
+    });
+    if (r.err) {
+      ok('both hands are on the rail', false, r.err);
+      ok('and no arm passes through the body', false, r.err);
+    } else {
+      ok('both hands are on the rail',
+         r.palm < 0.012 && r.axis < 4 && r.curl < 6,
+         'palm ' + (r.palm * 1000).toFixed(1) + ' mm, rail axis ' + r.axis.toFixed(1) +
+         ' deg, curl ' + r.curl.toFixed(1) + ' deg');
+      ok('and no arm passes through the body', r.inside === 0 && r.elbow > 0.02,
+         r.inside + ' joints inside, nearest elbow ' + (r.elbow * 1000).toFixed(0) + ' mm clear');
+    }
+  }
+
   console.log('\nG. the office holds up cards');
   {
     await pg.evaluate(() => { window.__lab.journey.reset(); window.__lab.journey.choose('about'); });

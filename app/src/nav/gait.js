@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { ChainIK, measure } from "./g1kin.js";
 
 /* A walk, generated rather than animated.
@@ -93,12 +94,57 @@ export class Gait {
        level is a board the shoulders and elbows actually worked out how to
        hold rather than a mesh parented to a wrist. */
     this.hold = 0;
-    this.grip = { left: [0.30, 0.19, 1.05], right: [0.30, -0.19, 1.05] };
-    this.armIK = {
-      left: new ChainIK(tree, this.m.arms.left.joints, this.m.arms.left.end, { step: 0.5 }),
-      right: new ChainIK(tree, this.m.arms.right.joints, this.m.arms.right.end, { step: 0.5 })
+    /* Where each hand has to be and how it has to be turned. Filled in by
+       whatever is being carried; the gait does not know what a sign is. */
+    this.grasp = {
+      left:  { p: [0.30, 0.19, 0.95], along: [0, 1, 0], close: [1, 0, 0] },
+      right: { p: [0.30, -0.19, 0.95], along: [0, 1, 0], close: [1, 0, 0] }
     };
-    this._swing = new Float32Array(8);
+    /* Seven joints and a tool offset, not four and none.
+     *
+     * Four joints put a wrist somewhere, which is all an arm that swings
+     * needs. A hand that holds something has to be in the right place and
+     * turned the right way, and the place is the palm rather than the wrist
+     * -- the G1's hand is a 133 mm casting and its palm sits 119 mm out, so
+     * solving for the wrist put the rail through the back of the hand. The
+     * wrist roll, pitch and yaw were sitting at zero on a robot that has
+     * them. */
+    this.armIK = {};
+    for (const side of ["left", "right"]) {
+      const a = this.m.arms[side];
+      this.armIK[side] = new ChainIK(tree, a.full, a.end,
+                                     { step: 0.55, tip: a.hand.grip });
+      // The wrist joints come after the elbow and cannot move it.
+      this.armIK[side].beyond = a.full.map((_, i) => i > 3);
+    }
+    this._swing = new Float32Array(14);
+    /* Each arm's own held solution, carried between frames.
+     *
+     * The solve used to be seeded from whatever the swing had just written
+     * into q, which throws away the answer it found last frame and asks a
+     * local method to rediscover it from a pose with the wrist at zero. The
+     * left arm got there and the right did not: measured on the raised sign,
+     * the left palm sat 2.7 mm off the rail and 0.2 degrees out of true while
+     * the right sat 70 degrees rolled about it, holding the board with the
+     * back of its hand. Seeded from its own last answer, a hand that is
+     * already holding the rail starts one frame's worth away from where it
+     * needs to be. */
+    this._held = {
+      left: new Float64Array(tree.links.length),
+      right: new Float64Array(tree.links.length)
+    };
+    this._seeded = false;
+    /* +1 where a joint means the same thing on both arms, -1 where it
+       reverses across the mirror. Taken from each joint's own axis. */
+    this._flip = this.m.arms.left.full.map(i => {
+      const ax = tree.links[i].joint.axis;
+      return (Math.abs(ax[1]) > 0.5) ? 1 : -1;
+    });
+    this._rot = new THREE.Matrix4();
+    this._p = new THREE.Vector3();
+    this._x = new THREE.Vector3();
+    this._y = new THREE.Vector3();
+    this._z = new THREE.Vector3();
     /* Seeded standing rather than at zero. A local solver returns the
        solution nearest its seed and the seed on the first frame is the only
        one nobody chose, so choose it. */
@@ -240,27 +286,63 @@ export class Gait {
       // Opposite the leg of the same side: the left arm swings forward as
       // the left leg swings back.
       const s = Math.sin(tau * ph + (side === "left" ? Math.PI : 0));
-      const set = this.m.arms[side].joints;
+      const set = this.m.arms[side].full;
       const want = [0.20 - amp * s, sgn * (0.17 + 0.05 * blend), 0,
-                    0.52 + 0.16 * blend * Math.max(0, s)];
-      for (let i = 0; i < 4; i++) { q[set[i]] = want[i]; this._swing[k++] = want[i]; }
-      q[L[`${side}_wrist_roll_link`]] = 0;
-      q[L[`${side}_wrist_pitch_link`]] = 0;
-      q[L[`${side}_wrist_yaw_link`]] = 0;
+                    0.52 + 0.16 * blend * Math.max(0, s), 0, 0, 0];
+      for (let i = 0; i < 7; i++) { q[set[i]] = want[i]; this._swing[k++] = want[i]; }
     }
-    if (this.hold <= 0.001) return;
+    if (this.hold <= 0.001) { this._seeded = false; return; }
     /* Solve from where the swing left the arm, then take a weighted step
        toward the answer. Blending the two joint vectors rather than blending
        the target is what keeps the arm on a sensible path while a sign comes
        up: interpolating the target would drag the hand through the chest. */
+    /* Left first, then the right seeded from it.
+     *
+     * A local solver returns the answer nearest its seed, and from a zero
+     * pose the right arm descends the wrong way: measured, it ran its wrist
+     * roll to -1.97 and its yaw to -1.61 -- both hard against their limits --
+     * and settled 56 degrees rolled about the rail, holding the board with
+     * the back of its hand, while the left arm reached the same target to
+     * 0.07 mm and 0.0 degrees.
+     *
+     * The two hands are at mirrored points on one rail, so the left arm's
+     * answer mirrored is the right arm's answer. Which joints flip is read
+     * off the bake: a joint turning about x or z reverses across the mirror
+     * and one turning about y does not, so this does not have to be told
+     * which of the seven are which.
+     */
     k = 0;
     for (const side of ["left", "right"]) {
-      const set = this.m.arms[side].joints, g = this.grip[side];
-      this.armIK[side].solve(q, g[0], g[1], g[2], 10);
-      for (let i = 0; i < 4; i++) {
+      const a = this.m.arms[side], set = a.full, g = this.grasp[side];
+      /* The frame the hand has to be in, built from two directions the thing
+         being held supplies: which way the rail runs, and which way the
+         fingers have to close to get round it. The casting's own closing
+         direction is its local y with a sign that differs left to right, so
+         that sign comes out of the bake and not out of an assumption about
+         mirroring. */
+      this._z.set(g.along[0], g.along[1], g.along[2]).normalize();
+      this._y.set(g.close[0], g.close[1], g.close[2])
+             .multiplyScalar(a.hand.close.y).normalize();
+      this._x.crossVectors(this._y, this._z).normalize();
+      this._y.crossVectors(this._z, this._x).normalize();
+      this._rot.makeBasis(this._x, this._y, this._z);
+      this._p.set(g.p[0], g.p[1], g.p[2]);
+      const held = this._held[side];
+      if (!this._seeded) {
+        if (side === "left") {
+          // Up from where the arm actually is, not from a zero pose.
+          for (let i = 0; i < 7; i++) held[set[i]] = q[set[i]];
+        } else {
+          const lset = this.m.arms.left.full, lheld = this._held.left;
+          for (let i = 0; i < 7; i++) held[set[i]] = lheld[lset[i]] * this._flip[i];
+        }
+      }
+      this.armIK[side].solvePose(held, this._p, this._rot, 18, a.elbow);
+      for (let i = 0; i < 7; i++) {
         const sw = this._swing[k++];
-        q[set[i]] = sw + (q[set[i]] - sw) * this.hold;
+        q[set[i]] = sw + (held[set[i]] - sw) * this.hold;
       }
     }
+    this._seeded = true;
   }
 }

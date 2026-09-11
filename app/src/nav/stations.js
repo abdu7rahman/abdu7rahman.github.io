@@ -33,7 +33,7 @@ const SHOT_OUT = 1.75;    // across the lane from the guide
 const SHOT_BACK = 3.05;   // back toward the door
 const SHOT_EYE = 1.80;
 
-export function standFor(grid, stop, radius = 0.32) {
+export function standFor(grid, stop, radius = 0.50) {
   const z0 = -stop.at * PITCH;
   /* Rooms on the centre line are entered rather than looked into, so the
      spot is inside them; a bay is looked into from the lane. */

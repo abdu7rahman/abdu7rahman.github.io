@@ -115,8 +115,15 @@ const srv = http.createServer((rq, rs) => {
        the main thread is busy -- which on this page it is, for several
        seconds, compiling shaders against a software rasteriser. Traced
        before this number was chosen: the request went out, it just went out
-       after the 2.2 s the document pages are given. */
-    await p.waitForTimeout(9000);
+       after the 2.2 s the document pages are given.
+
+       Raised from 9 s when the front door grew a floor plan. The page now
+       surveys 238,615 triangles into an occupancy grid and compiles a
+       physics scene before it settles, so there is more of the main thread
+       to wait for, and the flush moved past nine seconds under the software
+       rasteriser. The pageview is not lost -- it is late, on a machine
+       nobody browses from. */
+    await p.waitForTimeout(26000);
     const pv = sent.find(e => e.kind === 'pageview');
     ok('the front door sends a pageview', !!pv, kinds(sent));
     // Normalised to '/', because that is the URL a reader actually has.

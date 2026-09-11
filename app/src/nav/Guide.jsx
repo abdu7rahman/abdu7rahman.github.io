@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame } from "@react-three/fiber";
 import G1, { useG1 } from "../lab/G1.jsx";
-import Sign, { stopFace, cardFace } from "../lab/Sign.jsx";
+import Sign, { stopFace, cardFace, footprint } from "../lab/Sign.jsx";
 import { CARDS } from "./cards.js";
 import { Pilot } from "./pilot.js";
 import { Gait } from "./gait.js";
+import * as kin from "./g1kin.js";
 import { onMap } from "./building.js";
 import { standFor, DOOR } from "./stations.js";
 import { GUIDE } from "./guideState.js";
@@ -44,7 +45,14 @@ export default function Guide({ debug }) {
     /* Standing just inside the door, facing back at whoever came in. The
        heading is +z because the building runs to -z, so this is the machine
        turned round to look at you rather than at where it is going. */
-    return new Pilot(grid, { x: DOOR[0], z: DOOR[1], yaw: Math.PI / 2, radius: 0.30 });
+    /* Planned as wide as it actually is. A 0.30 m body carrying a 0.64 m
+       board is not a 0.30 m obstacle: the board's corners stand further off
+       the centre line than the shoulders do, so a route planned for the body
+       alone is a route that drags the sign through the guarding. The number
+       comes from the board's own geometry over the whole of its raise. */
+    const fp = footprint();
+    return new Pilot(grid, { x: DOOR[0], z: DOOR[1], yaw: Math.PI / 2,
+                             radius: Math.max(0.30, fp.carried + 0.02) });
   }, [grid]);
 
   /* A station id in, a walk out. The standing spot is found on the map when
@@ -59,24 +67,31 @@ export default function Guide({ debug }) {
     /* The spot, the heading and the shot come out of one function, because
        the guide has to end up facing whoever it is holding the sign up for
        and that is decided by where the camera goes. */
-    const s = standFor(grid, stop, pilot.radius);
+    /* Found for the raised board, walked to for the carried one. A spot
+       that fits the body but not the sign is a spot where the sign goes
+       through the guarding the moment it comes up. */
+    const s = standFor(grid, stop, Math.max(pilot.radius, footprint().raised + 0.02));
     pilot.goTo(s.x, s.z, s.faceYaw);
   }, [j.target, pilot, grid]);
 
-  /* The board tells the gait where its handles are; the gait solves both
-     arms to reach them. One callback a frame rather than a piece of shared
-     state, so there is no order to get wrong. */
-  const grips = (left, right, raised) => {
+  /* The board tells the gait where its rail is and which way a hand has to
+     be turned to hold it; the gait solves both arms onto that. One callback
+     a frame rather than a piece of shared state, so there is no order to get
+     wrong. */
+  const grips = (grasp) => {
     if (!gait) return;
-    gait.grip.left = left;
-    gait.grip.right = right;
-    gait.hold = raised;
+    gait.grasp.left = grasp.left;
+    gait.grasp.right = grasp.right;
+    gait.hold = grasp.amount;
   };
 
   useEffect(() => {
     if (typeof window === "undefined" || !pilot) return;
     if (!window.__lab) window.__lab = {};
     window.__lab.guide = pilot;
+    window.__lab.gaitOf = () => gait;
+    window.__lab.g1kin = kin;
+    window.__lab.g1tree = tree;
     window.__lab.journey = journey;
     return () => { if (window.__lab) delete window.__lab.guide; };
   }, [pilot]);
