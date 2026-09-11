@@ -68,6 +68,31 @@ export function clearance(pts, steps, obs, radius, cap) {
   return worst;
 }
 
+/* The same question asked of a distance field instead of a list of circles.
+ *
+ * A cell's obstacle course is a handful of discs and looping over them is
+ * the honest cost of the answer. A building is not: the guide walking the
+ * aisle is up against benches, racking, guarding, partitions and the
+ * envelope, which is 26,973 blocked cells, and no controller is going to
+ * check a trajectory against those one at a time. The distance transform
+ * over the occupancy grid has already done the work -- it says, for any
+ * point, how far the nearest solid thing is -- so a rollout costs one
+ * bilinear sample per step whatever the building contains.
+ *
+ * Identical semantics to the circle form: -1 for a collision, otherwise the
+ * worst clearance along the path capped at `cap`. The controller above
+ * cannot tell which one it is talking to, which is the point.
+ */
+export function fieldClearance(pts, steps, field, radius, cap) {
+  let worst = cap;
+  for (let k = 0; k <= steps; k++) {
+    const d = field.clearance(pts[k * 2], pts[k * 2 + 1]) - radius;
+    if (d <= 0) return -1;
+    if (d < worst) worst = d;
+  }
+  return worst;
+}
+
 export class Local {
   constructor(opts) {
     Object.assign(this, {
@@ -83,8 +108,11 @@ export class Local {
     this.count = 0;
   }
 
+  /* `obs` is either a list of circles or, when this controller was built
+     with a `field`, ignored in favour of it. */
   plan(state, goal, obs) {
     const { nv, nw, steps, horizon, radius, clearCap } = this;
+    const field = this.field;
     const span = (steps + 1) * 2;
     let best = null, bestCost = Infinity, n = 0;
     const gx = goal[0], gy = goal[1];
@@ -99,7 +127,8 @@ export class Local {
         rollout(state, v, w, horizon, steps, this.buf);
         this.fan.set(this.buf, n * span);
 
-        const cl = clearance(this.buf, steps, obs, radius, clearCap);
+        const cl = field ? fieldClearance(this.buf, steps, field, radius, clearCap)
+                         : clearance(this.buf, steps, obs, radius, clearCap);
         this.fanOk[n] = cl < 0 ? 0 : 1;
         if (cl >= 0) {
           const ex = this.buf[steps * 2], ey = this.buf[steps * 2 + 1];

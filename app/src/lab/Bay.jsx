@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { P } from "../lib/palette.js";
@@ -6,6 +6,7 @@ import { cladding } from "../shaders/cladding.js";
 import Bench from "./Bench.jsx";
 import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
 import { due } from "./shadowBudget.js";
+import { jump } from "../nav/journey.js";
 
 /* A test cell off the lane: a plinth, a back wall, a screen carrying whatever
  * that rig is running, and a lamp aimed at the work rather than at the room.
@@ -17,6 +18,7 @@ import { due } from "./shadowBudget.js";
  * running plot bolted to a machine is a test cell.
  */
 export default function Bay({ stop, index = 0, cells = 7, children }) {
+  const [hot, setHot] = useState(false);
   const s = stop.side;                    // -1 left of the lane, +1 right
   const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
@@ -115,6 +117,38 @@ export default function Bay({ stop, index = 0, cells = 7, children }) {
         color={"#ffe0c4"}
         castShadow
       />
+
+      {/* The bay itself is the control. The reader was told to click the
+          screen on the bench to operate a cell, which they can only do once
+          they are standing at it; getting there was a list down the side of
+          the frame. A building you are walked around has to be a building
+          you can point at.
+
+          A box and not a plane, and that is a measured correction. A plane
+          across the mouth of a bay is edge on from the lane, which is the
+          one place anybody ever clicks from: sweeping nine points across the
+          frame at the entrance, exactly one of them picked a cell, and the
+          one it picked was five bays away. A box has a floor and a back as
+          well as a mouth, so a ray from the aisle meets it whatever angle it
+          comes in at. Invisible, because a bay with a pane of glass across
+          it is a bay with a pane of glass across it. */}
+      <mesh
+        position={[s * (AISLE / 2 + BAY_D / 2 - 0.4), 1.45, 0]}
+        userData={{ ghost: true }}
+        onPointerOver={e => { e.stopPropagation(); setHot(true); document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { setHot(false); document.body.style.cursor = ""; }}
+        onClick={e => { e.stopPropagation(); document.body.style.cursor = ""; jump(stop.id); }}
+      >
+        <boxGeometry args={[BAY_D - 0.4, 2.9, 6.2]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      {/* What it looks like when you are pointing at it: the keep-clear box
+          on the slab comes up. Nothing new is drawn. */}
+      <mesh rotation-x={-Math.PI / 2} position={[x, 0.014, 0]} visible={hot}
+            userData={{ ghost: true }}>
+        <planeGeometry args={[3.4, 3.9]} />
+        <meshBasicMaterial color={P.hazard} transparent opacity={0.16} depthWrite={false} />
+      </mesh>
 
       {children}
     </group>

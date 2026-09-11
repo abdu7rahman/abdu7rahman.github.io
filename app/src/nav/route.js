@@ -141,3 +141,64 @@ export function pathLength(pts) {
   }
   return d;
 }
+
+/* The same search, spread over frames, so the frontier is something you
+ * watch.
+ *
+ * The one-shot above costs 15 ms for the length of the building, which is a
+ * quarter of a frame and would show as a hitch the moment somebody clicks.
+ * More to the point, a search that completes between two frames is a search
+ * nobody sees, and this building's first cell is about watching one happen.
+ * So the guide's own planning runs at a budget per frame and the expanded
+ * set is drawn on the slab while it does.
+ */
+export class Router {
+  constructor(grid) {
+    this.grid = grid;
+    this.search = null;
+    this.done = false;
+    this.found = false;
+    this.path = [];
+    this.radius = 0.3;
+  }
+
+  begin(from, to, { radius = 0.30, soft = 1.1, peak = 5 } = {}) {
+    const g = this.grid;
+    this.radius = radius;
+    this.done = false; this.found = false; this.path = []; this.goal = to;
+    const s = nearestFree(g, from[0], from[1], radius);
+    const e = nearestFree(g, to[0], to[1], radius);
+    if (!s || !e) { this.done = true; this.why = s ? "goal" : "start"; return false; }
+    g._walls = g.walls(radius, g._walls);
+    g._costs = g.costs(radius, soft, peak, g._costs);
+    this.search = new Search(g.w, g.h, g._walls, g._costs);
+    this.search.start(s[0], s[1], e[0], e[1]);
+    return true;
+  }
+
+  step(budget = 4000) {
+    if (this.done || !this.search) return this.done;
+    this.search.step(budget);
+    if (!this.search.done) return false;
+    this.done = true;
+    this.found = this.search.found;
+    if (this.found) {
+      const g = this.grid;
+      let pts = this.search.path.map(([i, j]) => [g.worldX(i), g.worldZ(j)]);
+      this.raw = pts.length;
+      pts = shortcut(g, pts, this.radius);
+      const last = pts[pts.length - 1];
+      if (this.goal && visible(g, last[0], last[1], this.goal[0], this.goal[1], this.radius)) {
+        pts[pts.length - 1] = [this.goal[0], this.goal[1]];
+      }
+      this.path = pts;
+      this.length = pathLength(pts);
+    } else this.why = "unreachable";
+    return true;
+  }
+
+  /* The cells expanded so far, for drawing. A view onto the search's own
+     state array rather than a copy. */
+  get state() { return this.search ? this.search.state : null; }
+  get expanded() { return this.search ? this.search.expanded : 0; }
+}

@@ -1,0 +1,199 @@
+import { useEffect, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import * as THREE from "three";
+import { GUIDE } from "./guideState.js";
+import * as journey from "./journey.js";
+import { STOPS } from "../lib/plan.js";
+import { standFor } from "./stations.js";
+import { onMap } from "./building.js";
+
+/* The camera, on the guide rather than on a scrollbar.
+ *
+ * What this replaces is a dolly that ran down the centre line at a speed the
+ * wheel set and turned its head into whichever bay it was passing. That was
+ * a good shot of a building and the wrong relationship to it: the reader was
+ * a tracking shot, and everything in the place happened whether or not
+ * anybody was looking.
+ *
+ * Now there is somebody walking you round, so the camera does what a camera
+ * does when there is somebody to follow. Four shots, chosen by what the
+ * visit is doing rather than by where the scrollbar is:
+ *
+ *   greeting  face to face at the door, because being met is the first thing
+ *             that happens and a machine that greets you side-on has not
+ *             greeted you
+ *   walking   over the shoulder, wide, leading into the turn, so you can see
+ *             where you are being taken
+ *   showing   a two-shot: the guide in the foreground and the cell it is
+ *             standing in front of behind it, which is the frame that says
+ *             these two things are about each other
+ *   cards     close, square on, when what is being held up is the subject
+ *
+ * Every one of them is computed off the guide's pose and the floor plan.
+ * There is no keyframe and no path: move the guide and the shot follows,
+ * which is the only way a camera can follow something that plans its own
+ * route.
+ */
+
+/* How fast the eye closes on where it should be, per second. Expressed as a
+   decay so it takes the same wall time on a phone drawing four frames a
+   second as on a desktop drawing a hundred and twenty -- the fault the
+   scroll easing had to fix and the same fix. */
+const EASE = 0.0009;
+const CUT = 0.00000004;   // near enough to a cut, for the greeting
+
+const _eye = new THREE.Vector3();
+const _look = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _cur = new THREE.Vector3();
+
+/* The guide's heading as a direction in the world. The controller integrates
+   with cos and sin into x and z, so this is that, and the right hand is the
+   quarter turn from it. */
+function basis(yaw) {
+  _fwd.set(Math.cos(yaw), 0, Math.sin(yaw));
+  _right.set(-Math.sin(yaw), 0, Math.cos(yaw));
+}
+
+/* Every station's shot, worked out once the map exists. Held in a map rather
+   than recomputed per frame: finding a standing spot sweeps a 3.2 by 4.5 m
+   window of the distance field, which is not a per-frame question. */
+const SHOTS = new Map();
+
+/* How much room a lens needs. Half the near plane's diagonal would be exact
+   and is smaller than this; 0.55 m is what keeps a wall out of the corner of
+   a 58 degree frame rather than merely out of its centre. */
+const CAM_R = 0.55;
+let map = null;
+
+export default function Follow() {
+  const { camera } = useThree();
+  useEffect(() => onMap(grid => {
+    map = grid;
+    SHOTS.clear();
+    for (const s of STOPS) SHOTS.set(s.id, standFor(grid, s));
+  }), []);
+  const look = useRef(new THREE.Vector3(0, 1.3, -4));
+  const fov = useRef(52);
+  const first = useRef(true);
+
+  useFrame((_, dt) => {
+    const g = GUIDE;
+    if (!g.ready) return;
+    const j = journey.get();
+    const t = performance.now() * 0.001;
+    basis(g.pose.yaw);
+    const gx = g.pose.x, gz = g.pose.z;
+
+    let wantFov = 52, ease = EASE;
+
+    if (j.phase === "greeting") {
+      /* In front of the guide, at the height of somebody standing in a
+       * doorway. The G1 is 1.32 m tall, so a camera at 1.55 is looking down
+       * at it -- which is what it is like to be met by a machine that size,
+       * and pretending otherwise by dropping the lens to its eye line would
+       * make the visitor a metre tall.
+       *
+       * The distance and the aim are worked back from the frame rather than
+       * chosen. The card asking the question takes the bottom quarter of the
+       * screen, so the machine has to fit in the top three quarters with its
+       * feet on show -- a greeting where the thing greeting you is cut off
+       * at the shins is the first frame of the site failing at the one job
+       * it has. 1.32 m across 45 per cent of a 44 degree frame is 3.63 m of
+       * throw, and aiming at 0.73 rather than at its chest is what lifts the
+       * whole machine clear of the card.
+       */
+      _eye.set(gx + _fwd.x * 3.63, 1.55, gz + _fwd.z * 3.63);
+      _look.set(gx, 0.73, gz);
+      wantFov = 44;
+      ease = first.current ? CUT : EASE;
+    } else if (j.phase === "walking") {
+      /* Over the shoulder and out to one side, high enough to see the lane
+         past the guide. Leading the turn: the look point is ahead of the
+         guide along its own heading, so a corner is visible before it is
+         taken rather than after. */
+      _eye.set(gx - _fwd.x * 4.1 + _right.x * 1.0,
+               2.05,
+               gz - _fwd.z * 4.1 + _right.z * 1.0);
+      _look.set(gx + _fwd.x * 2.2, 1.25, gz + _fwd.z * 2.2);
+      wantFov = 54;
+    } else if (j.phase === "choosing") {
+      /* Nothing to follow and something to choose, so the camera does what
+       * anybody does when they are deciding where to go: it stands back and
+       * looks down the building.
+       *
+       * This is a correction rather than a flourish. Without it the choosing
+       * phase fell through to the standing shot, which frames the guide from
+       * 2.35 m -- so the one moment the site asks the visitor to pick a cell
+       * was the one moment no cell was on screen. Measured by raycasting
+       * nine points across the frame: eight of them hit the floor eight
+       * metres away and one found a bay, five stations further down than the
+       * one it was aimed at.
+       *
+       * Raised and behind, looking down the lane past the guide, which puts
+       * the tags at the mouth of every cell in shot at once.
+       */
+      const deep = gz < -46;
+      const back = deep ? -6.6 : 6.6;
+      _eye.set(gx * 0.35, 3.30, gz + back);
+      _look.set(0, 1.15, deep ? gz + 12 : gz - 12);
+      wantFov = 58;
+    } else {
+      /* Standing somewhere, showing something. The shot is the one
+         stations.js worked out when it chose the spot -- the same numbers
+         that decided which way the guide would turn -- so the machine is
+         square to the lens rather than presenting its back to it. */
+      const shot = SHOTS.get(j.at || j.target);
+      if (shot) {
+        _eye.set(shot.eye[0], shot.eye[1], shot.eye[2]);
+        _look.set(shot.look[0], shot.look[1], shot.look[2]);
+        wantFov = shot.fov;
+      } else {
+        _eye.set(gx + _fwd.x * 2.35, 1.52, gz + _fwd.z * 2.35);
+        _look.set(gx + _fwd.x * 0.12, 1.20, gz + _fwd.z * 0.12);
+        wantFov = 40;
+      }
+    }
+
+    /* A very small drift, always. A camera that is exactly still reads as a
+       still, and the building is supposed to be running. */
+    _eye.x += Math.sin(t * 0.23) * 0.045;
+    _eye.y += Math.sin(t * 0.19) * 0.018;
+
+    /* Keep the lens out of the building.
+     *
+     * Every shot above is an offset from where the guide is standing, and an
+     * offset is a thing that can put a camera through a wall: the wide shot
+     * for choosing stands 6.6 m back down the lane, and at the front door
+     * that is 2 m outside the front wall, so the first frame after picking a
+     * route was the inside of a sheet of cladding. Rather than special-case
+     * the door -- and then the back wall, and then the office partition, and
+     * then whichever bench somebody moves next -- the camera asks the same
+     * map the guide walks on whether there is room where it is going, and
+     * slides toward its own look point until there is.
+     *
+     * Ten steps at a fifth of the way each, which converges to within 11 per
+     * cent of the distance, and gives up rather than teleporting if the look
+     * point is itself inside something. */
+    if (map) {
+      for (let i = 0; i < 10 && map.clearance(_eye.x, _eye.z) < CAM_R; i++) {
+        _eye.x += (_look.x - _eye.x) * 0.2;
+        _eye.z += (_look.z - _eye.z) * 0.2;
+      }
+    }
+
+    const k = 1 - Math.pow(ease, Math.min(0.1, dt));
+    camera.position.lerp(_eye, k);
+    look.current.lerp(_look, k);
+    camera.lookAt(look.current);
+    fov.current += (wantFov - fov.current) * k;
+    if (Math.abs(camera.fov - fov.current) > 0.01) {
+      camera.fov = fov.current;
+      camera.updateProjectionMatrix();
+    }
+    first.current = false;
+  });
+
+  return null;
+}

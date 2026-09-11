@@ -86,6 +86,19 @@ export class Gait {
     this.settle = 1;
     this._pose = new Float32Array(tree.links.length);
     this.foot = { left: [0, 0, 0], right: [0, 0, 0] };
+    /* Carrying something. `hold` blends from the walk's arm swing to a pair
+       of hands on a pair of grips; the grips are in the robot's own frame and
+       whatever is being carried decides where they are. The arms are solved
+       to reach them by the same chain solver the legs use, so a board held
+       level is a board the shoulders and elbows actually worked out how to
+       hold rather than a mesh parented to a wrist. */
+    this.hold = 0;
+    this.grip = { left: [0.30, 0.19, 1.05], right: [0.30, -0.19, 1.05] };
+    this.armIK = {
+      left: new ChainIK(tree, this.m.arms.left.joints, this.m.arms.left.end, { step: 0.5 }),
+      right: new ChainIK(tree, this.m.arms.right.joints, this.m.arms.right.end, { step: 0.5 })
+    };
+    this._swing = new Float32Array(8);
     /* Seeded standing rather than at zero. A local solver returns the
        solution nearest its seed and the seed on the first frame is the only
        one nobody chose, so choose it. */
@@ -221,18 +234,33 @@ export class Gait {
   arms(q, ph, blend) {
     const L = this.link, tau = Math.PI * 2;
     const amp = 0.30 * blend + 0.02;
+    let k = 0;
     for (const side of ["left", "right"]) {
       const sgn = side === "left" ? 1 : -1;
       // Opposite the leg of the same side: the left arm swings forward as
       // the left leg swings back.
       const s = Math.sin(tau * ph + (side === "left" ? Math.PI : 0));
-      q[L[`${side}_shoulder_pitch_link`]] = 0.20 - amp * s;
-      q[L[`${side}_shoulder_roll_link`]] = sgn * (0.17 + 0.05 * blend);
-      q[L[`${side}_shoulder_yaw_link`]] = 0;
-      q[L[`${side}_elbow_link`]] = 0.52 + 0.16 * blend * Math.max(0, s);
+      const set = this.m.arms[side].joints;
+      const want = [0.20 - amp * s, sgn * (0.17 + 0.05 * blend), 0,
+                    0.52 + 0.16 * blend * Math.max(0, s)];
+      for (let i = 0; i < 4; i++) { q[set[i]] = want[i]; this._swing[k++] = want[i]; }
       q[L[`${side}_wrist_roll_link`]] = 0;
       q[L[`${side}_wrist_pitch_link`]] = 0;
       q[L[`${side}_wrist_yaw_link`]] = 0;
+    }
+    if (this.hold <= 0.001) return;
+    /* Solve from where the swing left the arm, then take a weighted step
+       toward the answer. Blending the two joint vectors rather than blending
+       the target is what keeps the arm on a sensible path while a sign comes
+       up: interpolating the target would drag the hand through the chest. */
+    k = 0;
+    for (const side of ["left", "right"]) {
+      const set = this.m.arms[side].joints, g = this.grip[side];
+      this.armIK[side].solve(q, g[0], g[1], g[2], 10);
+      for (let i = 0; i < 4; i++) {
+        const sw = this._swing[k++];
+        q[set[i]] = sw + (q[set[i]] - sw) * this.hold;
+      }
     }
   }
 }

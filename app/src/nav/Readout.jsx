@@ -1,121 +1,53 @@
-import { useEffect, useRef, useState } from "react";
-import { STOPS, PITCH, RUN } from "../lib/plan.js";
-import { travelAt, scrollForTravel } from "./useTravel.js";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { STOPS } from "../lib/plan.js";
 import { isOpen } from "../bays/overlay.js";
 import Panel from "./Panel.jsx";
 import Console from "./Console.jsx";
+import * as journey from "./journey.js";
+import { CARDS } from "./cards.js";
 
-/* The one piece of chrome: where you are in the building, named.
+/* The chrome, and there is less of it than there was.
  *
- * A 66 m aisle with thirteen things off it needs an index or it is a maze,
- * and the honest form for it here is a station list rather than a nav bar --
- * the same readout a facility has by the door. It is also the fallback: with
- * the canvas gone this is still a set of links to real anchors.
+ * This used to be an index that scrolled a document which drove a camera.
+ * The document is gone: you are taken round by something that walks, so the
+ * index is a set of places to be taken to and the state it reflects is where
+ * the guide actually is, not where a scrollbar has got to.
+ *
+ * It is still the fallback. With the canvas gone this is a list of stations
+ * and their writing, which is the whole site in text, and that is the reason
+ * the reading lives here rather than on a board in the building.
  */
 export default function Readout() {
-  const [at, setAt] = useState(0);
-  /* Closed until it is asked for, with one exception, and the exception is
-     the point of the front page.
-  
-     The reading is 2,926 words, five benchmark tables and 182 measured
-     figures, and putting all of it on screen the moment somebody arrives is
-     answering a question nobody asked -- it covers the building they came to
-     look at, at every one of thirteen stations. So the building is what you
-     get and the words are one press away.
-  
-     The entrance is not that. It is who this is and what he does, and a
-     portfolio whose front page makes you press a key to find out whose it is
-     has hidden the only thing every visitor wants. So the high bay opens
-     with its reading up and closing it is a decision the reader makes;
-     walking on from a station they have not closed keeps it up, and once
-     they close it, it stays closed. What is never done here is deciding for
-     them twice. */
-  const [read, setRead] = useState(true);
-  // Whether the reader has said anything about it yet. Until they have, the
-  // entrance shows and the rest do not; after that, their answer holds
-  // everywhere.
+  const j = useSyncExternalStore(journey.subscribe, journey.get);
+  const here = j.at || j.target;
+  const at = Math.max(0, STOPS.findIndex(s => s.id === here));
+  const stop = STOPS[at];
+
+  /* Closed until it is asked for, once the visit is under way. What the
+     guide is holding up says which station this is and what it is for; the
+     writing is the long version and covers the building if it is left open.
+     The office is the exception, because the office is reading. */
+  const [read, setRead] = useState(false);
   const [asked, setAsked] = useState(false);
   const ask = (v) => { setAsked(true); setRead(v); };
-  // What the reader last asked for, which leads what the scroll has reached.
-  const aim = useRef(0);
-  /* When the last move came from here rather than from the reader's own
-     wheel. The scroll handler syncs the intent back from the page -- it has
-     to, or a wheel would leave the keyboard pointing somewhere the reader is
-     not -- and during a smooth scroll of ours that sync is the animation
-     overwriting the intent that started it. Presses inside a second of our
-     own move do not get re-synced; anything later is the reader. */
-  const droveAt = useRef(0);
+  const readRef = useRef(false);
 
-  useEffect(() => {
-    const doc = document.documentElement;
-    const read = () => {
-      const max = Math.max(1, doc.scrollHeight - window.innerHeight);
-      const z = travelAt(window.scrollY, max);
-      let best = 0, bd = 1e9;
-      STOPS.forEach((s, i) => {
-        const d = Math.abs(s.at * PITCH - z);
-        if (d < bd) { bd = d; best = i; }
-      });
-      setAt(best);
-      if (Date.now() - droveAt.current > 900) aim.current = best;
-    };
-    read();
-    window.addEventListener("scroll", read, { passive: true });
-    return () => window.removeEventListener("scroll", read);
-  }, []);
-
-  const stop = STOPS[at];
-  /* What is actually on screen. The entrance carries its own reading until
-     the reader has said otherwise; everywhere else waits to be asked. */
-  const showing = read && (asked || stop.id === "entry");
-  const readRef = useRef(read);
+  /* In the office on the about route the cards are the reading, so the room
+     panel stays shut unless it is asked for: two columns of the same
+     biography, one over the other, is what it looked like otherwise. */
+  const cards = j.phase === "showing" && j.at === "contact" && j.route === "about";
+  const showing = j.phase === "showing" &&
+                  (asked ? read : (stop && stop.kind === "room" && !cards));
   readRef.current = showing;
-  const wide = ["work", "measured", "path"].includes(stop.id);
+
   const go = (i) => {
     const n = Math.max(0, Math.min(STOPS.length - 1, i));
-    aim.current = n;
-    droveAt.current = Date.now();
-    /* Instant, and the camera does the smoothing.
-    
-       This used to hand the browser a smooth scroll and let it animate
-       8,611 px of scrollbar. A smooth scroll is driven from the main thread,
-       and this page's main thread is busy drawing a building -- measured
-       under a software rasteriser at four frames a second, a station click
-       took sixteen seconds to arrive and a second click issued in the
-       meantime was serviced with the first one's target. Which is to say
-       the index appeared to do nothing, and then to do the wrong thing.
-    
-       Jumping the scroll and letting nav/useTravel.js ease the camera gives
-       the same glide and gives it at any frame rate: the ease is
-       1 - k^dt, so it takes the same wall time on a workstation and on a
-       phone under load. It is also the only version where two clicks in a
-       second mean the second one. */
-    const doc = document.documentElement;
-    const max = Math.max(1, doc.scrollHeight - window.innerHeight);
-    window.scrollTo({ top: scrollForTravel(STOPS[n].at * PITCH, max),
-                      behavior: "auto" });
+    journey.jump(STOPS[n].id);
   };
 
-  /* Stop to stop on the arrows, because the alternative is a line at a time.
-     The building is 66 m and the document that drives it is 2,252 px, so a
-     reader on a keyboard travelling by arrow key covers about a third of a
-     metre a press and needs roughly two hundred of them to reach the office.
-     Page Up and Page Down are no better -- they move by viewport, which is
-     not related to anything in the building.
-
-     Bound on the window and not on the index, so it works for a reader who
-     has never focused the index -- and skipped entirely when the focus is in
-     a field or on a link, where the arrows already mean something. */
   useEffect(() => {
     const key = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      /* R and Escape are not stepping keys and are allowed wherever the
-         focus is. The guard below exists because the arrows already mean
-         something on a button, a link and a select, and taking them would
-         break the keyboard for anybody navigating the index -- it has
-         nothing to say about a letter. Applying it to everything meant that
-         after clicking the read control, which is a button and therefore
-         has focus, the key the control itself advertises did nothing. */
       const t = e.target;
       const typing = t && (t.isContentEditable ||
                            /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -124,31 +56,46 @@ export default function Readout() {
         if (e.key === "Escape" && !isOpen()) { ask(false); return; }
       }
       if (typing || /^(A|BUTTON)$/.test(t && t.tagName)) return;
-      /* Stepped from the intent, not from where the building has got to.
-         Deriving the next stop from `at` looks right and drops presses: `at`
-         is read back off the scroll position, the scroll is smooth, and a
-         reader pressing the arrow four times in a second is asking for four
-         stops while the page has only reported one. Measured, four presses
-         moved two stops. The ref carries what was asked for and the scroll
-         catches up. */
-      const here = aim.current;
-      if (e.key === "ArrowDown" || e.key === "ArrowRight") { go(here + 1); e.preventDefault(); }
-      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") { go(here - 1); e.preventDefault(); }
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") { go(at + 1); e.preventDefault(); }
+      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") { go(at - 1); e.preventDefault(); }
       else if (e.key === "Home") { go(0); e.preventDefault(); }
       else if (e.key === "End") { go(STOPS.length - 1); e.preventDefault(); }
-
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [at]);
 
+  const left = journey.remaining();
+
   return (
     <>
-      <nav className="index" aria-label="Facility">
+      {/* Being met. Two ways to go and nothing else on screen, because the
+          first thing a visitor has to do is answer one question. */}
+      {j.phase === "greeting" && (
+        <div className="meet" role="dialog" aria-label="Where would you like to go">
+          <p className="meet__who">Abdul Rahman &middot; robotics engineer</p>
+          <h1 className="meet__ask">Where do you want to start?</h1>
+          <div className="meet__pick">
+            <button className="meet__btn" onClick={() => journey.choose("demos")}>
+              <span className="meet__t">The floor</span>
+              <span className="meet__s">Seven cells you can operate. Pick one and I will walk you to it.</span>
+            </button>
+            <button className="meet__btn" onClick={() => journey.choose("about")}>
+              <span className="meet__t">About me</span>
+              <span className="meet__s">The office, and what I have actually built.</span>
+            </button>
+          </div>
+          <a className="meet__doc" href="written.html">Read it as a document instead</a>
+        </div>
+      )}
+
+      <nav className="index" aria-label="Facility" data-phase={j.phase}>
         <ol>
           {STOPS.map((s, i) => (
-            <li key={s.id} className={i === at ? "on" : ""}>
-              <button onClick={() => go(i)} aria-current={i === at ? "true" : undefined}>
+            <li key={s.id} className={
+              (s.id === here ? "on" : "") + (j.seen.includes(s.id) ? " seen" : "")
+            }>
+              <button onClick={() => go(i)} aria-current={s.id === here ? "true" : undefined}>
                 <span className="n">{String(i).padStart(2, "0")}</span>
                 <span className="t">{s.title}</span>
               </button>
@@ -157,26 +104,60 @@ export default function Readout() {
         </ol>
       </nav>
 
-      {/* What the cell you are standing at can be told to do. Only at a
-          cell: a room has nothing to operate. */}
-      <Console id={stop.id} kind={stop.kind} />
+      {/* Where the guide is up to, in words, because a machine walking away
+          down a 66 m aisle needs to say where it is going. */}
+      {j.phase === "walking" && (
+        <p className="going" aria-live="polite">
+          Walking to <b>{stop ? stop.title : ""}</b>
+        </p>
+      )}
 
-      {/* The one control that asks for it, next to the one that leaves for
-          the document. Both live in the corner block, which is where this
-          building keeps the things that are about reading rather than about
-          the work. */}
-      <button className="ask" onClick={() => ask(!showing)}
-              aria-expanded={showing} aria-controls="reading">
-        {showing ? "Hide the writing" : "Read this station"}
-        <span className="key" aria-hidden="true">R</span>
-      </button>
+      {j.phase === "showing" && stop && stop.kind === "rig" && (
+        <Console id={stop.id} kind={stop.kind} />
+      )}
 
-      {/* A rig gets a plate on the aisle; a room gets the reading itself.
-          The distinction is the building's own: you glance at a cell in
-          passing and you stop in a room, so a cell's caption is one line and
-          a room's is everything it holds. */}
-      {showing && (
-        <main className={"plate" + (stop.kind === "room" ? " plate--room" : "") + (wide ? " plate--wide" : "")}
+      {/* The office, on the about route: one card at a time, held up, and a
+          row of the others to swap to. The guide puts the board down before
+          it changes what is written on it, which is why this is a set of
+          cards and not a set of tabs. */}
+      {cards && (
+        <div className="cards">
+          <p className="cards__body">{CARDS[Math.min(j.card, CARDS.length - 1)].body}</p>
+          <ol className="cards__row">
+            {CARDS.map((c, i) => (
+              <li key={c.id}>
+                <button className={i === j.card ? "on" : ""}
+                        onClick={() => journey.nextCard(i)}
+                        aria-current={i === j.card ? "true" : undefined}>
+                  {c.title}
+                </button>
+              </li>
+            ))}
+          </ol>
+          <button className="cards__go" onClick={() => journey.choose("demos")}>
+            Now show me the floor
+          </button>
+        </div>
+      )}
+
+      {j.phase === "showing" && (
+        <div className="after">
+          <button className="ask" onClick={() => ask(!showing)}
+                  aria-expanded={showing} aria-controls="reading">
+            {showing ? "Hide the writing" : "Read this station"}
+            <span className="key" aria-hidden="true">R</span>
+          </button>
+          <button className="ask ask--go" onClick={() => journey.done()}>
+            {left.length === 0 && j.route === "demos" && stop.id !== "contact"
+              ? "That is all of them — to the office"
+              : "Somewhere else"}
+          </button>
+        </div>
+      )}
+
+      {showing && stop && (
+        <main className={"plate" + (stop.kind === "room" ? " plate--room" : "") +
+                         (["work", "measured", "path"].includes(stop.id) ? " plate--wide" : "")}
               key={stop.id} id="reading" aria-labelledby="stop-title">
           <p className="kind">{stop.kind === "rig" ? "Test cell" : "Room"}</p>
           <h1 id="stop-title">{stop.title}</h1>

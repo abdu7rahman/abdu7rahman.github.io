@@ -6,12 +6,13 @@ import Structure from "./lab/Structure.jsx";
 import Guarding from "./lab/Guarding.jsx";
 import Catwalk from "./lab/Catwalk.jsx";
 import Clutter from "./lab/Clutter.jsx";
-import G1 from "./lab/G1.jsx";
+import Guide from "./nav/Guide.jsx";
+import Picks from "./nav/Picks.jsx";
 import Belief from "./lab/Belief.jsx";
 import Envelope from "./lab/Envelope.jsx";
 import Bay from "./lab/Bay.jsx";
 import Rig from "./lab/Rig.jsx";
-import Dolly from "./nav/Dolly.jsx";
+import Follow from "./nav/Follow.jsx";
 import Probe from "./nav/Probe.jsx";
 import Survey from "./nav/Survey.jsx";
 import Grade from "./lab/Grade.jsx";
@@ -21,8 +22,7 @@ import Screens from "./bays/Screens.jsx";
 import Rooms from "./halls/Rooms.jsx";
 import Readout from "./nav/Readout.jsx";
 import { P, KEY } from "./lib/palette.js";
-import { STOPS, RUN } from "./lib/plan.js";
-import { PX_PER_M } from "./nav/useTravel.js";
+import { STOPS } from "./lib/plan.js";
 
 export default function App() {
   /* Read once, at the top, and passed down as numbers rather than looked up
@@ -38,17 +38,6 @@ export default function App() {
 
   return (
     <>
-      {/* The document is as long as the building, so the browser's own
-          scrollbar is the travel control and every input that drives it --
-          wheel, keyboard, a flick on a phone -- works without being taught.
-
-          pointerEvents none, and that is not a detail. This div is the full
-          height of the page and sits over a fixed canvas, so with the default
-          it is the element under the cursor everywhere -- the canvas receives
-          no pointer events at all and nothing in the building can be hovered
-          or picked. It still scrolls: scrolling is not a pointer event. */}
-      <div style={{ height: `${RUN * PX_PER_M}px`, pointerEvents: "none" }} aria-hidden="true" />
-
       <Canvas
         shadows={quality.shadows}
         /* A range, not a number: the cap is the tier's, the floor is the
@@ -94,7 +83,6 @@ export default function App() {
           <Guarding />
           {/* What the building has accumulated, off the structural grid. */}
           <Clutter />
-          <group position={[1.2, 0, -2.0]} rotation-y={Math.PI}><G1 /></group>
           {/* One inspection layer over the whole floor, not one per cell. */}
           <Belief />
           {/* The six rooms the written work is read in. */}
@@ -107,10 +95,14 @@ export default function App() {
           {/* The seven demos, running on the monitor in each cell. */}
           <Screens />
           <Budget />
-          <Dolly />
+          <Follow />
           <Probe />
           {/* The map of the building, taken from the building. */}
           <Survey />
+          {/* And somebody who uses it. */}
+          <Guide />
+          {/* What there is to pick, while there is a choice to make. */}
+          <Picks />
           {/* The finish. Off on the low tier, where the fill it costs is the
               whole budget. */}
           {quality.post && <Grade />}
