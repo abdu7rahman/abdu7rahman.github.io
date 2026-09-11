@@ -91,6 +91,11 @@ FLOOR = 24
 #: decimator work at all. See `_cluster`.
 WELD = 5e-4
 
+#: How hard the quadric decimator may push. Module level so a caller can lower
+#: it, and measured rather than left at the library's default -- see the sweep
+#: in tools/bake_mobile.py's header.
+AGG = 8
+
 #: The weld is what actually caps the bake. The sources carry 129621 triangles
 #: between them; snapping to 0.5 mm collapses that to about 31600 before the
 #: decimator is even asked for a number, which is why raising the budget past
@@ -204,7 +209,7 @@ def _decimate(mesh, target):
         if len(f) <= target:
             break
         d = trimesh.Trimesh(v, f, process=False).simplify_quadric_decimation(
-            face_count=int(ask), aggression=8)
+            face_count=int(ask), aggression=AGG)
         got = len(d.faces)
         if got >= len(f):                        # stalled; nothing more to give
             break

@@ -43,9 +43,37 @@ not, and the budgets sit on opposite sides of that fact:
     burger base      5220 tris  1.54 mm | 7540  1.42 | 11300  1.53(whole mesh)
 
 6800 is where the Go2 stops improving; past it, 47% more triangles buy
-0.16 mm. The Burger has no such point -- it is flat plate, and flat plate
-holds its shape at any count -- so it gets the smaller number, and the 57 KiB
-that 7540 would have cost buys 0.12 mm on a robot 203 mm tall.
+0.16 mm. The Burger has no such point -- so it gets the smaller number, and
+the 57 KiB that 7540 would have cost buys 0.12 mm on a robot 203 mm tall.
+
+The sentence that used to sit in that last paragraph -- that the Burger is
+flat plate and flat plate holds its shape at any count -- was wrong, and a
+mean was what hid it. Rendered close up the Burger's decks come out torn:
+spikes along the rims, holes through the plate, standoffs ending in nothing.
+Measured against the source, which is watertight with no open edge anywhere:
+
+    burger base   5220 tris   579 open edges   84.1% of the source area
+                  9000       640               88.3
+                 20000       678               94.1
+
+So a fifth of the deck is simply gone, and more budget does not close the
+tears -- it opens more of them, because they are not the decimator's doing.
+They come from `bake_arm._cluster`, the half-millimetre lattice that exists to
+de-sliver COLLADA: half the triangles in a UR link are slivers and it cannot
+be decimated without one, but only 4.6 per cent of this STL's are, and snapping
+a clean 96524-triangle tessellation onto a lattice a quarter the thickness of
+its own plate drops triangles that were holding the surface together. At a
+tenth of a millimetre the tears roughly halve, to 310.
+
+Neither asset is re-baked for it, and that is a measurement too rather than a
+shrug. In the cells that draw them -- the Burger in search, drive and race,
+the Go2 in cost -- the camera stands where `standFor` puts a visitor, and at
+1440x900 the Burger comes out 20 pixels tall and the Go2 15. A torn rim on a
+203 mm robot drawn 20 pixels high is well under a pixel, and re-baking to fix
+it would cost bandwidth to change nothing anybody sees. It is written down
+here so that the first person to put a close camera on one of these knows
+what they are looking at and where the fix goes: `bake_arm.WELD`, lowered for
+sources that are not full of slivers, and then a budget the tears can survive.
 
 Both licences were read before anything was vendored. TurtleBot3 is Apache-2.0
 (`LICENSE` at the repository root, and `<license>Apache 2.0</license>` in
@@ -136,8 +164,22 @@ GO2_COPYRIGHT = ("Copyright (c) 2016-2022 HangZhou YuShu TECHNOLOGY CO.,LTD. "
 
 
 def _head(repo):
-    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
-                          capture_output=True, text=True, check=True).stdout.strip()
+    """The source checkout's commit, when there is one.
+
+    A checkout is the usual way these meshes arrive and its commit is the
+    tidiest thing to name. It is not the thing that identifies them, though:
+    `ba.CONSUMED` carries a sha256 of every file actually read, which pins the
+    exact bytes this asset was built from, where a branch tip moves. So when
+    the sources were fetched by file rather than cloned -- github.com's commit
+    metadata is not always reachable where raw file content is -- this says so
+    instead of refusing to bake.
+    """
+    try:
+        return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "not a checkout; see sha256 below for what was read"
 
 
 def _paint(groups, rgb):
