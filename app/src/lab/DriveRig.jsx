@@ -65,7 +65,16 @@ export default function DriveRig({ stop }) {
   const pose = useRef({ x: -0.62, y: -0.80, psi: 0.6, travel: 0, turned: 0 });
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
   const goal = useRef(new THREE.Vector2(0.8, 0.9));
-  const held = useRef(0);          // seconds since the cursor last set it
+  /* Seconds since the cursor left the bench, and whether it is on it at all.
+   *
+   * These used to be one number reset by pointer movement, which made
+   * "holding the cursor still" indistinguishable from "taking the cursor
+   * away": park the pointer on a spot you want the base to drive to, stop
+   * moving for 1.6 seconds, and the goal walked off into its orbit while you
+   * were still pointing at it. Leaving the bench is an event the browser
+   * reports, so use that and nothing else. */
+  const held = useRef(99);
+  const over = useRef(false);
   /* The obstacles belong to the reader. A local planner is only interesting
      against a world you can change under it, and one that only ever sees
      four cylinders somebody else placed is a planner being shown rather
@@ -114,7 +123,7 @@ export default function DriveRig({ stop }) {
       uClosed:  { value: new THREE.Color("#1d4f57") },
       uPath:    { value: new THREE.Color(P.hazard) },
       uEnds:    { value: new THREE.Color(P.ink) },
-      uAir:     { value: new THREE.Color(P.air) },
+      uAir:     { value: new THREE.Color(P.haze) },
       uFogNear: { value: 20 },
       uFogFar:  { value: 78 },
       uFade:    { value: 1 },
@@ -168,13 +177,13 @@ export default function DriveRig({ stop }) {
     const d = Math.min(0.1, dt);
     if (!isRunning(stop.id)) { mat.uEye.value.copy(cam.position); return; }
     const q = pose.current;
-    held.current += d;
 
     /* Back to an orbit when nobody is pointing at the bench. Slow, and wide
        enough that it has to go round the obstacles rather than between them,
        because a goal that never asks anything of the controller is a goal
        that never shows it working. */
-    if (held.current > 1.6) {
+    if (!over.current) held.current += d; else held.current = 0;
+    if (held.current > 1.2) {
       const a = clock.elapsedTime * 0.42;
       goal.current.set(Math.cos(a) * 0.62, Math.sin(a) * 0.76);
     }
@@ -267,13 +276,17 @@ export default function DriveRig({ stop }) {
           placing things in a world that is not in the world is a control
           somebody has to be told about. */}
       <mesh
+        name={"pad-" + stop.id}
         position={[0, 0, 0.002]}
         onPointerMove={(e) => {
           e.stopPropagation();
           const p = e.object.worldToLocal(e.point.clone());
           goal.current.set(p.x, p.y);
+          over.current = true;
           held.current = 0;
         }}
+        onPointerOver={() => { over.current = true; held.current = 0; }}
+        onPointerOut={() => { over.current = false; }}
         onClick={(e) => {
           e.stopPropagation();
           const p = e.object.worldToLocal(e.point.clone());

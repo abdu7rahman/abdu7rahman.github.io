@@ -2,6 +2,7 @@ import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useEffect } from "react";
 import { detect } from "../lib/capability.js";
+import { controls } from "../lab/console.js";
 import * as plan from "../lib/plan.js";
 
 /* A handle on the scene for anything outside it.
@@ -36,7 +37,8 @@ export default function Probe() {
        Box3 away, and none of those are reachable from an object graph. The
        alternative, and it was tried, is reimplementing ray-sphere in the
        page and getting a different answer from the renderer. */
-    window.__lab = { scene, camera, gl, clock, plan, THREE, capability: detect() };
+    window.__lab = { scene, camera, gl, clock, plan, THREE, capability: detect(), controls,
+      simOf: (id) => { const c = controls(id); return c && c.sim ? c.sim() : null; } };
     return () => { delete window.__lab; };
   }, [scene, camera, gl, clock]);
   return null;

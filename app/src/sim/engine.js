@@ -212,6 +212,31 @@ export class Sim {
     this.data.ctrl[id] = value;
   }
 
+  /* One joint's position, by name.
+   *
+   * qpos is laid out in the model's own order and a caller counting six per
+   * arm is a caller who is right until somebody adds a gripper. That is not
+   * hypothetical: each arm here carries six revolute joints and two finger
+   * slides, so the second arm's shoulder is at 8 and not at 6, and reading
+   * it at 6 returns a finger. Measured on the sorting cell, the right arm
+   * was being drawn from the left arm's fingers and its own first four
+   * joints -- a joint command that looked like a 5 rad tracking error and
+   * was a mis-addressed array.
+   *
+   * The address is cached because model.jnt() allocates an embind handle
+   * every call and these are read every frame for every joint. */
+  jointAt(name) {
+    if (!this._jnts) this._jnts = new Map();
+    let adr = this._jnts.get(name);
+    if (adr === undefined) {
+      const h = this.model.jnt(name);
+      adr = h.qposadr !== undefined ? h.qposadr : h.qpos_adr;
+      if (h.delete) h.delete();
+      this._jnts.set(name, adr);
+    }
+    return this.data.qpos[adr];
+  }
+
   get qpos() { return this.data.qpos; }
   get qvel() { return this.data.qvel; }
   get ctrl() { return this.data.ctrl; }

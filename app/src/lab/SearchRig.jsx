@@ -112,7 +112,7 @@ export default function SearchRig({ stop }) {
     uClosed:  { value: new THREE.Color("#1d4f57") },
     uPath:    { value: new THREE.Color(P.hazard) },
     uEnds:    { value: new THREE.Color(P.ink) },
-    uAir:     { value: new THREE.Color(P.air) },
+    uAir:     { value: new THREE.Color(P.haze) },
     uFogNear: { value: 20 },
     uFogFar:  { value: 78 },
     uFade:    { value: 1 },
@@ -365,6 +365,7 @@ export default function SearchRig({ stop }) {
           a millisecond either way, and a full re-run is the one that cannot
           be quietly wrong. */}
       <mesh
+        name={"pad-" + stop.id}
         position={[0, 0, 0.003]}
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -380,6 +381,16 @@ export default function SearchRig({ stop }) {
           const c = cellAt(e);
           if (c !== null) edit(c);
         }}
+        /* A click on the course is a click on the course.
+           
+           R3F walks the ray and delivers a click to the first object that
+           has a handler for one -- so a pad carrying only pointer-move
+           handlers is transparent to clicks, and the next thing along the
+           ray from the bench is the monitor standing behind it, whose click
+           opens the cell full screen. Measured: clicking the middle of the
+           terrain course put a scrim over the whole page. Stopping it here
+           costs nothing and is what "this surface is the control" means. */
+        onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => { paint.current = null; }}
         onPointerOut={() => { paint.current = null; }}
       >

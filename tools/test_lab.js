@@ -1,29 +1,35 @@
-/* Can a reader actually touch anything in the lab.
+/* Can a reader actually get anywhere in this building, and does anything in
+ * it answer them.
  *
- * Five things, every one of which has been broken at least once here and
- * none of which a screenshot would have caught: a full-height div over the
- * canvas that ate every pointer event, a plate that was the element under
- * the cursor across most of the frame, a costmap layer whose shader
- * discarded every fragment, an index that moved the camera and a keyboard
- * that did not, and a monitor you could only click once its demo had
- * painted.
+ * The site is no longer a document with a camera on its scrollbar. You are
+ * met inside the door by a machine that plans a route and walks it, and
+ * everything else follows from clicking something. So this checks the things
+ * that can break in that arrangement and have: a canvas that never receives
+ * a pointer event, a greeting nobody can get past, an index that names a
+ * station but does not send anybody to it, a cell that cannot be reached, a
+ * cell that can be reached and does nothing when you touch it, and a guide
+ * that walks into a bench.
  *
  * Run under SwiftShader like every other headless render of this building,
- * which means about four frames a second -- so this file waits for the
- * camera to stop moving before it aims at anything. It spent a while
- * reporting product faults that were its own latency, and once more
- * reporting one that was its own aim: two meshes in a monitor share a
- * shape and only one of them carries the handlers, so anything picking a
- * target by geometry picks the wrong one about half the time. Targets come
- * out of R3F's own interaction set now and are confirmed with a real
- * raycast before being clicked.
+ * which means about one and a half frames a second. Two consequences, both
+ * dealt with rather than worked around:
+ *
+ *   - the camera eases per second of wall clock, so waiting for it is
+ *     waiting for real time and is done by asking where it should be rather
+ *     than by watching it stop;
+ *   - a 70 m walk at one and a half frames a second, with the per-frame step
+ *     capped so nothing can teleport, is twenty minutes. So the walk is
+ *     advanced by calling the guide's own controller in a loop. That is the
+ *     same code the frame loop calls with the same arguments -- what is
+ *     being skipped is the rendering, not the navigation.
  */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.dirname(__dirname);
 const M = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml',
             '.png':'image/png','.json':'application/json','.pdf':'application/pdf',
-            '.f32':'application/octet-stream','.glb':'model/gltf-binary','.woff2':'font/woff2' };
+            '.f32':'application/octet-stream','.glb':'model/gltf-binary','.woff2':'font/woff2',
+            '.wasm':'application/wasm' };
 const srv = http.createServer((q, r) => {
   let f = path.join(ROOT, decodeURIComponent(q.url.split('?')[0]));
   try { if (fs.statSync(f).isDirectory()) f = path.join(f, 'index.html'); } catch (e) {}
@@ -33,6 +39,7 @@ const srv = http.createServer((q, r) => {
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                                : (fail++, console.log('  FAIL  ' + n + (d ? '  <- ' + d : '')));
+
 (async () => {
   await new Promise(r => srv.listen(0, r));
   const port = srv.address().port;
@@ -42,289 +49,268 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   const errs = [];
   pg.on('pageerror', e => errs.push(String(e).slice(0, 200)));
   await pg.goto(`http://127.0.0.1:${port}/?lab=high`, { waitUntil: 'load' });
-  await pg.waitForTimeout(14000);
-  /* Where you are, read off the index rather than off the reading: the
-     reading is shut by default now, so a test that asks the plate for the
-     station name is asking something that is not on screen. */
-  const title = () => pg.evaluate(() =>
-    (document.querySelector('.index li.on .t') || {}).textContent);
+  // The map is surveyed off the built scene, so nothing can be asked until
+  // it exists -- and its existence is the first thing worth knowing.
+  await pg.waitForFunction(() => window.__lab && window.__lab.guide && window.__lab.map,
+                           null, { timeout: 120000 }).catch(() => {});
 
-  /* Wait for the camera to arrive, not for it to stop moving.
-  
-     Stopping is the wrong test and it failed in a way worth writing down.
-     This page runs at a few frames a second under a software rasteriser,
-     and at the cost bay it drops lower still -- so two polls six hundred
-     milliseconds apart can read the same camera position simply because no
-     frame ran between them. Three of those in a row and a stillness test
-     declares a camera settled while it is a third of the way down a
-     sixty-six metre aisle. Which is exactly what it did: a station click
-     that had landed correctly read as a station click that did nothing.
-  
-     Arrival is a fact rather than an inference. The scroll position is the
-     reader's intent and lands instantly; the camera eases toward it. So ask
-     the page where the scroll says it should be and wait until it is, which
-     cannot be satisfied by a page that is merely too slow to have moved. */
+  const J = () => pg.evaluate(() => window.__lab.journey.get());
+
+  /* Finish whatever walk is outstanding, by running the guide's own
+     controller rather than by waiting for frames that will not come. */
+  const walk = async () => {
+    const r = await pg.evaluate(() => {
+      const g = window.__lab.guide;
+      let n = 0;
+      while (n < 60 * 600 && g.phase !== 'idle') { g.update(1 / 60, { budget: 40000 }); n++; }
+      return { phase: g.phase, seconds: +(n / 60).toFixed(1), trip: +g.trip.toFixed(1) };
+    });
+    // One frame for React to see the arrival, then let the camera ease.
+    await pg.waitForTimeout(2500);
+    return r;
+  };
+
+  /* Wait for the camera to reach the shot the station asked for. Asking
+     where it should be cannot be satisfied by a page too slow to have
+     moved, which is the trap a stillness test falls into here. */
   const settle = async () => {
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 40; i++) {
       const d = await pg.evaluate(() => {
-        const max = Math.max(1, document.documentElement.scrollHeight - innerHeight);
-        // The same mapping nav/useTravel.js uses, and RUN is on the plan.
-        const RUN = window.__lab.plan.RUN;
-        const want = -(1 - window.scrollY / max) * RUN;
-        return Math.abs(window.__lab.camera.position.z - want);
+        const L = window.__lab, j = L.journey.get();
+        const s = L.shots.get(j.at || j.target);
+        if (!s) return 0;
+        return Math.hypot(L.camera.position.x - s.eye[0], L.camera.position.z - s.eye[2]);
       });
-      if (d < 0.35) return true;
-      await pg.waitForTimeout(500);
+      if (d < 0.6) return true;
+      await pg.waitForTimeout(600);
     }
     return false;
   };
 
-  console.log('\nA. the canvas gets the pointer at all');
+  const goTo = async (id) => {
+    await pg.evaluate((id) => window.__lab.journey.jump(id), id);
+    await pg.waitForTimeout(700);
+    await walk();
+    await settle();
+    await pg.waitForTimeout(1200);
+  };
+
+  /* What the cell you are standing at is reporting, as the reader sees it. */
+  const rows = () => pg.evaluate(() =>
+    [...document.querySelectorAll('.console__out > div')]
+      .map(d => d.textContent.trim().replace(/\s+/g, ' ')));
+
+  console.log('\nA. the map exists and is a map of this building');
   {
-    // Open, whatever it is: the entrance carries its reading by default and
-    // every other station does not, so a bare click toggles the wrong way
-    // half the time. The point of the third check is that an open column
-    // takes its own clicks.
-    if (!await pg.$('.plate')) { await pg.click('.ask'); await pg.waitForTimeout(1200); }
+    const m = await pg.evaluate(() => {
+      const s = window.__lab.mapStats, g = window.__lab.map;
+      return s && { ...s, lane: +g.clearance(0, -33).toFixed(2),
+                    bay: +g.clearance(-7, -7.2).toFixed(2) };
+    });
+    ok('the building surveyed itself', !!m && m.tris > 100000, JSON.stringify(m));
+    ok('something is blocked', !!m && m.blocked > 8000 && m.blocked < m.cells * 0.5,
+       m && m.blocked + ' of ' + m.cells);
+    /* Half the aisle less the guarding. If this comes back near zero the
+       surveyor has taken a daylight shaft for a wall, which it has. */
+    ok('the lane is clear down the middle', !!m && m.lane > 2.8, m && String(m.lane));
+    ok('and a bay is not', !!m && m.bay < 1.6, m && String(m.bay));
+  }
+
+  console.log('\nB. you are met at the door');
+  {
+    const j = await J();
+    ok('the visit starts at the greeting', j.phase === 'greeting', j.phase);
+    ok('and the card asking is on screen',
+       await pg.locator('.meet').isVisible().catch(() => false));
+    const guide = await pg.evaluate(() => {
+      const g = window.__lab.guide, m = window.__lab.map;
+      return { z: +g.pose.z.toFixed(2), clear: +m.clearance(g.pose.x, g.pose.z).toFixed(2) };
+    });
+    ok('the guide is inside the building, not in a wall',
+       guide.z < 6.5 && guide.clear > 0.4, JSON.stringify(guide));
+    const g1 = await pg.evaluate(() => {
+      const T = window.__lab.THREE, o = window.__lab.scene.getObjectByName('g1-root');
+      if (!o) return null;
+      window.__lab.scene.updateMatrixWorld(true);
+      const bb = new T.Box3().setFromObject(o);
+      let n = 0; o.traverse(x => { if (x.isMesh) n++; });
+      return { meshes: n, high: +(bb.max.y - bb.min.y).toFixed(2), foot: +bb.min.y.toFixed(2) };
+    });
+    /* Unitree publish the G1 at 1.32 m. If the bake or the pose is wrong
+       this is the number that says so, and it says so in metres. */
+    ok('and it is a whole robot standing on the floor',
+       !!g1 && g1.meshes > 25 && g1.high > 1.15 && g1.high < 1.45 && Math.abs(g1.foot) < 0.05,
+       JSON.stringify(g1));
+  }
+
+  console.log('\nC. the canvas gets the pointer at all');
+  {
     const hit = await pg.evaluate(() => {
       const at = (x, y) => { const e = document.elementFromPoint(x, y);
         return e ? e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : '') : 'none'; };
-      return { mid: at(innerWidth * 0.42, innerHeight * 0.72),
-               low: at(innerWidth * 0.20, innerHeight * 0.85),
-               plate: at(innerWidth * 0.80, innerHeight * 0.25) };
+      return { mid: at(innerWidth * 0.42, innerHeight * 0.28),
+               low: at(innerWidth * 0.78, innerHeight * 0.80) };
     });
-    ok('mid frame is the canvas', hit.mid === 'canvas', hit.mid);
-    ok('lower left is the canvas', hit.low === 'canvas', hit.low);
-    ok('the reading column still takes its own clicks', /plate|panel|h1|p|div/.test(hit.plate), hit.plate);
-    // And put it away again, so everything after this is measured against
-    // the building rather than against a column over it.
-    await pg.click('.ask');
-    await pg.waitForTimeout(900);
+    ok('upper frame is the canvas', hit.mid === 'canvas', hit.mid);
+    ok('lower right is the canvas', hit.low === 'canvas', hit.low);
   }
 
-  console.log('\nA1. the entrance reads, a cell waits to be asked');
+  console.log('\nD. picking a route, and picking a cell in the world');
   {
-    /* The rule, and it has two halves. The entrance is who this is and what
-       he does, so it carries its reading on arrival -- a portfolio whose
-       front page makes you press a key to find out whose it is has hidden
-       the only thing every visitor wants. A test cell does not: there the
-       reading is a caption over the work it captions. */
-    await pg.reload({ waitUntil: 'load' });
-    await pg.waitForTimeout(14000);
-    const home = await pg.evaluate(() => ({
-      plate: !!document.querySelector('.plate'),
-      at: (document.querySelector('.index li.on .t') || {}).textContent,
-      ask: (document.querySelector('.ask') || {}).textContent || null
-    }));
-    ok('you land at the entrance', /about/i.test(home.at || ''), String(home.at));
-    ok('and its reading is up', home.plate, JSON.stringify(home));
-    ok('with a control that says so', /hide/i.test(home.ask || ''), String(home.ask));
-
-    await pg.keyboard.press('Escape');
-    await pg.waitForTimeout(1200);
-    ok('escape puts it away',
-       !await pg.evaluate(() => !!document.querySelector('.plate')));
-    await pg.keyboard.press('r');
-    await pg.waitForTimeout(1200);
-    ok('and the keyboard brings it back',
-       await pg.evaluate(() => !!document.querySelector('.plate')));
-
-    // Once the reader has answered, their answer holds at every station.
-    await pg.keyboard.press('Escape');
-    await pg.waitForTimeout(1000);
-    await pg.click('.index li:nth-child(3) button');
+    await pg.click('.meet__btn:first-child');
+    await pg.waitForTimeout(1800);
+    ok('choosing the floor opens the choice', (await J()).phase === 'choosing');
     await settle();
-    ok('and it stays away at a cell',
-       !await pg.evaluate(() => !!document.querySelector('.plate')));
-  }
-
-  console.log('\nB. the floor answers the cursor');
-  {
-    const before = await pg.evaluate(() => {
-      /* The costmap's reveal, and it has to be identified by type now that
-         four bays carry a uniform called uOpen. Belief's is a scalar; the
-         field shader's is the colour it paints the open list in. Taking
-         whichever came last in the traverse was reading a THREE.Color and
-         comparing it to 0.2. */
-      let v = null; window.__lab.scene.traverse(o => {
-        const u = o.material && o.material.uniforms;
-        if (u && u.uOpen && typeof u.uOpen.value === "number") v = u.uOpen.value; });
-      return v;
-    });
-    await pg.mouse.move(720, 700);
-    for (let i = 0; i < 8; i++) { await pg.mouse.move(700 + i * 6, 690 + i * 3); await pg.waitForTimeout(400); }
-    await pg.waitForTimeout(2500);
-    const after = await pg.evaluate(() => {
-      /* The costmap's reveal, and it has to be identified by type now that
-         four bays carry a uniform called uOpen. Belief's is a scalar; the
-         field shader's is the colour it paints the open list in. Taking
-         whichever came last in the traverse was reading a THREE.Color and
-         comparing it to 0.2. */
-      let v = null; window.__lab.scene.traverse(o => {
-        const u = o.material && o.material.uniforms;
-        if (u && u.uOpen && typeof u.uOpen.value === "number") v = u.uOpen.value; });
-      return v;
-    });
-    ok('the costmap layer exists', before !== null, String(before));
-    ok('and it opens under the cursor', after > 0.2, before + ' -> ' + after);
-  }
-
-  console.log('\nC. the index and the keyboard walk the building');
-  {
-    const t0 = await title();
-    await pg.click('.index li:nth-child(9) button');
-    await settle();
-    const t1 = await title();
-    ok('a station click moves you', t1 && t1 !== t0, t0 + ' -> ' + t1);
-    // Off the button first: the handler ignores arrows while focus is on a
-    // BUTTON or an A, where the arrows already mean something else.
-    await pg.evaluate(() => document.activeElement && document.activeElement.blur());
-    await pg.keyboard.press('ArrowDown');
-    await settle();
-    const t2 = await title();
-    ok('an arrow key moves one stop', t2 && t2 !== t1, t1 + ' -> ' + t2);
-  }
-
-  console.log('\nD. a cell can be taken');
-  {
-    await pg.click('.index li:nth-child(7) button');
-    /* Settle before aiming, for the reason on settle(): measured, the
-       projected position of a monitor moved 386 px between computing an aim
-       and clicking it, so the click landed on bare floor and this probe
-       called it a product fault. */
-    await settle();
-
-    /* Aimed at something R3F will actually deliver a click to, which is the
-       only definition of clickable that matters: an object in its own
-       interaction set, in front of the camera, facing it, and picked by a
-       real raycast rather than by a projected centre. Finding a monitor by
-       its geometry instead was how this probe spent a while reporting a
-       product fault that was its own aim -- the shape it matched belongs to
-       two meshes and only one of them carries the handlers. */
-    const aim = await pg.evaluate(() => {
-      const st = window.__lab;
-      let any = null;
-      st.scene.traverse(o => { if (!any && o.__r3f && o.__r3f.root) any = o; });
-      const state = any.__r3f.root.getState();
-      const set = state.internal.interaction;
-      let best = null, bd = 1e9;
-      for (const o of set) {
-        if (!o.isMesh) continue;
-        if ((o.__r3f && o.__r3f.eventCount || 0) === 0) continue;
-        const p = new o.position.constructor(); o.getWorldPosition(p);
-        const v = p.clone().project(st.camera);
-        if (v.z >= 1) continue;
-        const x = (v.x * .5 + .5) * innerWidth, y = (-v.y * .5 + .5) * innerHeight;
-        if (x < 8 || y < 8 || x > innerWidth - 8 || y > innerHeight - 8) continue;
-        // Confirm the ray reaches it before choosing it.
-        state.pointer.set((x / state.size.width) * 2 - 1,
-                          -(y / state.size.height) * 2 + 1);
-        state.raycaster.setFromCamera(state.pointer, state.camera);
-        if (!state.raycaster.intersectObject(o, true).length) continue;
-        const d = Math.hypot(v.x, v.y);
-        if (d < bd) { bd = d; best = { x, y, w: o.geometry.parameters.width }; }
-      }
-      return best;
-    });
-    ok('something clickable is on screen', !!aim, JSON.stringify(aim));
-
-    if (aim) {
-      await pg.mouse.move(aim.x, aim.y);
-      await pg.waitForTimeout(900);
-      const hovered = await pg.evaluate(() => document.body.style.cursor || '(none)');
-      await pg.mouse.move(aim.x, aim.y);
-      await pg.mouse.down(); await pg.waitForTimeout(120); await pg.mouse.up();
-      await pg.waitForTimeout(5000);
-      const open = await pg.evaluate(() => {
-        const c = document.getElementById('bay-chrome');
-        return { on: !!c && c.classList.contains('on'),
-                 host: (document.getElementById('bay-host') || {}).style
-                        ? document.getElementById('bay-host').style.zIndex : null };
-      });
-      ok('it takes the pointer', hovered === 'pointer', hovered);
-      ok('and clicking it opens the cell', open.on, JSON.stringify(open));
-    }
-  }
-
-  console.log('\nD1. the world can be edited, not only watched');
-  {
-    /* A simulator is something you operate on. Two bays let the reader
-       change the world under the algorithm: the search grid is drawn on and
-       the drive pad takes obstacles. Both re-solve on every edit, which is
-       the part worth checking -- an editor that changes the picture and not
-       the problem is a paint program. */
-    // Out of the cell D opened: its scrim covers the page, including the
-    // index, which is how this section first failed.
-    await pg.keyboard.press('Escape');
     await pg.waitForTimeout(1500);
 
-    /* By name, not by "the biggest instanced mesh in the scene".
-    
-       That is what this was, and it worked for exactly as long as the search
-       bay's walls were the only instanced mesh worth counting. The building
-       is now mostly instanced steel -- structure, catwalk, partitions,
-       racking, benches -- so the maximum became the catwalk's member count
-       and this read 432 before the drag and 432 after, on a grid that was
-       editing perfectly well. Asking for the object by name cannot drift
-       like that. */
-    const walls = () => pg.evaluate(() => {
-      const m = window.__lab.scene.getObjectByName('search-walls');
-      return m ? m.count : -1;
-    });
-    await pg.click('.index li:nth-child(2) button');   // search
-    await settle();
-    await pg.waitForTimeout(2500);
-    const before = await walls();
-    /* Dragged from wherever the middle of the course happens to be, so the
-       mode is whatever the first cell was -- which is the point of deciding
-       the mode from that cell. The check is that the map changed and the
-       search went back to work, not which direction it went. */
-    await pg.mouse.move(620, 470);
-    await pg.mouse.down();
-    for (let i = 0; i < 12; i++) {
-      await pg.mouse.move(620 + i * 22, 470 + i * 6);
-      await pg.waitForTimeout(120);
+    /* A click in the world has to reach a cell. Sweep the frame the way a
+       reader would and count how many points land on one -- one hit out of
+       nine is what a plane across the mouth of a bay gives, and it is
+       indistinguishable from nothing working. */
+    let hits = 0, names = [];
+    for (const [fx, fy] of [[0.18,0.55],[0.28,0.52],[0.72,0.52],[0.82,0.55],
+                            [0.35,0.60],[0.65,0.60]]) {
+      await pg.evaluate(() => { window.__lab.journey.reset(); window.__lab.journey.choose('demos'); });
+      await pg.waitForTimeout(1600);
+      await pg.mouse.move(1440 * fx, 900 * fy);
+      await pg.waitForTimeout(500);
+      await pg.mouse.click(1440 * fx, 900 * fy);
+      await pg.waitForTimeout(700);
+      const j = await J();
+      if (j.target) { hits++; names.push(j.target); }
     }
-    await pg.mouse.up();
-    await pg.waitForTimeout(3500);
-    const after = await walls();
-    ok('drawing on the grid changes the map', after !== before, before + ' -> ' + after);
-    const state = await pg.evaluate(() => {
-      const r = [...document.querySelectorAll('.console__out > div')]
-        .map(d => d.textContent.trim().replace(/\s+/g, ' '));
-      return r.join(' / ');
-    });
-    ok('and it re-searches on the edit', /expand|done|holding|driving/i.test(state), state);
+    ok('clicking a cell in the world sends the guide to it', hits >= 4,
+       hits + '/6 ' + names.join(','));
 
-    await pg.click('.index li:nth-child(3) button');   // local control
-    await settle();
-    await pg.waitForTimeout(2500);
-    const count = async () => pg.evaluate(() => {
-      const row = [...document.querySelectorAll('.console__out > div')]
-        .find(d => /obstacles/i.test(d.textContent));
-      return row ? parseInt(row.textContent.replace(/\D+/g, ''), 10) : null;
-    });
-    const n0 = await count();
-    await pg.mouse.click(760, 520);
-    await pg.waitForTimeout(2200);
-    const n1 = await count();
-    ok('clicking the pad drops an obstacle', n1 === n0 + 1, n0 + ' -> ' + n1);
-    await pg.mouse.click(760, 520);
-    await pg.waitForTimeout(2200);
-    const n2 = await count();
-    ok('and clicking it again lifts it', n2 === n0, n1 + ' -> ' + n2);
+    await pg.evaluate(() => { window.__lab.journey.reset(); window.__lab.journey.choose('demos'); });
+    await pg.waitForTimeout(1500);
+    await pg.click('.index li:nth-child(2) button');
+    await pg.waitForTimeout(700);
+    const w = await walk();
+    ok('a station click walks the guide there', w.phase === 'idle' && w.trip > 1,
+       JSON.stringify(w));
+    const arrived = await J();
+    ok('and the visit knows it arrived', arrived.phase === 'showing' && arrived.at === 'space',
+       JSON.stringify(arrived));
+    ok('with the sign up', arrived.sign === true);
   }
 
-  console.log('\nE. the way out is a link');
+  console.log('\nE. the guide never walks through anything');
+  {
+    /* The claim the whole navigation rests on. Walk the length of the
+       building and watch the clearance the map reports under the body: a
+       single frame under the body radius is a machine inside a bench. */
+    const r = await pg.evaluate(() => {
+      const g = window.__lab.guide, m = window.__lab.map, L = window.__lab;
+      const ids = ['contact', 'space', 'terrain', 'entry'];
+      let worst = 9, hits = 0, frames = 0, trip = 0;
+      for (const id of ids) {
+        const s = L.shots.get(id);
+        g.goTo(s.x, s.z, s.faceYaw);
+        let n = 0;
+        while (n < 60 * 600 && g.phase !== 'idle') {
+          g.update(1 / 60, { budget: 40000 });
+          if (g.phase !== 'planning') {
+            const c = m.clearance(g.pose.x, g.pose.z);
+            if (c < worst) worst = c;
+            if (c <= g.radius) hits++;
+            frames++;
+          }
+          n++;
+        }
+      }
+      trip = +g.trip.toFixed(1);
+      return { worst, hits, frames, radius: g.radius, trip };
+    });
+    ok('it walks the building without touching anything', r.hits === 0,
+       'worst ' + r.worst.toFixed(4) + ' m over ' + r.frames + ' frames, ' + r.trip + ' m walked');
+    /* The controller refuses any rollout whose clearance is not greater than
+       the body radius, so coming to exactly the radius is the planner working
+       at its limit rather than a collision. What would be a fault is going
+       under it, which is what the line above counts. */
+    ok('and it never goes inside its own inflation', r.worst >= r.radius,
+       r.worst.toFixed(4) + ' vs ' + r.radius);
+  }
+
+  console.log('\nF. every cell answers the cursor');
+  {
+    /* Each rig, exercised the way somebody standing at it would, and asked
+       whether anything changed. The readout on the cell's own console is
+       what the reader sees, so it is what this reads -- a rig that responds
+       privately is a rig that does not respond. */
+    const cases = [
+      { id: 'space', how: 'drag',  what: 'the search grid takes walls' },
+      { id: 'drive', how: 'hover', what: 'the drive goal follows the cursor' },
+      { id: 'race',  how: 'wait',  what: 'the race runs' },
+      { id: 'reach', how: 'wait',  what: 'the envelope fills' },
+      { id: 'foresee', how: 'hover', what: 'the replanner sees your hand' },
+      { id: 'terrain', how: 'click', what: 'the quadruped takes a goal' },
+      { id: 'assemble', how: 'wait', what: 'the sorting cell works' }
+    ];
+    for (const c of cases) {
+      await goTo(c.id);
+      const before = await rows();
+      /* Aimed at the cell's own surface rather than at a pixel somebody
+         guessed. Every rig names the thing its pointer handlers are on, so
+         this projects that object and clicks it -- which is the difference
+         between testing the search grid and testing whatever happened to be
+         at (700, 430), which on the first run was the monitor beside it: the
+         drag opened the full-screen cell, whose scrim covers the console
+         this section reads, and every case failed for the same wrong
+         reason. */
+      const aim = await pg.evaluate((id) => {
+        const L = window.__lab, T = L.THREE;
+        const o = L.scene.getObjectByName('pad-' + id);
+        if (!o) return null;
+        L.scene.updateMatrixWorld(true);
+        const p = new T.Vector3().setFromMatrixPosition(o.matrixWorld).project(L.camera);
+        if (p.z >= 1) return null;
+        return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight };
+      }, c.id);
+      // Only the cases that touch something need one.
+      if (!aim && c.how !== 'wait') { ok(c.what, false, 'no pad on screen'); continue; }
+      if (c.how === 'drag') {
+        await pg.mouse.move(aim.x - 90, aim.y - 20);
+        await pg.mouse.down();
+        for (let i = 0; i < 10; i++) { await pg.mouse.move(aim.x - 90 + i * 18, aim.y - 20 + i * 5); await pg.waitForTimeout(110); }
+        await pg.mouse.up();
+      } else if (c.how === 'hover') {
+        for (let i = 0; i < 8; i++) { await pg.mouse.move(aim.x - 60 + i * 16, aim.y - 30 + i * 8); await pg.waitForTimeout(260); }
+        // And then hold still: a goal that walks away from a parked cursor
+        // is the fault this case exists for.
+        await pg.waitForTimeout(3500);
+      } else if (c.how === 'click') {
+        await pg.mouse.move(aim.x, aim.y); await pg.waitForTimeout(400);
+        await pg.mouse.click(aim.x, aim.y);
+      }
+      await pg.waitForTimeout(4500);
+      const after = await rows();
+      const moved = before.length > 0 && after.some((r, i) => r !== before[i]);
+      const j2 = await J();
+      ok(c.what, moved, (before[0] || '(no readout)') + '  ->  ' + (after[0] || '(none)') +
+         (moved ? '' : '   [phase ' + j2.phase + ', at ' + j2.at + ', target ' + j2.target + ']'));
+    }
+  }
+
+  console.log('\nG. the office holds up cards');
+  {
+    await pg.evaluate(() => { window.__lab.journey.reset(); window.__lab.journey.choose('about'); });
+    await pg.waitForTimeout(700);
+    await walk();
+    const j = await J();
+    ok('the about route walks to the office', j.at === 'contact' && j.route === 'about',
+       JSON.stringify(j));
+    ok('and a card is up', await pg.locator('.cards').isVisible().catch(() => false));
+    await pg.click('.cards__row li:nth-child(3) button');
+    await pg.waitForTimeout(1200);
+    ok('picking another card changes the card', (await J()).card === 2,
+       String((await J()).card));
+  }
+
+  console.log('\nH. the way out is a link');
   {
     const href = await pg.getAttribute('.edge a', 'href');
     ok('the corner block links to the document', href === '/written.html', String(href));
-    const box = await pg.evaluate(() => {
-      const a = document.querySelector('.edge a'); const r = a.getBoundingClientRect();
-      const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return e ? e.tagName.toLowerCase() : 'none';
-    });
-    ok('and it is the element under its own box', box === 'a', box);
   }
 
   if (errs.length) { console.log('\npage errors:'); for (const e of [...new Set(errs)].slice(0, 5)) console.log('  ' + e); }

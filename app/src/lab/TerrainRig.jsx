@@ -104,6 +104,7 @@ export default function TerrainRig({ stop }) {
 
   const goal = useRef(new THREE.Vector2(0.75, 0.95));
   const held = useRef(99);
+  const over = useRef(false);
   const tubes = useRef([]);
   const geos = useRef([]);
   const dog = useRef();
@@ -204,10 +205,13 @@ export default function TerrainRig({ stop }) {
   useFrame(({ clock }, dt) => {
     const d = Math.min(0.1, dt);
     if (!isRunning(stop.id)) return;
-    held.current += d;
+    /* Only once the cursor has left the course, not merely stopped on it.
+       The same fault the drive and replan cells had: park the pointer on the
+       spot you want them to walk to and the goal wanders off. */
+    if (!over.current) held.current += d; else held.current = 0;
     if (!solved.current && tubes.current[3]) { solve(); solved.current = true; }
 
-    if (held.current > 2.0) {
+    if (held.current > 1.5) {
       // A slow tour of the far half of the bench when nobody is pointing, so
       // the four answers keep changing and the disagreement is visible.
       const a = clock.elapsedTime * 0.28;
@@ -244,15 +248,29 @@ export default function TerrainRig({ stop }) {
   return (
     <group position={[x, 0.9, 0]} rotation-x={-Math.PI / 2}>
       <mesh
+        name={"pad-" + stop.id}
         geometry={ground}
         receiveShadow
         onPointerMove={(e) => {
           e.stopPropagation();
           const p = e.object.worldToLocal(e.point.clone());
           goal.current.set(p.x, p.y);
+          over.current = true;
           held.current = 0;
           solve();
         }}
+        /* A click on the course is a click on the course.
+           
+           R3F walks the ray and delivers a click to the first object that
+           has a handler for one -- so a pad carrying only pointer-move
+           handlers is transparent to clicks, and the next thing along the
+           ray from the bench is the monitor standing behind it, whose click
+           opens the cell full screen. Measured: clicking the middle of the
+           terrain course put a scrim over the whole page. Stopping it here
+           costs nothing and is what "this surface is the control" means. */
+        onClick={(e) => e.stopPropagation()}
+        onPointerOver={() => { over.current = true; held.current = 0; }}
+        onPointerOut={() => { over.current = false; }}
       >
         <meshStandardMaterial vertexColors roughness={0.94} metalness={0.04} />
       </mesh>

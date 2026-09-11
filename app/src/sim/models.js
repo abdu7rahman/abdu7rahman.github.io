@@ -119,16 +119,31 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
       <geom ${ARM} type="cylinder" size="0.034 0.022" pos="0 0 -0.022"
             rgba="0.8 0.8 0.85 1" mass="0.5"/>
       <site name="${name}_grip" pos="0 0 0.046" size="0.008"/>
+      <!-- The jaw, and its joint value is half the gap between the pads.
+           
+           It was not. With ref="0.05" the reference configuration sat at a
+           command of 0.05 and the pads were modelled coincident there, so
+           the joint ran backwards: measured on the compiled scene, a command
+           of 0.050 put the pad centres 8 mm apart -- 16 mm pads
+           interpenetrating -- and 0.006 put them 88 mm apart. The cell was
+           commanding 0.05 to grasp and 0.006 to release, so every "close"
+           opened the jaw and every "open" shut it on nothing. Over 150
+           simulated seconds no tool was ever lifted higher than 30 mm: the
+           pads swept six tools around a bench and picked up none of them.
+           
+           The pads now start touching at zero and each slides outward with
+           its own joint, so the gap is twice the command and a bigger number
+           is a wider jaw, which is what the name says. -->
       <body name="${name}_fa" pos="0 0 0.03">
-        <joint name="${name}_ga" type="slide" axis="1 0 0" range="0.003 0.052"
-               ref="0.05" damping="6" armature="0.004"/>
-        <geom ${ARM} type="box" size="0.008 0.018 0.016" pos="0 0 0.016" mass="0.06"
+        <joint name="${name}_ga" type="slide" axis="1 0 0" range="0 0.046"
+               damping="6" armature="0.004"/>
+        <geom name="${name}_pa" ${ARM} type="box" size="0.008 0.018 0.016" pos="0.008 0 0.016" mass="0.06"
               friction="2.2 0.05 0.002" rgba="0.55 0.57 0.6 1"/>
       </body>
       <body name="${name}_fb" pos="0 0 0.03">
-        <joint name="${name}_gb" type="slide" axis="-1 0 0" range="0.003 0.052"
-               ref="0.05" damping="6" armature="0.004"/>
-        <geom ${ARM} type="box" size="0.008 0.018 0.016" pos="0 0 0.016" mass="0.06"
+        <joint name="${name}_gb" type="slide" axis="-1 0 0" range="0 0.046"
+               damping="6" armature="0.004"/>
+        <geom name="${name}_pb" ${ARM} type="box" size="0.008 0.018 0.016" pos="-0.008 0 0.016" mass="0.06"
               friction="2.2 0.05 0.002" rgba="0.55 0.57 0.6 1"/>
       </body>
     </body>`;
@@ -165,7 +180,7 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
      starts the model resolving a violation it did not need to have. */
   for (const j of ["ga", "gb"]) {
     act += `<position name="${name}_${j}" joint="${name}_${j}" kp="900"
-      dampratio="1" forcerange="-90 90" ctrlrange="0.003 0.052"/>`;
+      dampratio="1" forcerange="-90 90" ctrlrange="0 0.046"/>`;
   }
   return { body: chain, act, density };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { P } from "../lib/palette.js";
@@ -6,7 +6,7 @@ import { cladding } from "../shaders/cladding.js";
 import Bench from "./Bench.jsx";
 import { AISLE, BAY_D, EAVES, WORK } from "../lib/plan.js";
 import { due } from "./shadowBudget.js";
-import { jump } from "../nav/journey.js";
+import * as journey from "../nav/journey.js";
 
 /* A test cell off the lane: a plinth, a back wall, a screen carrying whatever
  * that rig is running, and a lamp aimed at the work rather than at the room.
@@ -19,6 +19,17 @@ import { jump } from "../nav/journey.js";
  */
 export default function Bay({ stop, index = 0, cells = 7, children }) {
   const [hot, setHot] = useState(false);
+  /* A bay is a place to be taken to while you are deciding where to go, and
+     a place you are standing in once you are there -- and it cannot be both
+     at once. Standing at a cell, the pointer belongs to the cell: measured,
+     a drag across the search grid to draw a wall ended on the bay volume in
+     front of it, which read as a click, which sent the guide off to the
+     station it was already standing at and took the cell's own console off
+     screen mid-edit. Unmounted rather than hidden, because a hidden mesh is
+     one flag away from being raycast again and this one sits between the
+     camera and every control in the cell. */
+  const j = useSyncExternalStore(journey.subscribe, journey.get);
+  const pickable = j.phase === "choosing" || j.phase === "greeting";
   const s = stop.side;                    // -1 left of the lane, +1 right
   const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
@@ -132,19 +143,21 @@ export default function Bay({ stop, index = 0, cells = 7, children }) {
           well as a mouth, so a ray from the aisle meets it whatever angle it
           comes in at. Invisible, because a bay with a pane of glass across
           it is a bay with a pane of glass across it. */}
-      <mesh
-        position={[s * (AISLE / 2 + BAY_D / 2 - 0.4), 1.45, 0]}
-        userData={{ ghost: true }}
-        onPointerOver={e => { e.stopPropagation(); setHot(true); document.body.style.cursor = "pointer"; }}
-        onPointerOut={() => { setHot(false); document.body.style.cursor = ""; }}
-        onClick={e => { e.stopPropagation(); document.body.style.cursor = ""; jump(stop.id); }}
-      >
-        <boxGeometry args={[BAY_D - 0.4, 2.9, 6.2]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      {pickable && (
+        <mesh
+          position={[s * (AISLE / 2 + BAY_D / 2 - 0.4), 1.45, 0]}
+          userData={{ ghost: true }}
+          onPointerOver={e => { e.stopPropagation(); setHot(true); document.body.style.cursor = "pointer"; }}
+          onPointerOut={() => { setHot(false); document.body.style.cursor = ""; }}
+          onClick={e => { e.stopPropagation(); document.body.style.cursor = ""; journey.jump(stop.id); }}
+        >
+          <boxGeometry args={[BAY_D - 0.4, 2.9, 6.2]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
       {/* What it looks like when you are pointing at it: the keep-clear box
           on the slab comes up. Nothing new is drawn. */}
-      <mesh rotation-x={-Math.PI / 2} position={[x, 0.014, 0]} visible={hot}
+      <mesh rotation-x={-Math.PI / 2} position={[x, 0.014, 0]} visible={hot && pickable}
             userData={{ ghost: true }}>
         <planeGeometry args={[3.4, 3.9]} />
         <meshBasicMaterial color={P.hazard} transparent opacity={0.16} depthWrite={false} />

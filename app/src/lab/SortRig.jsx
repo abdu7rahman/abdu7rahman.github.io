@@ -5,7 +5,7 @@ import UR12e from "./UR12e.jsx";
 import { register, isRunning } from "./console.js";
 import { useSim } from "../sim/useSim.js";
 import { sortScene, SORT } from "../sim/models.js";
-import { solve } from "../sim/ik.js";
+import { solve, roll } from "../sim/ik.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -50,34 +50,63 @@ const CLEAR = 0.26;          // how far above a tool an arm stands off
    still overlaps every tool here and clears the bench. */
 const TOUCH = 0.012;
 const REACH = 0.95;          // how far from its own base an arm will go
-/* The jaw, in metres. Shut is narrower than the thinnest tool here -- a 20 mm
+/* Half the gap between the pads, in metres, which is what one finger joint
+   travels. Shut is narrower than the thinnest tool here -- a 20 mm
    screwdriver shaft -- so the fingers always close onto something rather than
-   onto each other, and the position servo's force limit is what holds it. */
-const GRIP_OPEN = 0.05, GRIP_SHUT = 0.006;
+   onto each other, and the position servo's force limit is what holds it.
+   Open is wide enough to drop over the widest. */
+const GRIP_OPEN = 0.028, GRIP_SHUT = 0.002;
 
 /* Scene coordinates from simulation coordinates: MuJoCo is z-up, the scene is
    y-up, and this is the same quarter turn sim/engine.js applies to a body. */
 const toScene = (x, y, z) => [x, z, -y];
 
-/* One arm's programme. Each state names where to go, whether the gripper is
+/* One arm's programme, and the states that are moves advance on arriving
+ * rather than on a stopwatch.
+ *
+ * They used to advance purely on elapsed time: approach ran for 2.0 s and
+ * then the cell descended whether or not the arm had got to the tool. A
+ * position servo on a 40 Nm wrist does not always cross 0.3 m in two
+ * seconds, and when it does not, every state after it happens somewhere
+ * else -- the jaws close on air, the lift lifts nothing, and the cycle ends
+ * as a failed attempt for reasons that have nothing to do with grasping.
+ * Measured on a 140 second soak, the cell got four of six tools into bins.
+ *
+ * So a move carries a tolerance as well as a timeout. It ends when the tool
+ * point is within that tolerance of what it was sent to, or when the timeout
+ * runs out, whichever is first -- and the timeouts are a backstop rather
+ * than the mechanism.
+ *
+ * They have to be generous to stay a backstop, and the first attempt at them
+ * was not. Traced at four samples a second through one cycle: approach ended
+ * 426 mm from the tool because 3.2 s ran out, descend started from there and
+ * ended 51 mm short because 2.6 s ran out, and the jaw closed on air half a
+ * hand's width from the thing it was sent to pick up. Every timeout was
+ * firing, which is to say the tolerances were decoration. A UR12e crossing
+ * half a metre with its command rate limited to 1.9 rad/s takes a few
+ * seconds, so these are a few seconds. The dwells (closing,
+ * opening) have no tolerance because they are not going anywhere: what they
+ * are waiting for is the gripper, and that is a time.
+ *
+ * Each state names where to go, whether the gripper is
    on, and what ends it -- either arriving or running out of patience. A
    timeout is not a nicety: a grasp that fails leaves an arm reaching for a
    tool it will never lift, and without one the cell stops for good. */
 const PLAN = {
   seek:     { grip: 0, secs: 0.4 },
-  approach: { grip: 0, secs: 2.0, at: "tool", dz: CLEAR },
-  descend:  { grip: 0, secs: 1.5, at: "tool", dz: TOUCH },
-  close:    { grip: 1, secs: 0.5, at: "tool", dz: TOUCH },
-  lift:     { grip: 1, secs: 1.2, at: "claim", dz: CLEAR + 0.08 },
-  carry:    { grip: 1, secs: 2.8, at: "bin", dz: 0.34 },
+  approach: { grip: 0, secs: 9.0, at: "tool", dz: CLEAR, tol: 0.035 },
+  descend:  { grip: 0, secs: 7.0, at: "tool", dz: TOUCH, tol: 0.014 },
+  close:    { grip: 1, secs: 0.6, at: "tool", dz: TOUCH },
+  lift:     { grip: 1, secs: 6.0, at: "claim", dz: CLEAR + 0.08, tol: 0.05 },
+  carry:    { grip: 1, secs: 9.0, at: "bin", dz: 0.34, tol: 0.055 },
   /* Down to 0.16 and held for 1.6 s before opening. A tool is grasped
      wherever the gripper happened to land on it, so it hangs off centre and
      swings -- released from 0.20 m up while still swinging, a wrench landed
      0.08 m outside its bin, stayed unsorted, and the arm re-claimed it and
      failed the same way for the rest of the run. Lower and settled first. */
-  place:    { grip: 1, secs: 1.6, at: "bin", dz: 0.16 },
-  open:     { grip: 0, secs: 0.7, at: "bin", dz: 0.16 },
-  back:     { grip: 0, secs: 1.2, at: "home", dz: 0 }
+  place:    { grip: 1, secs: 6.0, at: "bin", dz: 0.16, tol: 0.03, min: 0.6 },
+  open:     { grip: 0, secs: 0.8, at: "bin", dz: 0.16 },
+  back:     { grip: 0, secs: 5.0, at: "home", dz: 0, tol: 0.11 }
 };
 const NEXT = { seek: "approach", approach: "descend", descend: "close", close: "lift",
                lift: "carry", carry: "place", place: "open", open: "back", back: "seek" };
@@ -95,6 +124,14 @@ export default function SortRig({ stop }) {
        tool it has claimed. The claim is what keeps two arms off one tool
        without either of them knowing about the other's programme. */
     state: ["seek", "seek"], t: [0, 0], claim: [null, null],
+    /* Where each arm was sent last frame, in scene coordinates, and how far
+       it is from it. The readout carries the error because a cell that says
+       "descend" and nothing else cannot be told apart from a cell that has
+       been saying "descend" for two seconds because it cannot get there. */
+    lastTgt: [new THREE.Vector3(), new THREE.Vector3()],
+    err: [0, 0], res: [0, 0], lag: [0, 0],
+    want: [new Float64Array(6), new Float64Array(6)],
+    jaw: new THREE.Vector3(),
     /* Integral trim on the descent, per arm, in metres.
     
        A position servo reaching down under gravity settles short of its
@@ -139,11 +176,17 @@ export default function SortRig({ stop }) {
     ],
     readout: () => [
       ["sorted", `${kit.sorted.size} / ${SORT.tools.length}`],
-      ["left arm", kit.state[0]],
-      ["right arm", kit.state[1]],
+      ["left arm", kit.state[0] + (isFinite(kit.err[0]) ? "  " + (kit.err[0] * 1000).toFixed(0) + " mm" : "")],
+      ["right arm", kit.state[1] + (isFinite(kit.err[1]) ? "  " + (kit.err[1] * 1000).toFixed(0) + " mm" : "")],
       ["on the floor", String(kit.floor.size)]
     ],
-    hint: "Long tools to the far bin, short to the near one. Each arm takes whatever is nearest it."
+    hint: "Long tools to the far bin, short to the near one. Each arm takes whatever is nearest it.",
+    /* Steppable from outside. See the note on tick(). */
+    tick: (d) => { if (sim.current) tick(d); },
+    /* The compiled scene itself, for a probe that needs to ask the physics a
+       question the cell does not expose -- how wide the jaw actually opens
+       for a given command, for instance. */
+    sim: () => sim.current
   }), [stop.id, kit, sim]);
 
   /* Where a tool is, right now, in simulation coordinates. Read every time
@@ -173,7 +216,21 @@ export default function SortRig({ stop }) {
     return i >= 0 && !inBin(where[i], SORT.tools[i].bin);
   }
 
-  useFrame((_, dt) => {
+  /* The whole cell, as one step of a given length, so it can be driven by
+   * something other than the frame clock.
+   *
+   * A pick-and-place cycle is twelve simulated seconds, and this building
+   * renders at about one and a half frames a second under a software
+   * rasteriser with the step capped at 0.1 s -- eight simulated seconds per
+   * minute of waiting. Soaking the cell for the hundred and fifty seconds it
+   * takes to sort six tools would be twenty minutes of wall clock per
+   * attempt, and it is not possible to fix something you can only observe
+   * once every twenty minutes. So the body of the frame callback is a
+   * function, the console registry carries it, and a probe can run it at
+   * whatever rate it likes. What gets skipped is the rendering; the cell is
+   * the same cell.
+   */
+  function tick(dt) {
     const sm = sim.current;
     if (!sm) return;
     const d = Math.min(0.1, dt);
@@ -192,6 +249,29 @@ export default function SortRig({ stop }) {
       const step = PLAN[st];
       if (run) kit.t[arm] += d;
 
+      /* How far the tool point is from the last thing it was sent to.
+         Measured against the previous frame's target because this frame's is
+         not chosen until the state is, and a state that is deciding whether
+         to end cannot be asked about where it is going next. The 46 mm is
+         the offset sim/models.js puts between the tcp body and the tool
+         point, taken out in the same place the descent trim takes it out. */
+      let err = Infinity;
+      const lastT = kit.lastTgt[arm];
+      if (lastT) {
+        sm.point(arm === 0 ? "l_tcp" : "r_tcp", kit.a);
+        err = Math.hypot(kit.a.x - lastT.x, (kit.a.y - 0.046) - lastT.y, kit.a.z - lastT.z);
+      }
+      kit.err[arm] = err;
+      /* A move ends on arriving, but not before it has had time to move.
+         Half a second, because the first frame of a state measures against a
+         target the arm may already be standing on -- a lift that begins
+         where the descent ended is, for one frame, "arrived" -- and without
+         a floor the cell chained close, lift, carry and place in 1.5 s and
+         released over the bench it had just picked from. */
+      const done = step.tol
+        ? (err < step.tol && kit.t[arm] >= (step.min || 0.5)) || kit.t[arm] >= step.secs
+        : kit.t[arm] >= step.secs;
+
       if (st === "seek") {
         /* Nearest unsorted, unclaimed, still-on-the-bench tool within reach.
            Nearest to this arm's own base, which is what makes the two of them
@@ -207,14 +287,14 @@ export default function SortRig({ stop }) {
         kit.claim[arm] = best;
         if (best && kit.t[arm] >= step.secs) { kit.state[arm] = "approach"; kit.t[arm] = 0; }
         if (!best) kit.t[arm] = 0;
-      } else if (kit.t[arm] >= step.secs) {
+      } else if (done) {
         kit.state[arm] = NEXT[st];
         kit.t[arm] = 0;
         if (kit.state[arm] === "seek") {
           // A cycle that ended with the tool still out of its bin was a
           // failed attempt, and the count is what stops it repeating.
           if (claimFailed(arm, where)) kit.tries.set(kit.claim[arm], (kit.tries.get(kit.claim[arm]) || 0) + 1);
-          kit.claim[arm] = null; kit.cycles++;
+          kit.claim[arm] = null; kit.cycles++; kit.trim[arm] = 0;
         }
       }
 
@@ -236,11 +316,56 @@ export default function SortRig({ stop }) {
 
       /* Into the arm's own base frame: the two stand facing each other, so
          the transform is a translation and a quarter turn. */
+      kit.lastTgt[arm].set(kit.tgt.x, kit.tgt.z, -kit.tgt.y);
+
       const yaw = arm === 0 ? -Math.PI / 2 : Math.PI / 2;
       const c = Math.cos(-yaw), sn = Math.sin(-yaw);
       const dx0 = kit.tgt.x, dy0 = kit.tgt.y - by;
       kit.base.set(dx0 * c - dy0 * sn, dx0 * sn + dy0 * c, kit.tgt.z - SORT.mount);
-      solve(kit.cmd[arm], kit.base, kit.cmd[arm], 20);
+      /* Solve to where it should end up, then walk the command there at a
+       * speed the arm can hold.
+       *
+       * The solve used to be written straight into the command, which moves
+       * the set point the whole way in one frame. A position servo given a
+       * set point two radians away saturates, and what the arm does is an
+       * exponential lunge that is behind the command the entire time:
+       * measured, the tool point sat 100 to 180 mm from where it had been
+       * sent for the whole of every descent, while the solver's own residual
+       * was under 2 mm. The gap was not the kinematics, it was asking a
+       * 40 Nm wrist to be somewhere instantly.
+       *
+       * 1.9 rad/s is inside what a UR12e does (its published joint maximum
+       * is pi) and turns the command into a trajectory rather than a step.
+       */
+      kit.res[arm] = solve(kit.cmd[arm], kit.base, kit.want[arm], 20);
+      /* Turn the jaws across the tool, not along it.
+       *
+       * sim/ik.js has exported roll() for this since the gripper stopped
+       * being an adhesion pad, with a comment describing exactly what
+       * happens without it -- the jaws line up with the bar's length, one pad
+       * lands on it, the other goes past, and the tool is dragged sideways
+       * instead of lifted. Nothing called it. Measured over 150 simulated
+       * seconds, no tool was ever lifted higher than 30 mm.
+       *
+       * The wanted jaw direction is the horizontal perpendicular to the
+       * tool's own long axis, read off the simulation and taken into the
+       * arm's base frame by the same quarter turn the target is. */
+      if (idx >= 0 && (spec.at === "tool")) {
+        sm.dir(SORT.tools[idx].id, 0, kit.a);      // scene coordinates
+        const ax = kit.a.x, ay = -kit.a.z;         // -> simulation, horizontal
+        const m = Math.hypot(ax, ay);
+        if (m > 1e-6) {
+          // Perpendicular, in the cell frame, then into the arm's frame.
+          const px = -ay / m, py = ax / m;
+          kit.jaw.set(px * c - py * sn, px * sn + py * c, 0);
+          roll(kit.want[arm], kit.jaw);
+        }
+      }
+      const lim = 1.9 * d;
+      for (let i = 0; i < 6; i++) {
+        const e = kit.want[arm][i] - kit.cmd[arm][i];
+        kit.cmd[arm][i] += Math.max(-lim, Math.min(lim, e));
+      }
       /* By name, not by index. The arms carry eight actuators each now -- six
          joints and two fingers -- so arm * 6 + i quietly addressed the wrong
          arm's shoulder the moment the gripper stopped being an adhesion
@@ -266,15 +391,56 @@ export default function SortRig({ stop }) {
       sm.point(arm === 0 ? "l_tcp" : "r_tcp", kit.a);
       const toolZ = kit.a.y - 0.046;
       const want = where[idx].z + TOUCH;
-      kit.trim[arm] = Math.max(-0.02, Math.min(0.09, kit.trim[arm] + (toolZ - want) * d * 1.6));
+      const off = toolZ - want;
+      /* Only correct a standing offset, and only a small one.
+       *
+       * This is an integral term and it wound up. Its job is to take out the
+       * few millimetres of sag a 40 Nm wrist holds a pose with; its range was
+       * 90 mm and it had no gate, so when the arm was merely still on its way
+       * down -- 120 mm of ordinary tracking error -- it read that as sag and
+       * kept winding. At full wind the commanded tool point is 68 mm below
+       * the slab, so the gripper drove into the bench and held there: 0.53 rad
+       * of joint lag on a settled command, which is a saturated servo pushing
+       * against a table. Measured over 220 simulated seconds the cell sorted
+       * none of six tools, and this is why.
+       *
+       * So it winds only inside 25 mm, which is the band a standing offset
+       * lives in, and its range is 30 mm rather than 90. Outside that band
+       * the arm is travelling and there is nothing to integrate.
+       */
+      if (Math.abs(off) < 0.025) {
+        kit.trim[arm] = Math.max(-0.015, Math.min(0.030, kit.trim[arm] + off * d * 1.6));
+      }
     }
 
-    for (const i of [0, 1]) for (let j = 0; j < 6; j++) kit.act[i][j] = sm.qpos[i * 6 + j];
+    /* What each arm is actually holding, read by joint name.
+     *
+     * This was sm.qpos[i * 6 + j], which is the model's qpos laid out six per
+     * arm -- true while a gripper was an adhesion actuator with no joints of
+     * its own, and false the moment each arm grew two finger slides. The
+     * second arm's shoulder moved from 6 to 8, so the right arm was being
+     * drawn from the left arm's fingers and its own first four joints:
+     * measured, it sat 3.5 to 6.0 rad from everything it had been commanded
+     * while the left arm tracked to 0.01, and what was on screen was a
+     * machine flailing next to one that worked.
+     */
+    for (const i of [0, 1]) {
+      const a = i === 0 ? "l" : "r";
+      let worst = 0;
+      for (let j = 0; j < 6; j++) {
+        kit.act[i][j] = sm.jointAt(`${a}_j${j}`);
+        const e = Math.abs(kit.act[i][j] - kit.cmd[i][j]);
+        if (e > worst) worst = e;
+      }
+      kit.lag[i] = worst;
+    }
     SORT.tools.forEach((t, i) => {
       const o = toolRefs.current[i];
       if (o) sm.pose(t.id, o);
     });
-  });
+  }
+
+  useFrame((_, dt) => tick(dt));
 
   const bin = (bx, yy, key, label) => (
     <group key={key} position={toScene(bx, yy, 0)}>

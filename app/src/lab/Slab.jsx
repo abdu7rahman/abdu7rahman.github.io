@@ -18,7 +18,7 @@ export default function Slab() {
     uFloor:   { value: new THREE.Color(P.floor) },
     uLit:     { value: new THREE.Color(P.floorLit) },
     uHazard:  { value: new THREE.Color(P.hazard) },
-    uAir:     { value: new THREE.Color(P.air) },
+    uAir:     { value: new THREE.Color(P.haze) },
     uKey:     { value: new THREE.Vector3(KEY.x, KEY.y, KEY.z).normalize() },
     uEye:     { value: new THREE.Vector3() },
     uPitch:   { value: PITCH },

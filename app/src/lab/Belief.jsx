@@ -65,7 +65,7 @@ export default function Belief() {
     uEye:     { value: new THREE.Vector3() },
     uFogNear: { value: 20 },
     uFogFar:  { value: 78 },
-    uAir:     { value: new THREE.Color(P.air) }
+    uAir:     { value: new THREE.Color(P.haze) }
   }), [all]);
 
   useFrame(({ camera }, dt) => {

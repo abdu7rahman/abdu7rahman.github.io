@@ -113,6 +113,32 @@ export default function RaceRig({ stop }) {
   const acc = useRef(0);
   const mat = useRef();
 
+  /* The line each machine actually took, which is the entire result and was
+   * not on screen.
+   *
+   * Four controllers on one plan separate by centimetres in the corners and
+   * by nothing at all on the straights, and four TurtleBots the size of a
+   * fist crawling round a 2.3 by 2.7 m course at 0.22 m/s is a still
+   * photograph to anybody who looks at it for less than a minute. What is
+   * worth seeing is where they went, not where they are -- so each one draws
+   * its own lap. Pure pursuit cuts inside, Stanley holds the reference, the
+   * sampler bulges wide where there is room, and MPPI rounds the corner
+   * early, and all four of those are visible in one frame the moment the
+   * lines are there.
+   *
+   * One lap each, cleared as the next begins, because a trail that
+   * accumulates becomes four coils of spaghetti and says less than one lap
+   * does.
+   */
+  const TRAIL = 1400;
+  const trails = useMemo(() => kit.runners.map(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL * 3), 3));
+    g.setDrawRange(0, 0);
+    return { geo: g, n: 0, lastX: 1e9, lastY: 1e9 };
+  }), [kit]);
+  useEffect(() => () => trails.forEach(t => t.geo.dispose()), [trails]);
+
   const surface = useMemo(() => {
     const NX = Math.round(COURSE_X / 0.1), NY = Math.round(COURSE_Y / 0.1);
     const t = new THREE.DataTexture(new Uint8Array(NX * NY), NX, NY,
@@ -126,7 +152,7 @@ export default function RaceRig({ stop }) {
       uClosed: { value: new THREE.Color("#1d4f57") },
       uPath: { value: new THREE.Color(P.hazard) },
       uEnds: { value: new THREE.Color(P.ink) },
-      uAir: { value: new THREE.Color(P.air) },
+      uAir: { value: new THREE.Color(P.haze) },
       uFogNear: { value: 20 }, uFogFar: { value: 78 },
       uFade: { value: 1 }, uEye: { value: new THREE.Vector3() }
     };
@@ -146,9 +172,21 @@ export default function RaceRig({ stop }) {
   useEffect(() => register(stop.id, {
     title: "Four controllers, one plan",
     actions: [{ label: "Restart", on: () => reset() }],
-    readout: () => kit.runners.map((r, i) =>
-      [r.name, poses.current[i].travel.toFixed(2) + " m"]),
-    hint: "Distance each has actually driven, not distance along the plan."
+    readout: () => {
+      /* Ordered by how far round they are, which is what a race board says.
+         Laps first, then position along the plan; the distance beside it is
+         each machine's own odometer, so a controller that wandered pays for
+         the wandering. */
+      const N = kit.path.length;
+      const board = kit.runners.map((r, i) => ({
+        name: r.name, q: poses.current[i],
+        at: (poses.current[i].lap || 0) + (poses.current[i].idx || 0) / N
+      })).sort((a, b) => b.at - a.at);
+      return board.map((b, k) =>
+        [(k + 1) + "  " + b.name,
+         "lap " + ((b.q.lap || 0) + 1) + " \u00b7 " + b.q.travel.toFixed(1) + " m"]);
+    },
+    hint: "Each one on its own odometer, and the line it took this lap."
   }), [stop.id, kit]);
 
   function reset() {
@@ -161,6 +199,9 @@ export default function RaceRig({ stop }) {
       q.x = p[k][0]; q.y = p[k][1];
       q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
       q.travel = 0; q.turned = 0; q.v = 0; q.w = 0;
+      q.lap = 0; q.idx = k;
+      const t = trails[i];
+      if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
     });
   }
 
@@ -172,6 +213,7 @@ export default function RaceRig({ stop }) {
     const tick = acc.current >= TICK;
     if (tick) acc.current -= TICK;
 
+    const N = kit.path.length;
     poses.current.forEach((q, i) => {
       if (tick) {
         const [v, w] = kit.runners[i].step([q.x, q.y, q.psi]);
@@ -181,6 +223,30 @@ export default function RaceRig({ stop }) {
       q.x += Math.cos(q.psi) * q.v * d;
       q.y += Math.sin(q.psi) * q.v * d;
       q.travel += Math.abs(q.v) * d;
+
+      /* A lap is the plan's own index wrapping, not a line crossed: the
+         start is an arbitrary node on a closed loop and a finish line at it
+         would be a line four machines cross at four different angles. */
+      const prev = q.idx === undefined ? 0 : q.idx;
+      const [idx] = nearest(kit.path, q.x, q.y);
+      q.idx = idx;
+      const t = trails[i];
+      if (prev > N * 0.75 && idx < N * 0.25) {
+        q.lap = (q.lap || 0) + 1;
+        if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
+      }
+
+      /* One trail point every 12 mm, which is half a per cent of the
+         course's short side -- fine enough that a corner is a curve and
+         coarse enough that a lap fits in the buffer with room to spare. */
+      if (t && Math.hypot(q.x - t.lastX, q.y - t.lastY) > 0.012 && t.n < TRAIL) {
+        const a = t.geo.attributes.position;
+        a.array[t.n * 3] = q.x; a.array[t.n * 3 + 1] = q.y; a.array[t.n * 3 + 2] = 0.006;
+        t.n++;
+        a.needsUpdate = true;
+        t.geo.setDrawRange(0, t.n);
+        t.lastX = q.x; t.lastY = q.y;
+      }
     });
   });
 
@@ -196,6 +262,12 @@ export default function RaceRig({ stop }) {
       <line geometry={planGeo} frustumCulled={false}>
         <lineBasicMaterial color={"#8d8d94"} transparent opacity={0.75} />
       </line>
+
+      {kit.runners.map((r, i) => (
+        <line key={"t" + r.name} geometry={trails[i].geo} frustumCulled={false}>
+          <lineBasicMaterial color={r.col} transparent opacity={0.95} />
+        </line>
+      ))}
 
       {kit.runners.map((r, i) => (
         <group key={r.name} rotation-x={Math.PI / 2}>

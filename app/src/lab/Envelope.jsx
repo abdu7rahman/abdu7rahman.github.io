@@ -154,7 +154,7 @@ export default function Envelope() {
        thin: at 0.16 the volume read as a solid wedge of light rather than as
        something you can see through, which is a fog effect and not a shaft. */
     uGain:    { value: 0.10 },
-    uAir:     { value: new THREE.Color(P.air) },
+    uAir:     { value: new THREE.Color(P.haze) },
     uFogNear: { value: 20 },
     uFogFar:  { value: 78 }
   }), []);

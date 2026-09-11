@@ -181,7 +181,20 @@ export default function Structure() {
       {/* High-bay luminaires on the grid, every other frame, with the lamp
           face emissive so the source is visible as well as its effect. */}
       {bays.filter((_, i) => i % 2 === 0).map((z, i) => (
-        <group key={"l" + i} position={[0, EAVES - 0.75, z]}>
+        <Luminaire key={"l" + i} z={z} />
+      ))}
+    </group>
+  );
+}
+
+/* One fitting, so each can own the object its beam is aimed at -- a spot
+   light needs a target in the scene and sharing one between five would aim
+   them all at the same patch of floor. */
+function Luminaire({ z }) {
+  const aim = useMemo(() => new THREE.Object3D(), []);
+  return (
+    <>
+        <group position={[0, EAVES - 0.75, z]}>
           <mesh castShadow>
             <cylinderGeometry args={[0.46, 0.30, 0.34, 12]} />
             <meshStandardMaterial color={P.steelDk} roughness={0.6} metalness={0.5} />
@@ -190,15 +203,33 @@ export default function Structure() {
             <cylinderGeometry args={[0.30, 0.30, 0.03, 12]} />
             <meshBasicMaterial color={"#ffd9b8"} />
           </mesh>
-          <pointLight
+          {/* A cone rather than a bulb, and the reason is the inverse square.
+           *
+           * These hang at the eaves, 7.65 m over the slab, so a point source
+           * putting a usable 15 on the floor puts 15 times (7.65/0.75)
+           * squared -- about 1,560 -- on the truss chord 0.75 m above it,
+           * and the truss clips to white while the floor is still dim. At
+           * 110 the floor got 1.9, which is to say the lane was lit by the
+           * key light and the daylight pools and these were decoration.
+           *
+           * A high bay fitting is a reflector aimed down. Aimed down, the
+           * chord above it is outside the beam and the floor is inside it,
+           * which is the whole point of a reflector and is why real ones
+           * have them. 0.85 rad is a 97 degree beam, which throws a 17 m
+           * pool -- wider than the 14.4 m between fittings, so they overlap
+           * rather than leaving scallops of dark between them. */}
+          <primitive object={aim} position={[0, -7.2, 0]} />
+          <spotLight
             position={[0, -0.4, 0]}
+            target={aim}
             color={"#ffcfa8"}
-            intensity={110}
-            distance={34}
+            intensity={760}
+            angle={0.85}
+            penumbra={0.55}
+            distance={26}
             decay={2}
           />
         </group>
-      ))}
-    </group>
+    </>
   );
 }

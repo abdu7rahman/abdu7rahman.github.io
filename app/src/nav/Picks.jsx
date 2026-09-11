@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { STOPS, PITCH, AISLE } from "../lib/plan.js";
@@ -86,6 +86,16 @@ function Tag({ stop, index, seen, open }) {
 export default function Picks() {
   const j = useSyncExternalStore(journey.subscribe, journey.get);
   const open = j.phase === "choosing" || j.phase === "greeting";
+  /* Held for a moment after the choice so they can fade rather than vanish,
+     and then gone from the scene entirely -- a tag hanging in the lane at
+     zero opacity is still the first thing a ray from the camera meets. */
+  const [alive, setAlive] = useState(open);
+  useEffect(() => {
+    if (open) { setAlive(true); return; }
+    const t = setTimeout(() => setAlive(false), 900);
+    return () => clearTimeout(t);
+  }, [open]);
+  if (!alive) return null;
   return (
     <group>
       {RIGS.map(s => (

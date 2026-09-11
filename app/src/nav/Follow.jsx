@@ -73,6 +73,13 @@ export default function Follow() {
     map = grid;
     SHOTS.clear();
     for (const s of STOPS) SHOTS.set(s.id, standFor(grid, s));
+    /* Reachable from outside: a probe that wants to put the guide at a
+       station has to know where the station's standing spot is, and
+       recomputing it in the probe is a second answer that can disagree. */
+    if (typeof window !== "undefined") {
+      if (!window.__lab) window.__lab = {};
+      window.__lab.shots = SHOTS;
+    }
   }), []);
   const look = useRef(new THREE.Vector3(0, 1.3, -4));
   const fov = useRef(52);
@@ -188,8 +195,23 @@ export default function Follow() {
     look.current.lerp(_look, k);
     camera.lookAt(look.current);
     fov.current += (wantFov - fov.current) * k;
-    if (Math.abs(camera.fov - fov.current) > 0.01) {
-      camera.fov = fov.current;
+    /* Every shot above is framed for a landscape frame, and three's fov is
+     * the vertical one -- so on a phone held upright the same number is a
+     * much narrower picture sideways. At 390 by 840 the aspect is 0.46, and
+     * the 46 degree lens the two-shot asks for covers 22 degrees across:
+     * the guide is in frame and the cell it is standing in front of is not.
+     *
+     * So the number the shots name is treated as the horizontal coverage it
+     * gives on the 1.6 aspect they were composed at, and the vertical fov is
+     * whatever delivers that on the frame actually being drawn. Capped,
+     * because past about 78 degrees the correction stops being a wider shot
+     * and starts being a fisheye.
+     */
+    const a = Math.max(0.35, camera.aspect);
+    const wantX = 2 * Math.atan(Math.tan(fov.current * Math.PI / 360) * 1.6);
+    const fovY = Math.min(78, 2 * Math.atan(Math.tan(wantX / 2) / a) * 180 / Math.PI);
+    if (Math.abs(camera.fov - fovY) > 0.02) {
+      camera.fov = fovY;
       camera.updateProjectionMatrix();
     }
     first.current = false;

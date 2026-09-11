@@ -126,26 +126,66 @@ function Shell({ side, deep }) {
           color={"#171a1f"} roughness={0.08} metalness={0.25}
           transparent opacity={0.42} side={THREE.DoubleSide} />
       </mesh>
-      {/* Two soft sources per room, high and wide, so a room reads as lit
-          rather than as spotlit. No shadow map: seven cells already cast and
-          the shadow budget is spent where machines are.
-
-          Over the mouth rather than over the middle, and that is the whole
-          difference between this and a blown highlight. A lamp with decay 2
-          hung 0.4 m above the top beam of a rack puts something like 24 on
-          it against the 8.75 a cell's task light puts on its bench, so the
-          stock clipped, the bright pass found it, and an archive read as a
-          light box with shelves in front of it. Moved to the aisle side and
-          up under the truss, the same fitting reaches the top beam at about
-          4.9 m and the floor at the back at about 6.3 m -- roughly 5.5 and
-          3.2, which is a lit room with the near half brighter than the far
-          half, which is what a room lit from its opening looks like. */}
-      <pointLight position={[s * 4.6, 4.4, deep / 4]} color={"#ffe6cc"}
-        intensity={130} distance={22} decay={2} />
-      <pointLight position={[s * 4.6, 4.4, -deep / 4]} color={"#ffe6cc"}
-        intensity={130} distance={22} decay={2} />
+      {/* Fittings, and then the light out of them.
+       *
+       * Every room in this building was measurably darker than every cell in
+       * it, and not by a little: screenshotting all thirteen stations and
+       * taking the mean luminance of the render, the six rooms came in at
+       * 30.6 to 59.5 and the seven cells at 70.8 to 87.3 -- two clean bands
+       * with nothing between them. Metrology and service history were 77 per
+       * cent pixels below 24 of 255. A room you are walked into to read
+       * something should not be the dimmest thing in the place.
+       *
+       * The fix is fittings rather than a brighter invisible lamp. A cell
+       * reads as lit because it has a task light hanging over the bench that
+       * you can see; a room had two point sources in mid air and nothing to
+       * say where the light was coming from. These are the same suspended
+       * linear luminaires the lane carries, hung at 3.0 m, and they do two
+       * jobs at once: they are bright geometry in shot, and they are where
+       * the lamps now hang.
+       *
+       * The lamps moved as well. At 4.6 m off the centre line -- near the
+       * mouth -- a decay-2 source reaches the back wall 6.2 m away at about
+       * 3.4, which is nothing. Over the middle of the room at 7.0 the same
+       * fitting is 3.8 m off the back wall and 3.6 off the floor, which is
+       * four times the light on both for the same lamp.
+       */}
+      {LAMPS(deep).map((lz, i) => (
+        <group key={i} position={[s * 7.0, 3.02, lz]}>
+          <mesh castShadow>
+            <boxGeometry args={[2.9, 0.10, 0.17]} />
+            <meshStandardMaterial color={P.steel} roughness={0.6} metalness={0.55} />
+          </mesh>
+          {/* The tube. Emissive costs nothing per fragment and is most of
+              what makes a fitting read as switched on. */}
+          <mesh position={[0, -0.058, 0]}>
+            <boxGeometry args={[2.74, 0.025, 0.125]} />
+            <meshStandardMaterial color={"#fff3e0"} emissive={"#ffe9cf"}
+              emissiveIntensity={2.1} toneMapped={false} />
+          </mesh>
+          {/* Two stems, because a fitting that floats is a rectangle. */}
+          {[-1, 1].map(k => (
+            <mesh key={k} position={[k * 1.15, 0.20, 0]}>
+              <cylinderGeometry args={[0.012, 0.012, 0.40, 6]} />
+              <meshStandardMaterial color={P.steel} roughness={0.5} metalness={0.7} />
+            </mesh>
+          ))}
+          <pointLight position={[0, -0.22, 0]} color={"#ffe6cc"}
+            intensity={205} distance={17} decay={2} />
+        </group>
+      ))}
     </group>
   );
+}
+
+/* Where the fittings hang along a room's depth. One every 3.5 m or so, which
+   for a 7.0 m room is two and for the 12.0 m entrance is three -- the same
+   spacing, rather than the same count in a room nearly twice as long. */
+function LAMPS(deep) {
+  const n = Math.max(2, Math.round(deep / 3.6));
+  const out = [];
+  for (let i = 0; i < n; i++) out.push((i - (n - 1) / 2) * (deep / n));
+  return out;
 }
 
 /* Racking, which was a stack of floating slabs.

@@ -99,6 +99,7 @@ export default function ForeseeRig({ stop }) {
   const obs = useRef(new THREE.Vector3(0.45, 0.0, 0.55));
   const held = useRef(99);
   const ball = useRef();
+  const over = useRef(false);
   const mat = useRef();
 
   /* The plan is drawn as a tube and not as a line, because WebGL ignores
@@ -173,12 +174,16 @@ export default function ForeseeRig({ stop }) {
     const d = Math.min(0.1, dt);
     if (!isRunning(stop.id)) return;
     if (!painted.current && tube.current) { paintPlan(); painted.current = true; }
-    held.current += d;
+    /* Drifts when nobody is pointing at it, and "nobody is pointing at it"
+       means the cursor has left the cell -- not that it has stopped moving.
+       Holding the pointer over one spot to keep the arm blocked and watching
+       the ball wander off after a second and a half is the whole of the
+       complaint that the cursor does not control it. */
+    if (!over.current) held.current += d; else held.current = 0;
 
-    // The obstacle drifts when nobody is pointing at it. Through the
-    // workspace rather than around its edge, or it would never block
-    // anything and the bay would never do the thing it is named after.
-    if (held.current > 1.5) {
+    // Through the workspace rather than around its edge, or it would never
+    // block anything and the bay would never do the thing it is named after.
+    if (held.current > 1.2) {
       const t = clock.elapsedTime * 0.55;
       obs.current.set(0.30 + 0.26 * Math.cos(t), 0.30 * Math.sin(t * 0.8),
                       0.62 + 0.20 * Math.sin(t));
@@ -311,6 +316,7 @@ export default function ForeseeRig({ stop }) {
             visible false still takes pointer events -- what it must not do
             is draw. */}
         <mesh
+          name={"pad-" + stop.id}
           visible={false}
           position={[0.34, 0, 0.62]}
           rotation-x={Math.PI / 2}
@@ -318,8 +324,21 @@ export default function ForeseeRig({ stop }) {
             e.stopPropagation();
             const p = e.object.worldToLocal(e.point.clone());
             obs.current.set(0.34 + p.y * 0.0, p.x, 0.62 - p.y);
+            over.current = true;
             held.current = 0;
           }}
+          /* A click on the course is a click on the course.
+             
+             R3F walks the ray and delivers a click to the first object that
+             has a handler for one -- so a pad carrying only pointer-move
+             handlers is transparent to clicks, and the next thing along the
+             ray from the bench is the monitor standing behind it, whose click
+             opens the cell full screen. Measured: clicking the middle of the
+             terrain course put a scrim over the whole page. Stopping it here
+             costs nothing and is what "this surface is the control" means. */
+          onClick={(e) => e.stopPropagation()}
+          onPointerOver={() => { over.current = true; held.current = 0; }}
+          onPointerOut={() => { over.current = false; }}
         >
           <planeGeometry args={[1.5, 1.4]} />
           <meshBasicMaterial />
