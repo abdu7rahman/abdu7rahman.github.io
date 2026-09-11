@@ -4,6 +4,7 @@ import * as THREE from "three";
 import Slab from "./lab/Slab.jsx";
 import Structure from "./lab/Structure.jsx";
 import KeyLight from "./lab/KeyLight.jsx";
+import Governor from "./lab/Governor.jsx";
 import Guarding from "./lab/Guarding.jsx";
 import Catwalk from "./lab/Catwalk.jsx";
 import Clutter from "./lab/Clutter.jsx";
@@ -72,6 +73,10 @@ export default function App() {
       >
         {/* Almost nothing ambient. The brief asked for harder light and the
             way to get it is to refuse to fill the shadows. */}
+        {/* Resolution follows the measured frame rate from here on; the
+            tier above is only the opening guess. */}
+        <Governor cap={quality.dpr} />
+
         <ambientLight intensity={0.16} color={"#6d6a66"} />
         {/* The key. Its box follows the visitor rather than sitting on the
             origin -- see lab/KeyLight.jsx for what that was costing and what
