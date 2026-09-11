@@ -133,13 +133,28 @@ export class Sim {
      something else in the simulation's frame, and converting and converting
      back is where sign errors come from. k is 0, 1 or 2 for the body's local
      x, y or z. */
+  /* One of a body's own axes, in the same frame `point` returns positions in.
+   *
+   * It used to hand back MuJoCo's frame while `point` handed back three's,
+   * which is a trap rather than a choice: the two are read together, they
+   * look alike, and nothing about a Vector3 says which way is up. It cost
+   * this project the sorting cell. The gripper's jaw is turned across a tool
+   * by reading the tool's long axis from here, and a z-up direction read as
+   * if it were y-up makes a horizontal axis look like (x, 0, 0) whatever its
+   * yaw -- so the jaw was turned to a fixed heading, 23 degrees off for the
+   * first wrench, and one pad came down on the tool instead of beside it.
+   * Everything after that was the cell failing to pick anything up.
+   *
+   * Both callers were written expecting three's frame. This is the answer
+   * they were written for. */
   dir(name, k, out) {
     const i = this.bodyId(name);
     const xq = this.data.xquat;
     _q.set(xq[i * 4 + 1], xq[i * 4 + 2], xq[i * 4 + 3], xq[i * 4]);
     return (out || new THREE.Vector3())
       .set(k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0)
-      .applyQuaternion(_q);
+      .applyQuaternion(_q)
+      .applyQuaternion(ZUP);
   }
 
   /* The same read, as a point, for anything that wants where a tool is

@@ -256,7 +256,17 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       { id: 'space', how: 'drag',  what: 'the search grid takes walls' },
       { id: 'drive', how: 'hover', what: 'the drive goal follows the cursor' },
       { id: 'race',  how: 'wait',  what: 'the race runs' },
-      { id: 'reach', how: 'wait',  what: 'the envelope fills' },
+      /* The one cell that can finish. The reach rig sweeps a fixed 70,000
+         samples and then stops, so once it is full its readout never changes
+         again and "did anything move" can only fail -- which is the suite
+         asking the wrong question of a demo that has done its work. Whether
+         it filled while this watched or had filled already, a full envelope
+         is the thing this case is about. */
+      { id: 'reach', how: 'wait',  what: 'the envelope fills',
+        done: rows => {
+          const num = r => (String(r).match(/[\d,]+/) || [''])[0].replace(/,/g, '');
+          return rows.length > 1 && num(rows[0]) !== '' && num(rows[0]) === num(rows[1]);
+        } },
       { id: 'foresee', how: 'hover', what: 'the replanner sees your hand' },
       { id: 'terrain', how: 'click', what: 'the quadruped takes a goal' },
       { id: 'assemble', how: 'wait', what: 'the sorting cell is running' }
@@ -314,8 +324,10 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
         await pg.waitForTimeout(1500);
         after = await rows();
         if (before.length > 0 && after.some((r, k) => r !== before[k])) break;
+        if (c.done && c.done(after)) break;
       }
-      const moved = before.length > 0 && after.some((r, i) => r !== before[i]);
+      const moved = (before.length > 0 && after.some((r, i) => r !== before[i]))
+                    || (!!c.done && c.done(after));
       const j2 = await J();
       ok(c.what, moved, (before[0] || '(no readout)') + '  ->  ' + (after[0] || '(none)') +
          (moved ? '' : '   [phase ' + j2.phase + ', at ' + j2.at + ', target ' + j2.target + ']'));

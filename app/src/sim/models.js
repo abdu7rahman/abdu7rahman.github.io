@@ -160,7 +160,25 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
      datasheet this project cannot check. The first three carry the arm and
      the last three carry a wrist, which is why they differ by a factor of six.
   */
-  const kp = [4200, 4200, 2600, 900, 700, 500];
+  /* Stiffer by three, and the torque ceilings do not move with it.
+   *
+   * A position servo's standing error is whatever torque it has to hold
+   * divided by its gain, so an arm reaching out over a bench sags by exactly
+   * as much as it is soft. Measured on this cell at the old gains, the
+   * settled joint error was 0.057 rad at the shoulder and 0.046 at the wrist
+   * -- about 40 mm at the tool point, against a gripper that only clears the
+   * work it is reaching for by 33. So a jaw pad came down on the tool rather
+   * than beside it, every time, and nothing downstream could recover.
+   *
+   * Tripling the gain divides that error by three. It asks for no more force:
+   * the torque needed to hold the arm up is a property of the arm and the
+   * pose, and what changes is only how much error the servo needs to produce
+   * it. The ceilings stay where they are, which is what keeps a blocked arm
+   * from pushing through a bench. dampratio holds at 1, so it is still
+   * critically damped, and the integrator was already implicitfast for
+   * exactly this case -- the model's own note says stiff position servos are
+   * what explicit Euler loses. */
+  const kp = [12600, 12600, 7800, 2700, 2100, 1500];
   const fr = [330, 330, 180, 56, 56, 56];
   let act = "";
   for (let i = 0; i < 6; i++) {
