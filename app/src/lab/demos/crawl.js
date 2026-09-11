@@ -8,14 +8,34 @@
  * to cross this ground -- untestable, because nothing was crossing anything.
  *
  * So the dog is twelve joints on MuJoCo now, and this is what drives them.
- * It is the ordinary heuristic thing: a phase clock, one leg up at a time,
- * feet placed by Raibert's rule and swung on an arc. No learning, no
- * optimisation, nothing from a paper this project has not read. It is also
- * not a good controller -- a good one solves for ground reaction forces and
- * this one does not -- and the honest description of what it buys is that
- * the robot's feet are on the terrain and its body is wherever those feet
- * leave it. It gets about four fifths of the speed it is asked for, which
- * is what the path follower's own loop is for.
+ * It is in two halves. step() is the ordinary heuristic gait -- a phase
+ * clock, one leg up at a time, feet placed by Raibert's rule and swung on an
+ * arc -- and decides where the feet should be. control() decides what the
+ * legs push with, which is the half a position servo cannot express: the
+ * torques that produce a wanted force at the foot are the leg Jacobian
+ * transposed times that force, a statement about three joints at once and
+ * not about any one joint's angle.
+ *
+ * The second half was written after the first shipped, because the first was
+ * measured to be at its limit and saying so was not the same as fixing it.
+ * Both laws, over the same model with the same contacts and the same path
+ * follower, across the cost bay's four planned paths:
+ *
+ *   law              start     arrived   worst trunk tilt
+ *   joint servo      aligned     4/4          40 deg
+ *   joint servo      cold        3/4          55, and one on its side
+ *   wrench           aligned     4/4          29
+ *   wrench           cold        4/4          31
+ *
+ * "Cold" is the machine facing along +x whatever its path does, which is the
+ * condition a reader creates every time they move the goal. The servo can
+ * get there when it starts pointed the right way; it cannot hold the body
+ * anywhere near as level doing it, and it falls over when it has to turn
+ * first. That is what force authority buys and it is worth being precise
+ * that it is not the difference between working and not.
+ *
+ * No learning, no optimisation, nothing from a paper this project has not
+ * read.
  *
  * Every length here is Unitree's, read off go2_description and identical to
  * the ones lab/Go2.jsx draws from. Nothing is estimated.
@@ -100,6 +120,31 @@ export function legFK(leg, q1, q2, q3, out) {
   return out;
 }
 
+/* The leg Jacobian: how the foot moves, in the hip frame, per radian of each
+ * of the three joints. Row major, rows x y z, columns q1 q2 q3.
+ *
+ * Analytic rather than numerical, because it is wanted at every tick for
+ * every leg and because differencing legFK would cost three extra solves to
+ * get a worse answer. It comes straight off the forward kinematics above:
+ * the thigh and calf both turn about y so nothing past the hip roll moves
+ * the foot in x except through those two, and the roll then carries whatever
+ * that gives into y and z.
+ */
+export function legJ(leg, q1, q2, q3, out) {
+  const l1 = ABD * SIDE[leg];
+  const s1 = Math.sin(q1), c1 = Math.cos(q1);
+  const s2 = Math.sin(q2), c2 = Math.cos(q2);
+  const s23 = Math.sin(q2 + q3), c23 = Math.cos(q2 + q3);
+  const x = -THIGH * s2 - CALF * s23;        // foot x in the hip frame
+  const zp = -THIGH * c2 - CALF * c23;       // and its depth in the leg plane
+  const dzp2 = THIGH * s2 + CALF * s23;      // d(zp)/dq2, which is -x
+  const dzp3 = CALF * s23;
+  out[0] = 0;               out[1] = zp;          out[2] = -CALF * c23;
+  out[3] = -s1 * l1 - c1 * zp; out[4] = -s1 * dzp2;  out[5] = -s1 * dzp3;
+  out[6] = c1 * l1 - s1 * zp;  out[7] = c1 * dzp2;   out[8] = c1 * dzp3;
+  return out;
+}
+
 /* The gait.
  *
  * State is four foot targets, a phase clock, and nothing else. Every tick:
@@ -153,7 +198,40 @@ export class Crawl {
     this.duty = opts.duty ?? 0.75;        // fraction of it a leg spends down
     this.lift = opts.lift ?? 0.07;        // how high a swing foot comes up
     this.height = opts.height ?? STAND;   // trunk above the ground beneath it
+    /* Joint gains, for the part of the torque that tracks the kinematics
+       above. Softer on a leg that is holding the trunk up than on one that
+       is swinging: a stance leg's job is done by the wrench below and a stiff
+       servo on top of it only fights it, while a swing leg has nothing but
+       this to get the foot where it is going. */
+    this.kpSwing = opts.kpSwing ?? 90;
+    this.kdSwing = opts.kdSwing ?? 2.5;
+    this.kpStance = opts.kpStance ?? 60;
+    this.kdStance = opts.kdStance ?? 1.2;
+    /* And the trunk's own gains: what wrench to ask the stance feet for so
+       the body holds its height, lies along the ground it is on, and travels
+       at the speed it was told to. Mass is the model's own 6.921 kg trunk
+       plus the twelve links, which is what the legs are actually holding. */
+    this.mass = opts.mass ?? 15.2;
+    this.kzP = opts.kzP ?? 900;
+    this.kzD = opts.kzD ?? 120;
+    this.krP = opts.krP ?? 180;
+    this.krD = opts.krD ?? 18;
+    this.kxD = opts.kxD ?? 90;
+    this.kyawD = opts.kyawD ?? 120;
+    this.mu = opts.mu ?? 0.7;      // friction cone the wrench stays inside
+    /* The least a foot that is down may be asked to carry.
+     *
+     * Without it the cone above is worse than nothing: the roll and pitch
+     * terms can drive one foot's share of the vertical force to near zero,
+     * its tangential limit is a fraction of that, and the foot loses all
+     * drive and steering authority at exactly the moment the body is leaning
+     * on the other two. Measured over the cost bay's four paths -- cone off
+     * 4 of 4, cone on with no floor 2 of 4, cone on with this floor 4 of 4.
+     * Eight newtons is about a twentieth of the robot's weight, which is
+     * less than a foot resting on the ground already carries. */
+    this.fzMin = opts.fzMin ?? 8;
     this.phase = 0;
+    this.roll0 = 0; this.pitch0 = 0;
     /* Foot targets and lift-off points, in the body frame: x forward, y
        left, both measured from the trunk origin. */
     this.foot = {}; this.from = {}; this.down = {};
@@ -163,7 +241,9 @@ export class Crawl {
       this.down[k] = true;
     }
     this.q = new Float64Array(12);
+    this.tau = new Float64Array(12);
     this._t = [0, 0, 0];
+    this._J = new Float64Array(9);
     this._gz = { FL: 0, FR: 0, RL: 0, RR: 0 };
   }
 
@@ -293,6 +373,17 @@ export class Crawl {
      * forces rather than with this one. Taken out rather than left in at a
      * gain of zero, because a constant nobody may move is not an option.
      */
+    /* The attitude the ground itself asks for, from the heights this tick
+       already looked up. The trunk should lie along the plane through its own
+       four feet, not level -- holding level on the 23 degree grade this bay's
+       terrain reaches would cost 0.16 m of differential leg length, which is
+       all the travel these legs have. Read by control() as the reference its
+       roll and pitch terms work against. */
+    const gzF = (this._gz.FL + this._gz.FR) / 2, gzR = (this._gz.RL + this._gz.RR) / 2;
+    const gzL = (this._gz.FL + this._gz.RL) / 2, gzRt = (this._gz.FR + this._gz.RR) / 2;
+    this.pitch0 = -(gzF - gzR) / (2 * HIP.FL[0]);
+    this.roll0 = (gzL - gzRt) / (2 * (HIP.FL[1] + ABD));
+
     for (const k of LEGS) {
       const f = this.foot[k];
       const [hx, hy] = HIP[k];
@@ -303,5 +394,107 @@ export class Crawl {
       }
     }
     return this.q;
+  }
+
+  /* The twelve torques, which is where the force authority lives.
+   *
+   * Everything above this decides where the feet should be. This decides
+   * what the legs push with to get them there and to keep the trunk over
+   * them, and it is the half that a position servo could not express: the
+   * torques that produce a wanted force at the foot are the leg Jacobian
+   * transposed times that force, which is a statement about three joints at
+   * once and not about any one joint's angle.
+   *
+   * Two terms per leg. A joint PD toward the kinematic target, soft on a
+   * stance leg and stiff on a swing one. And, for the legs that are down, a
+   * share of a wrench on the trunk: enough vertical force to carry the
+   * weight, a roll and pitch moment that holds the body along the ground it
+   * is standing on, and a horizontal force that pushes it at the speed it
+   * was asked for. The share is worked out about the centroid of the feet
+   * that are down rather than about the trunk origin, so the vertical
+   * corrections sum to zero and the total force is exactly what was asked
+   * for however the three feet happen to be arranged.
+   *
+   * `q` and `qd` are the twelve measured joint angles and rates in FL FR RL
+   * RR order; `at` is the measured trunk pose and its velocity.
+   */
+  control(q, qd, at, cmd) {
+    const tau = this.tau;
+
+    // What the trunk wants, in its own yaw-aligned frame.
+    const dz = (this.height + (at.ground ?? 0)) - at.z;
+    let Fz = this.mass * 9.81 + this.kzP * dz - this.kzD * (at.vz || 0);
+    if (Fz < 0) Fz = 0;                 // a leg can push, it cannot pull
+    const cy = Math.cos(at.yaw), sy = Math.sin(at.yaw);
+    const vbx = (at.vx || 0) * cy + (at.vy || 0) * sy;
+    const vby = -(at.vx || 0) * sy + (at.vy || 0) * cy;
+    const Fx = this.kxD * (cmd.v - vbx);
+    const Fy = this.kxD * (0 - vby);
+    const Mx = this.krP * (this.roll0 - (at.roll || 0)) - this.krD * (at.wx || 0);
+    const My = this.krP * (this.pitch0 - (at.pitch || 0)) - this.krD * (at.wy || 0);
+    const Mz = this.kyawD * (cmd.w - (at.wz || 0));
+
+    // The feet that are carrying, and where they are about their own centre.
+    let n = 0, mx = 0, my = 0;
+    for (const k of LEGS) if (this.down[k]) { mx += this.foot[k][0]; my += this.foot[k][1]; n++; }
+    if (n) { mx /= n; my /= n; }
+    let Sxx = 0, Syy = 0;
+    for (const k of LEGS) if (this.down[k]) {
+      const ax = this.foot[k][0] - mx, ay = this.foot[k][1] - my;
+      Sxx += ax * ax; Syy += ay * ay;
+    }
+    if (Sxx < 1e-6) Sxx = 1e-6;
+    if (Syy < 1e-6) Syy = 1e-6;
+
+    for (const k of LEGS) {
+      const i = LEGS.indexOf(k) * 3;
+      const down = this.down[k];
+      const kp = down ? this.kpStance : this.kpSwing;
+      const kd = down ? this.kdStance : this.kdSwing;
+      for (let j = 0; j < 3; j++) {
+        tau[i + j] = kp * (this.q[i + j] - q[i + j]) - kd * qd[i + j];
+      }
+      if (!down || !n) continue;
+
+      const ax = this.foot[k][0] - mx, ay = this.foot[k][1] - my;
+      /* A vertical force at (ax, ay) makes a moment (ay*fz, -ax*fz), so the
+         roll term is carried by the spread in y and the pitch term by the
+         spread in x. Both corrections sum to zero over the stance feet. */
+      let fz = Fz / n + (Mx * ay) / Syy - (My * ax) / Sxx;
+      if (fz < this.fzMin) fz = this.fzMin;
+      let fx = Fx / n - (Mz * ay) / (Sxx + Syy);
+      let fy = Fy / n + (Mz * ax) / (Sxx + Syy);
+
+      /* The friction cone, which is the difference between a wrench and a
+       * wish. A foot can only push sideways as hard as it is pressed down,
+       * times the coefficient between it and the ground, and asking for more
+       * does not produce more -- it produces a slip, and a leg that is
+       * sliding is a leg that is neither carrying nor steering.
+       *
+       * It was not here at first and the yaw term is what found it. A cold
+       * start with the machine facing 45 degrees off its path asks for a
+       * yaw moment of about 96 Nm, which over a stance this size comes out
+       * at roughly 80 N of sideways force per foot against the 40 N or so
+       * that 150 N of weight at mu 0.8 can actually hold. The dog stood
+       * still for ninety seconds turning its feet against the ground.
+       *
+       * 0.7 rather than the foot's own 0.8, so the commanded force stays
+       * inside the cone rather than on it. */
+      const lim = this.mu * fz;
+      const mag = Math.hypot(fx, fy);
+      if (mag > lim && mag > 1e-6) { const k2 = lim / mag; fx *= k2; fy *= k2; }
+
+      /* Into the hip frame and through the Jacobian. The force here is the
+         one the ground pushes back with, so the leg has to push the other
+         way, which is the minus. Checked by standing the model on gravity
+         compensation alone: with this sign it holds its height, and with the
+         other it drives itself into the floor within a step. */
+      legJ(k, q[i], q[i + 1], q[i + 2], this._J);
+      const J = this._J;
+      tau[i]     -= J[0] * fx + J[3] * fy + J[6] * fz;
+      tau[i + 1] -= J[1] * fx + J[4] * fy + J[7] * fz;
+      tau[i + 2] -= J[2] * fx + J[5] * fy + J[8] * fz;
+    }
+    return tau;
   }
 }

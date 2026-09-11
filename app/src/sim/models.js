@@ -605,7 +605,7 @@ function go2Leg(name, k) {
     </body>`;
 }
 
-export function go2(name, { pos = [0, 0], z = GO2.stand, yaw = 0, kp = 400, kv = 10 } = {}) {
+export function go2(name, { pos = [0, 0], z = GO2.stand, yaw = 0 } = {}) {
   const body = `<body name="${name}" pos="${f(pos[0])} ${f(pos[1])} ${f(z)}"
       euler="0 0 ${f(yaw)}">
       <inertial pos="0.021112 0 -0.005366" quat="-0.000543471 0.713435 -0.00173769 0.700719"
@@ -615,15 +615,22 @@ export function go2(name, { pos = [0, 0], z = GO2.stand, yaw = 0, kp = 400, kv =
             friction="0.6" margin="0.001" condim="1" rgba="0 0 0 0"/>
       ${LEGS.map(k => go2Leg(name, k)).join("")}
     </body>`;
-  /* FL FR RL RR, hip thigh calf, which is the order demos/crawl.js writes its
-     twelve angles in and the order the menagerie's keyframe uses. */
+  /* Torque motors, which is what Unitree ships and what the menagerie's own
+     model uses, rather than the position servos this started with.
+   *
+   * A position servo can only ever pull a joint toward an angle. A leg that
+   * has to hold a trunk level against a slope, or catch it when something
+   * shoves it, needs to apply a force at the foot -- and the torques that
+   * make a given foot force are the leg Jacobian transposed times that
+   * force, which is not something a per-joint angle command can express.
+   * demos/crawl.js computes the twelve torques; this is the actuator that
+   * takes them. The ctrl ranges are the published ones, so the thing that
+   * cannot be exceeded is still what Unitree says cannot be exceeded. */
   const act = LEGS.map(k => `
-    <position name="${name}_${k}_hip" joint="${name}_${k}_hip" kp="${kp}" kv="${kv}"
-      forcerange="-23.7 23.7"/>
-    <position name="${name}_${k}_thigh" joint="${name}_${k}_thigh" kp="${kp}" kv="${kv}"
-      forcerange="-23.7 23.7"/>
-    <position name="${name}_${k}_calf" joint="${name}_${k}_calf" kp="${kp}" kv="${kv}"
-      forcerange="-45.43 45.43"/>`).join("");
+    <motor name="${name}_${k}_hip" joint="${name}_${k}_hip" ctrlrange="-23.7 23.7"/>
+    <motor name="${name}_${k}_thigh" joint="${name}_${k}_thigh" ctrlrange="-23.7 23.7"/>
+    <motor name="${name}_${k}_calf" joint="${name}_${k}_calf" ctrlrange="-45.43 45.43"/>`
+  ).join("");
   return { body, act };
 }
 

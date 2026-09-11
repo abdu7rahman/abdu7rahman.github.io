@@ -43,27 +43,30 @@ import { WORK } from "../lib/plan.js";
  * wherever its feet leave it.
  *
  * Walking all four of its own planned paths in a browser, on the ground the
- * planners read, it crosses every one of them without falling: 11 to 13
- * seconds each, worst trunk tilt anywhere on any of them 2.7 degrees.
+ * planners read, it crosses every one of them without falling: 25 to 42
+ * seconds each, worst trunk tilt anywhere on any of them 7.6 degrees.
  *
- * Two of those degrees were bought rather than found, and both fixes are
- * below: the pursuit works in arc length from the nearest node ahead rather
- * than advancing a node index, and the ground is sampled the way MuJoCo
- * triangulates a height field rather than bilinearly. Before them the same
- * four paths cost up to 15.3 degrees, and the ridge path took 28 seconds
- * against the 10 the flattest one did -- which read like the bay's own
- * result and was mostly the controller fighting itself. It is worth being
- * careful about that: the honest version of this bay's claim is the climb in
- * the readout, which is measured off the height field, and not a tilt number
- * that moves when the path follower is fixed.
+ * That tilt is higher than the joint-servo version this replaced managed on
+ * these same four, which held 2.7 -- and it is the right trade rather than a
+ * regression. A servo stiff enough to hold a trunk to 2.7 degrees over easy
+ * ground is the same servo that cannot hold it at all over hard ground: on
+ * the harder pair of ends tools/test_crawl.mjs drives, it reached 40 degrees
+ * where the wrench reached 29, and fell over outright when it had to turn
+ * before setting off. Seven degrees of body roll on a walking quadruped is
+ * also what a walking quadruped does.
  *
- * What the dog cannot do is on record too. Driven corner to corner across
- * the same ground by tools/test_crawl.mjs, which is a harder pair of ends
- * than the cell itself ever picks, it crosses 3 of 4. Which one fails moves
- * with any parameter touched -- trunk height, command speed, a body shift --
- * and none of those sweeps came out monotone, so it is a controller at its
- * margin rather than one that is mistuned. Fixing it properly means solving
- * for contact forces, which is a different piece of work.
+ * It is worth being careful about which number this bay is actually for.
+ * The climb in the readout is measured off the height field and is the
+ * comparison the four cost functions exist to make. Trunk tilt is a property
+ * of the controller, it moved by a factor of five when the path follower was
+ * fixed and again when the actuators changed, and it is not evidence about
+ * cost functions at all.
+ *
+ * Driven corner to corner by tools/test_crawl.mjs, which picks a harder
+ * pair of ends than the cell ever does, it crosses 4 of 4 -- and does it
+ * from a cold start, facing the wrong way, which is what a reader makes
+ * every time they move the goal. Getting there took force control rather
+ * than tuning: see demos/crawl.js for the two laws measured side by side.
  *
  * The goal is the cursor, which is what the written section says it is.
  */
@@ -88,7 +91,14 @@ const TUBE_R = 0.009;
    of turning. The path follower closes on the measured pose, so what these
    cost is time and not accuracy. */
 const WALK = 0.30;              // metres per second asked of the gait
-const TURN = 0.4;               // and radians per second
+const TURN = 0.8;               // and radians per second
+/* How fast the commanded speed falls off with heading error. At 1.4 rad the
+   machine still carries 0.15 m/s into a 40 degree error, which at a 0.8 rad/s
+   turn is a 0.4 m radius -- wider than the lookahead, so it orbits the target
+   instead of reaching it. Measured, two of the four paths did exactly that,
+   4 per cent along after 90 seconds and 13 m of walking. At 0.7 it stops and
+   turns. */
+const FALLOFF = 0.7;
 const LOOK = 0.30;              // pure pursuit lookahead, metres
 /* How far ahead the nearest-node search may look, in nodes. Unbounded, it
    can teleport: a path that comes back near its own start has a late node
@@ -253,6 +263,10 @@ export default function TerrainRig({ stop }) {
      the simulation rather than the command. */
   const joints = useRef(new Float64Array(12));
   const _acc = useRef(0);
+  /* Scratch for the controller, so a 500 Hz inner loop allocates nothing. */
+  const _jq = useMemo(() => new Float64Array(12), []);
+  const _jqd = useMemo(() => new Float64Array(12), []);
+  const _at = useMemo(() => ({}), []);
 
   function solve() {
     const gi = Math.max(1, Math.min(NX - 2,
@@ -477,10 +491,17 @@ export default function TerrainRig({ stop }) {
     const path = w.path;
     const a = sm.jointAdr("dog_free"), q = sm.qpos;
     const qw = q[a.q + 3], qx = q[a.q + 4], qy = q[a.q + 5], qz = q[a.q + 6];
-    const at = {
-      x: q[a.q], y: q[a.q + 1], z: q[a.q + 2],
-      yaw: Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
-    };
+    const v = sm.qvel;
+    /* Everything the controller closes on, in one object built into the same
+       scratch each tick so a bay running at 500 Hz allocates nothing. */
+    const at = _at;
+    at.x = q[a.q]; at.y = q[a.q + 1]; at.z = q[a.q + 2];
+    at.vx = v[a.d]; at.vy = v[a.d + 1]; at.vz = v[a.d + 2];
+    at.wx = v[a.d + 3]; at.wy = v[a.d + 4]; at.wz = v[a.d + 5];
+    at.yaw = Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
+    at.roll = Math.atan2(2 * (qw * qx + qy * qz), 1 - 2 * (qx * qx + qy * qy));
+    at.pitch = Math.asin(Math.max(-1, Math.min(1, 2 * (qw * qy - qz * qx))));
+    at.ground = height(at.x, at.y);
     const up = 1 - 2 * (qx * qx + qy * qy);
 
     /* On its side. A dog that has gone over is not a failure of the bay --
@@ -528,11 +549,19 @@ export default function TerrainRig({ stop }) {
     if (home && !w.done) { w.done = 1; w.t = 0; }
     const cmd = home || w.t > DRIVE_MAX
       ? { v: 0, w: 0 }
-      : { v: WALK * Math.max(0, 1 - Math.abs(err) / 1.4),
+      : { v: WALK * Math.max(0, 1 - Math.abs(err) / FALLOFF),
           w: Math.max(-TURN, Math.min(TURN, 1.1 * err)) };
 
-    const target = gait.step(HZ, cmd, height, at);
-    for (let i = 0; i < 12; i++) sm.actuate(ACT[i], target[i]);
+    /* The gait decides where the feet go; the controller decides what the
+       legs push with to get them there and hold the trunk over them. Both
+       run every tick and the torques are what reach the model. */
+    gait.step(HZ, cmd, height, at);
+    for (let i = 0; i < 12; i++) {
+      _jq[i] = q[a.q + 7 + i];
+      _jqd[i] = sm.qvel[a.d + 6 + i];
+    }
+    const tau = gait.control(_jq, _jqd, at, cmd);
+    for (let i = 0; i < 12; i++) sm.actuate(ACT[i], tau[i]);
     sm.step(HZ);
 
     // Round again, once it has stood at the end long enough to be seen.
@@ -554,7 +583,8 @@ export default function TerrainRig({ stop }) {
     const a = sm.jointAdr("dog_free");
     for (let i = 0; i < 12; i++) {
       sm.qpos[a.q + 7 + i] = HOME[i % 3];
-      sm.actuate(ACT[i], HOME[i % 3]);
+      sm.qvel[a.d + 6 + i] = 0;
+      sm.actuate(ACT[i], 0);
     }
     gait.reset();
     w.at = 0; w.t = 0; w.done = 0; w.travel = 0;

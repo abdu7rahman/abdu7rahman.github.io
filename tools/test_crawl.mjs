@@ -24,8 +24,13 @@ const SECS = Number(process.argv[2] || 40);
    does not ship: at 0.34 m/s, which this asked for before, the gait veers
    and one of the four paths never finished. */
 const WALK = Number(process.env.WALK || 0.30);
-const TURN = Number(process.env.TURN || 0.4);
+const TURN = Number(process.env.TURN || 0.8);
+const FALL = Number(process.env.FALL || 0.7);
 const LOOK = Number(process.env.LOOK || 0.30);
+/* POS runs the joint-servo law the cell shipped before the torques, on
+   the same model and the same contacts, so the comparison is of control
+   laws and not of two different scenes. */
+const POS = !!Number(process.env.POS || 0);
 const WINDOW = 12;   // nodes the nearest search may look ahead;
                      // see lab/TerrainRig.jsx for why it is bounded
 const KP = Number(process.env.KP || 90);
@@ -89,13 +94,25 @@ const adr = (() => { const j = model.jnt("dog_free");
   const a = { q: j.qposadr, d: j.dofadr }; if (j.delete) j.delete(); return a; })();
 
 function pose() {
-  const q = data.qpos;
+  const q = data.qpos, v = data.qvel;
   const w = q[adr.q + 3], x = q[adr.q + 4], y = q[adr.q + 5], z = q[adr.q + 6];
   return { x: q[adr.q], y: q[adr.q + 1], z: q[adr.q + 2],
+           vx: v[adr.d], vy: v[adr.d + 1], vz: v[adr.d + 2],
+           wx: v[adr.d + 3], wy: v[adr.d + 4], wz: v[adr.d + 5],
            yaw: Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)),
            roll: Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)),
            pitch: Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x)))),
+           ground: ground(q[adr.q], q[adr.q + 1]),
            up: 1 - 2 * (x * x + y * y) };
+}
+// The twelve measured joint angles and rates, which the torque controller
+// closes on. Allocated once; a run is tens of thousands of ticks.
+const jq = new Float64Array(12), jqd = new Float64Array(12);
+function joints() {
+  for (let k = 0; k < 12; k++) {
+    jq[k] = data.qpos[adr.q + 7 + k];
+    jqd[k] = data.qvel[adr.d + 6 + k];
+  }
 }
 
 /* How often the controller runs, against the physics rate underneath it.
@@ -108,14 +125,17 @@ for (let p = 0; p < paths.length; p++) {
   const path = paths[p];
   if (!path) { console.log(`  ${COSTS[p].label.padEnd(12)} no path`); continue; }
   // Stand the dog on the first cell, facing the second.
-  const yaw0 = Math.atan2(path[1][1] - path[0][1], path[1][0] - path[0][0]);
+  // COLD starts the machine facing along +x whatever the path does, which is
+  // the condition that found the missing friction cone.
+  const yaw0 = Number(process.env.COLD || 0) ? 0
+    : Math.atan2(path[1][1] - path[0][1], path[1][0] - path[0][0]);
   const q = data.qpos, v = data.qvel;
   mj.mj_resetData(model, data);
   q[adr.q] = path[0][0]; q[adr.q + 1] = path[0][1];
   q[adr.q + 2] = ground(path[0][0], path[0][1]) + STAND;
   q[adr.q + 3] = Math.cos(yaw0 / 2); q[adr.q + 4] = 0; q[adr.q + 5] = 0;
   q[adr.q + 6] = Math.sin(yaw0 / 2);
-  for (let i = 0; i < 12; i++) { q[adr.q + 7 + i] = HOME[i % 3]; data.ctrl[i] = HOME[i % 3]; }
+  for (let i = 0; i < 12; i++) { q[adr.q + 7 + i] = HOME[i % 3]; data.ctrl[i] = 0; }
   for (let i = 0; i < 6; i++) v[adr.d + i] = 0;
   mj.mj_forward(model, data);
 
@@ -123,6 +143,15 @@ for (let p = 0; p < paths.length; p++) {
                           duty: Number(process.env.DUTY || 0.85),
                           lift: Number(process.env.LIFT || 0.05),
                           height: Number(process.env.HEIGHT || STAND),
+                          kzP: Number(process.env.KZP ?? 900),
+                          kzD: Number(process.env.KZD ?? 120),
+                          krP: Number(process.env.KRP ?? 180),
+                          krD: Number(process.env.KRD ?? 18),
+                          kpStance: Number(process.env.KPS ?? 60),
+                          kxD: Number(process.env.KXD ?? 90),
+                          kyawD: Number(process.env.KYAW ?? 120),
+                          mu: Number(process.env.MU ?? 0.7),
+                          fzMin: Number(process.env.FZMIN ?? 8),
                           kRoll: Number(process.env.KR ?? 0.35),
                           kPitch: Number(process.env.KPI ?? 0.35) });
   gait.reset();
@@ -149,10 +178,23 @@ for (let p = 0; p < paths.length; p++) {
     let err = Math.atan2(tgt[1] - b.y, tgt[0] - b.x) - b.yaw;
     while (err > Math.PI) err -= 2 * Math.PI;
     while (err < -Math.PI) err += 2 * Math.PI;
-    const cmd = { v: WALK * Math.max(0, 1 - Math.abs(err) / 1.4),
+    const cmd = { v: WALK * Math.max(0, 1 - Math.abs(err) / FALL),
                   w: Math.max(-TURN, Math.min(TURN, 1.1 * err)) };
-    const qs = gait.step(DT, cmd, ground, b);
-    for (let i = 0; i < 12; i++) data.ctrl[i] = qs[i];
+    const want = gait.step(DT, cmd, ground, b);
+    joints();
+    if (POS) {
+      /* What MuJoCo's own position actuator computes, done here instead, so
+         the two control laws can be compared over one model with one set of
+         contacts. kp 400 kv 10 is what this cell shipped before the torques. */
+      for (let i = 0; i < 12; i++) {
+        const lim = (i % 3 === 2) ? 45.43 : 23.7;
+        const t = 400 * (want[i] - jq[i]) - 10 * jqd[i];
+        data.ctrl[i] = t > lim ? lim : t < -lim ? -lim : t;
+      }
+    } else {
+      const tau = gait.control(jq, jqd, b, cmd);
+      for (let i = 0; i < 12; i++) data.ctrl[i] = tau[i];
+    }
     for (let k = 0; k < SUB; k++) mj.mj_step(model, data);
     t += DT;
     const a = pose();
