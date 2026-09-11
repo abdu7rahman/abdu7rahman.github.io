@@ -160,6 +160,32 @@ export function cladding(material, opt = {}) {
         // The flashing over the joint, which is the one bright line on it.
         diffuseColor.rgb *= 1.0 + 0.9 * exp(-pow((clad_h - uDado) / 0.045, 2.0));
       }
+
+      /* Weathering. The profile and the seams gave the wall geometry; what
+         it still had was one flat colour across 66 m of it, which is a new
+         building on its handover day. Three analytic terms, no texture, and
+         they are the difference between a shed and an elevation of a shed.
+
+         Sheet to sheet first. Cladding arrives in batches, goes up over
+         weeks and fades at its own rate, so no two sheets in a run are quite
+         the same value -- the variation is per sheet and constant over it,
+         which is why it reads as sheets rather than as noise. */
+      float clad_sheet = uSeam > 0.0 ? floor(clad_h / uSeam) : 0.0;
+      float clad_batch = fract(sin(clad_sheet * 12.9898 + 4.1) * 43758.5453);
+      diffuseColor.rgb *= 0.94 + 0.12 * clad_batch;
+
+      /* Then the runs. Rain carries dust down a sheet from every fixing and
+         every lap, so a wall is striped vertically at a pitch finer than the
+         ribs, strongest at the bottom where it has had the whole height to
+         collect and absent at the top where nothing has run from. */
+      float clad_col = fract(sin(floor(vClad.x / 0.37) * 91.73) * 43758.5453);
+      float clad_run = smoothstep(0.52, 1.0, clad_col)
+                     * (1.0 - smoothstep(0.4, 6.8, clad_h));
+      diffuseColor.rgb *= 1.0 - clad_run * 0.17;
+
+      /* And the grime a floor throws at a wall: hardest at the skirting,
+         gone by head height. */
+      diffuseColor.rgb *= 1.0 - 0.20 * (1.0 - smoothstep(0.0, 2.3, clad_h));
       `
     );
   };

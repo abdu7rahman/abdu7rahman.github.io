@@ -47,7 +47,21 @@ import { AISLE, BAY_D, PITCH, RUN, STOPS } from "../lib/plan.js";
 // ---- the placement rule ------------------------------------------------
 
 const AISLE_CLEAR = AISLE / 2 + 0.9;          // 4.1 -- nothing occupies inside this
-const MOUTH_HALF = 3.6;                        // half the excluded band at a bay mouth
+/* Half the excluded band at a bay mouth. It was 3.6 -- a full structural
+ * bay, 7.2 m of floor kept empty out to the back wall for every stop -- and
+ * with thirteen stops alternating sides that is most of the building. The
+ * clutter was all still there and all of it was behind a rig in the dark,
+ * which is how a shed full of stock came to read as an empty floor plan.
+ *
+ * What the rule was protecting was a sightline straight into the bay from
+ * the aisle, and that is no longer the shot: nav/stations.js now finds the
+ * lens by asking the map what it can actually see, and the ray it settles on
+ * runs from about 0.95 m off the centre line to the bench at 4.9 m, staying
+ * inside 0.8 m of the stop's own z the whole way. So the band only has to
+ * cover that, and 1.9 m covers it with a metre over -- which hands back
+ * about half the floor this file had given up.
+ */
+const MOUTH_HALF = 1.9;
 const BAY_BACK = AISLE / 2 + BAY_D;            // 10.8 -- the real back wall
 const ZONE_LO = AISLE / 2 + 4.5;               // 7.7 -- where the back half of a bay starts
 const ZONE_HI = BAY_BACK - 0.4;                // 10.4 -- clear of the back wall
@@ -94,7 +108,12 @@ function pick(rand, r) {
   for (let t = 0; t < 60; t++) {
     const side = rand() < 0.5 ? -1 : 1;
     const z = Z_MIN + rand() * (Z_MAX - Z_MIN);
-    const back = rand() < 0.78;
+    /* Where in the depth of a bay it sits. This was 0.78 to the back, which
+       put four items in five between 7.7 and 10.4 m out -- behind the rig,
+       past the lamps, in the part of the bay no shot in the building looks
+       at. Evened up, so rather more than half of it now stands in the front
+       strip where the lane can see it. */
+    const back = rand() < 0.45;
     const lo = back ? ZONE_LO : AISLE_CLEAR + 0.25;
     const hi = back ? Math.max(lo, ZONE_HI - r) : ZONE_LO;
     const x = side * (lo + rand() * Math.max(0.05, hi - lo));
@@ -146,7 +165,12 @@ const RACK_CORNERS = [[0.45, 0.22], [-0.45, 0.22], [0.45, -0.22], [-0.45, -0.22]
 const HUB_D = 0.22, DISC_T = 0.08;
 
 const SEED = 0xA53F921D;
-const CAGE_N = 11, DRUM_N = 7, PALLET_N = 10, REEL_N = 7, TOTE_N = 9, RACK_N = 5;
+/* 49 items over a 66 m building was one every metre and a third of aisle,
+   spread over two sides and two depths -- which is a tidy building, and this
+   one is not meant to be tidy. Roughly doubled now that there is floor to
+   put them on; they are instanced, so the whole scatter is still six draw
+   calls whatever the counts say. */
+const CAGE_N = 21, DRUM_N = 15, PALLET_N = 19, REEL_N = 12, TOTE_N = 18, RACK_N = 9;
 const CLUSTER_TRIES = 30;
 
 // ---- layout: pure and deterministic, nothing here touches THREE -------

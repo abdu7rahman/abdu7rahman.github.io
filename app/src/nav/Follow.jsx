@@ -42,6 +42,32 @@ import { onMap } from "./building.js";
 const EASE = 0.0009;
 const CUT = 0.00000004;   // near enough to a cut, for the greeting
 
+/* How fast the lens is allowed to swing around the guide, in radians a
+ * second, and how fast the heading it swings around may change.
+ *
+ * These are the two halves of what made the walk unwatchable, and they are
+ * different faults with the same symptom.
+ *
+ * The first: every guide-relative shot was an offset from the body's
+ * instantaneous heading, so the camera sat on the end of a four metre arm
+ * bolted to a machine that yaws. The local planner does not drive in
+ * straight lines -- it picks the best of seventeen turn rates every tick and
+ * the chosen one flickers either side of zero -- so a body wiggle of a few
+ * degrees threw the lens most of a metre, every frame. Measured over one
+ * walk to the first cell, the camera travelled from z=0.39 to 3.05 to 6.23
+ * to 5.83 while the guide moved 1.7 m in a straight line. So the arm is
+ * bolted to a heavily damped copy of the heading instead: 1.1 rad/s follows
+ * a real corner in under a second and ignores the flicker entirely.
+ *
+ * The second: the greeting stands the camera 3.63 m in *front* and the walk
+ * puts it 4.2 m *behind*, and easing a position from one to the other draws
+ * a straight line between them -- which passes through the robot. So what is
+ * eased is the angle around the guide rather than the point, and the camera
+ * swings round the outside the way a camera operator would walk it.
+ */
+const SWING = 1.6;
+const TURN = 1.1;
+
 const _eye = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
@@ -82,6 +108,13 @@ export default function Follow() {
     }
   }), []);
   const look = useRef(new THREE.Vector3(0, 1.3, -4));
+  /* The damped heading, and where the lens sits around it: an angle off that
+     heading and a distance, so a shot change is an orbit and not a flight
+     through the subject. Null until the first frame, which adopts whatever
+     the shot asks for rather than swinging in from an invented start. */
+  const yawS = useRef(null);
+  const off = useRef(0);
+  const rad = useRef(3.63);
   const fov = useRef(52);
   const first = useRef(true);
 
@@ -94,6 +127,21 @@ export default function Follow() {
     const gx = g.pose.x, gz = g.pose.z;
 
     let wantFov = 52, ease = EASE;
+    /* The damped heading. Shortest way round, at a fixed rate rather than a
+       fraction, so a corner takes the same time whatever the frame rate and
+       a wiggle goes nowhere. */
+    if (yawS.current === null) yawS.current = g.pose.yaw;
+    {
+      let e = g.pose.yaw - yawS.current;
+      while (e > Math.PI) e -= Math.PI * 2;
+      while (e < -Math.PI) e += Math.PI * 2;
+      const step = TURN * Math.min(0.1, dt);
+      yawS.current += Math.max(-step, Math.min(step, e));
+    }
+    /* Where the lens wants to sit around that heading, for the two shots
+       that are the guide's own: an angle off the heading and a distance.
+       Null for the shots that name a place in the building instead. */
+    let wantOff = null, wantRad = 0, wantY = 0;
 
     if (j.phase === "greeting") {
       /* In front of the guide, at the height of somebody standing in a
@@ -111,7 +159,7 @@ export default function Follow() {
        * throw, and aiming at 0.73 rather than at its chest is what lifts the
        * whole machine clear of the card.
        */
-      _eye.set(gx + _fwd.x * 3.63, 1.55, gz + _fwd.z * 3.63);
+      wantOff = 0; wantRad = 3.63; wantY = 1.55;
       _look.set(gx, 0.73, gz);
       wantFov = 44;
       ease = first.current ? CUT : EASE;
@@ -120,10 +168,16 @@ export default function Follow() {
          past the guide. Leading the turn: the look point is ahead of the
          guide along its own heading, so a corner is visible before it is
          taken rather than after. */
-      _eye.set(gx - _fwd.x * 4.1 + _right.x * 1.0,
-               2.05,
-               gz - _fwd.z * 4.1 + _right.z * 1.0);
-      _look.set(gx + _fwd.x * 2.2, 1.25, gz + _fwd.z * 2.2);
+      /* 4.22 m at 2.90 rad off the heading is the same over-the-shoulder,
+         out-to-one-side place the offset pair used to name -- 4.1 back and
+         1.0 across -- written as an angle so it can be swung to. */
+      wantOff = 2.90; wantRad = 4.22; wantY = 2.05;
+      /* Leading the turn: the look point runs ahead along the damped
+         heading, so a corner is visible before it is taken. Damped, because
+         a look point on the raw heading whips across the frame for the same
+         reason the eye did. */
+      _look.set(gx + Math.cos(yawS.current) * 2.2, 1.25,
+                gz + Math.sin(yawS.current) * 2.2);
       wantFov = 54;
     } else if (j.phase === "choosing") {
       /* Nothing to follow and something to choose, so the camera does what
@@ -161,6 +215,26 @@ export default function Follow() {
         _look.set(gx + _fwd.x * 0.12, 1.20, gz + _fwd.z * 0.12);
         wantFov = 40;
       }
+    }
+
+    /* Resolve the two guide-relative shots. The angle is eased the short way
+       round at a fixed rate; the distance follows it. A shot that names a
+       place in the building has already written _eye, and it also leaves the
+       orbit where the lens actually is, so that returning to the guide swings
+       out from there rather than snapping. */
+    if (wantOff !== null) {
+      let e = wantOff - off.current;
+      while (e > Math.PI) e -= Math.PI * 2;
+      while (e < -Math.PI) e += Math.PI * 2;
+      const step = SWING * Math.min(0.1, dt);
+      off.current += Math.max(-step, Math.min(step, e));
+      rad.current += (wantRad - rad.current) * Math.min(1, dt * 2.2);
+      const a = yawS.current + off.current;
+      _eye.set(gx + Math.cos(a) * rad.current, wantY, gz + Math.sin(a) * rad.current);
+    } else {
+      const dx = camera.position.x - gx, dz = camera.position.z - gz;
+      off.current = Math.atan2(dz, dx) - yawS.current;
+      rad.current = Math.max(0.5, Math.hypot(dx, dz));
     }
 
     /* A very small drift, always. A camera that is exactly still reads as a

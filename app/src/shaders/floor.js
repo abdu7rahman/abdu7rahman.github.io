@@ -65,10 +65,32 @@ export const FLOOR_FRAG = /* glsl */`
     float joint = max(paint(g.x, 0.012), paint(g.y, 0.012));
     col = mix(col, uFloor * 0.45, joint * 0.8);
 
+    // --- use ---------------------------------------------------------------
+    // A slab that is the same everywhere is a slab nobody has driven on, and
+    // that was the complaint: the building read as an elevation rather than
+    // as a place. Three things, all analytic, none of them a decal.
+    //
+    // Traffic first. Wheels polish a band down the middle of an aisle and
+    // leave the edges rough, but they do not run on a line -- so the band's
+    // own centre is moved about by a very low frequency noise, a metre either
+    // way over the length of the building, which is what a wandering forklift
+    // actually wears.
+    float lanesW = uAisle * 0.5;
+    float drift = (vnoise(p * 0.06 + 3.1) - 0.5) * 2.4;
+    float traffic = 1.0 - smoothstep(0.7, lanesW * 1.02, abs(p.x + drift));
+    float polish = traffic * (0.42 + 0.58 * vnoise(p * 0.42));
+    col = mix(col, uFloor * 0.78, polish * 0.38);
+
+    // Then the spills. Large, soft, irregular and rare: a threshold on a
+    // coarse octave, roughened by a finer one so the edge is not a contour.
+    float spill = vnoise(p * 0.30 + 17.0);
+    float stain = smoothstep(0.60, 0.88, spill) * (0.55 + 0.45 * vnoise(p * 3.7));
+    col *= 1.0 - stain * 0.36;
+
     // --- the lane ---------------------------------------------------------
     // Not named half: that is a reserved word in GLSL ES and the shader will
     // not compile with it, which costs the entire floor rather than one line.
-    float lanes = uAisle * 0.5;
+    float lanes = lanesW;
     float edge = max(paint(abs(abs(p.x) - lanes), 0.055), 0.0);
     // Dashed centre line, 1.2 m on 0.8 m off.
     float dash = step(0.6, fract(p.y / 2.0));
@@ -83,8 +105,20 @@ export const FLOOR_FRAG = /* glsl */`
     float chev = step(0.5, ch) * band;
 
     float mark = clamp(lane + chev * 0.85, 0.0, 1.0);
-    // Paint is not a decal: it sits on the slab and takes the slab's grain.
+
+    // Paint wears off, and it wears off where it is walked and driven on.
+    // This is the strongest single cue that a floor is in use: crisp paint
+    // everywhere says the lines went down this morning. The mask is a
+    // two-octave noise biased by the traffic band, so the chevrons at a bay
+    // mouth are scuffed through in the middle and intact at their ends.
+    float scuff = vnoise(p * 2.6 + 5.0) * 0.62 + vnoise(p * 8.3) * 0.38;
+    float keep = smoothstep(0.16, 0.62, scuff + 0.34 - traffic * 0.34);
+    mark *= keep;
+
+    // Paint is not a decal: it sits on the slab and takes the slab's grain,
+    // and where it is worn the slab under it is polished rather than rough.
     col = mix(col, uHazard * (0.72 + grain * 0.5), mark);
+    col = mix(col, uFloor * 0.86, (1.0 - keep) * clamp(lane + chev, 0.0, 1.0) * 0.30);
 
     // --- light ------------------------------------------------------------
     // One hard key from the high bay, a weak bounce off the slab, and a

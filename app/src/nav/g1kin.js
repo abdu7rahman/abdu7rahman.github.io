@@ -404,8 +404,33 @@ const ORI = 0.45;
  * rail; at 0.22 the elbow sits 185 mm in front and the palm 3.3 mm off. The
  * elbow ends up in the same place either way -- it is converging to a swivel
  * angle, not being shoved -- so the extra gain buys nothing and costs the
- * grip. */
-const SWIVEL = 0.22;
+ * grip.
+ *
+ * 0.65 rather than 0.22 now, and the reason is the board. Moving the grips
+ * outside the panel to keep it out of the forearms takes the hands further
+ * apart, which rolls the shoulders out and brings the elbows back toward the
+ * chest -- and it exposed something the old gain was hiding: where the
+ * swivel ends up depends on where the solve started. The same pose, fully
+ * settled, put the nearest elbow 42 mm in front of the chest when the guide
+ * was placed at the cell and 19 mm when it walked there, because the solve
+ * is seeded from its own last answer and an arm that has just been swinging
+ * hands it a different one. A weak push converges to whichever side of the
+ * null space it was nudged from.
+ *
+ * Pushing harder settles it. Swept on the walked case, which is the one the
+ * visitor sees, with the panel at its final 0.50 m:
+ *
+ *     0.22   elbow 19 mm   palm 0.6 mm
+ *     0.50   elbow 26 mm   palm 0.6 mm
+ *     0.65   elbow 36 mm   palm 2.6 mm
+ *
+ * 0.65 clears the 20 mm floor by sixteen and lands within 6 mm of where the
+ * placed pose converges, so the two histories now agree, and it costs 2.6 mm
+ * of palm against a rail whose own radius is 16 -- the hand is still inside
+ * the bar. Past here the old measurement stands: at 0.9 the palm was 11.3 mm
+ * out for an elbow in the same place, which is the gain buying nothing and
+ * spending the grip to do it. */
+const SWIVEL = 0.65;
 const _e6 = new Float64Array(6);
 const _a36b = new Float64Array(36);
 const _jz = new Float64Array(6);

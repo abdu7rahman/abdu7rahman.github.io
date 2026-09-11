@@ -35,7 +35,7 @@ import { P } from "../lib/palette.js";
  * whose sign hides the guide is a guide holding a placard in front of its
  * face.
  */
-export const SIGN_W = 0.64;
+export const SIGN_W = 0.50;
 export const SIGN_H = 0.42;
 /* Where the hands go: a grab rail across the back, near the bottom, which is
  * how a hand-held site sign is actually held. Two pegs were tried first and
@@ -48,8 +48,24 @@ export const SIGN_H = 0.42;
  * its palm sits 119 mm from the wrist, so the rail has to stand off the back
  * by more than the hand is thick or the fingers come through the front.
  */
-const GRIP_HALF = 0.17;
-const RAIL_DROP = 0.15;
+/* Outside the panel on both counts, and that is the whole of it.
+ *
+ * At 0.17 the hands gripped a rail well inside a 0.64 m board, and at 0.15
+ * the rail sat 0.06 m *above* the board's own bottom edge. Both hands were
+ * therefore in front of a panel whose interior the arms had to cross to
+ * reach them -- a shoulder is behind the board, a hand is in front of it,
+ * and a straight line between the two goes through the middle. Photographed
+ * side-on mid-walk, the board cut clean through the right forearm.
+ *
+ * There is no easing this: it is not a tuning fault, it is what holding a
+ * 0.64 m panel by its middle means. So the grips go outside the panel in
+ * both directions -- 0.355 against a half-width of 0.32, and 0.235 below the
+ * centre against a half-height of 0.21 -- which puts the crossing outside
+ * the rectangle on one axis and below it on the other. It is also how a
+ * person carries a board this size: by the bottom corners, not by the face.
+ */
+const GRIP_HALF = 0.285;
+const RAIL_DROP = 0.235;
 const RAIL_OUT = 0.062;
 const RAIL_R = 0.016;
 
@@ -72,8 +88,8 @@ const RAIL_R = 0.016;
  * off the bake, so 0.20 leaves the panel 0.11 m clear of the chest and the
  * rail 0.06 m clear of it.
  */
-const UP = { x: 0.30, z: 0.95, tilt: -0.22 };
-const DOWN = { x: 0.20, z: 0.86, tilt: 0.0 };
+const UP = { x: 0.256, z: 0.95, tilt: -0.22 };
+const DOWN = { x: 0.156, z: 0.86, tilt: 0.0 };
 
 /* How far the board reaches off the body's centre line, which is what the
  * guide has to be planned as -- and it is two numbers, not one.
@@ -94,7 +110,11 @@ function reachAt(a) {
   // Half the panel's height leans forward by sin(tilt); the rail and the
   // panel's own thickness lean the other way.
   const fwd = x + Math.abs(Math.sin(tilt)) * SIGN_H / 2 + 0.01;
-  return Math.hypot(fwd, SIGN_W / 2);
+  /* The widest thing is not always the board. With the grips outside the
+     panel the hands are, so the half-width is whichever of the two reaches
+     further, with half a hand casting on top of the grip. */
+  const half = Math.max(SIGN_W / 2, GRIP_HALF + 0.045);
+  return Math.hypot(fwd, half);
 }
 
 export function footprint() {

@@ -371,9 +371,38 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
      * has one degree of freedom spare that nothing was using, so the elbows
      * ended up 3 mm inside the chest.
      */
+    /* Waited for the sign to actually be up before measuring anything.
+     *
+     * The gate used to be "holding at all", which accepts any blend above a
+     * half -- and the blend is what decides where the hands are. At 0.98 the
+     * pose is two parts in a hundred of the way back toward a swinging arm,
+     * which over a metre of arm is most of a centimetre of hand, so the case
+     * read 18.8 mm on a run that reached the cell a little later in its
+     * raise and 4.3 mm on one that did not. That is the suite measuring its
+     * own timing rather than the product.
+     *
+     * Two blends have to have arrived, not one. `hold` closes 42.5 per cent
+     * of its gap a frame and `settle` -- how much of a walking stance is
+     * still mixed into a standing one -- closes 35 per cent, so the sign is
+     * up a good few frames before the machine has stopped moving, and a
+     * measurement taken in between catches a robot mid-stride: at settle
+     * 0.979 the nearest elbow cleared the chest by 10 mm where the same pose
+     * settled clears 42. Both snap to exactly 1 now, so waiting for both is
+     * waiting for states that arrive. */
+    for (let i = 0; i < 30; i++) {
+      const st = await pg.evaluate(() => {
+        const g = window.__lab.gaitOf && window.__lab.gaitOf();
+        return g ? [g.hold, g.settle] : [-1, -1];
+      });
+      if (st[0] >= 1 && st[1] >= 1) break;
+      await pg.waitForTimeout(1000);
+    }
     const r = await pg.evaluate(() => {
       const L = window.__lab, T = L.THREE, g = L.gaitOf && L.gaitOf();
-      if (!g || g.hold < 0.5) return { err: 'not holding (hold ' + (g ? g.hold.toFixed(2) : 'no gait') + ')' };
+      if (!g || g.hold < 1 || g.settle < 1) {
+        return { err: 'not still (hold ' + (g ? g.hold.toFixed(3) : 'no gait') +
+                      ', settle ' + (g ? g.settle.toFixed(3) : '-') + ')' };
+      }
       const out = { palm: 0, axis: 0, curl: 0, inside: 0, elbow: 9 };
       /* The body, as the two boxes it actually occupies, taken from the bake
          at the pose it is in rather than from a radius somebody chose. */

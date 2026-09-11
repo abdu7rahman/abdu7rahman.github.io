@@ -27,7 +27,35 @@ import { Router } from "./route.js";
  * would have the guide aim at a corner and cut it.
  */
 
-const LOOK = 1.35;       // metres of carrot ahead on the path
+/* How hard the guide is allowed to change speed, in metres per second per
+   second. Without one the controller's chosen velocity was taken whole every
+   frame, so the guide left the door at 0.85 m/s in a single step and stopped
+   as abruptly -- which at the old speed read as briskness and at 1.45 m/s
+   reads as a machine being teleported. Braking is allowed to be harder than
+   accelerating, because stopping short of something is not a comfort
+   question. */
+const ACC = 1.8;
+const BRAKE = 3.2;
+
+/* How far ahead the carrot sits, as a floor. The real number is worked out
+ * from the controller, because a carrot and a rollout horizon are not two
+ * independent choices and treating them as two is what made this guide slow.
+ *
+ * The local planner scores an arc by how much of the distance to the carrot
+ * it closes over its horizon. Overshooting the carrot scores as badly as
+ * falling short of it -- the term is a distance, not a signed one -- so any
+ * speed above carrot / horizon is penalised for being fast, on a straight
+ * empty lane, with nothing in the way. At 1.35 m over a 2.0 s horizon that
+ * ceiling is 0.675 m/s, and the guide obediently sat at 0.68: the sample
+ * just under it. Raising the top speed did nothing at all, because the top
+ * speed was never what was binding.
+ *
+ * So the carrot is put past where the fastest admissible arc can reach --
+ * maxV * horizon, with 15 per cent over so the quickest arc is still closing
+ * rather than exactly arriving. The floor is what a slow controller in a
+ * tight place still wants.
+ */
+const LOOK_MIN = 1.35;
 const ARRIVE = 0.18;     // how near the last waypoint counts as there
 const FACE = 0.09;       // radians of heading error that counts as facing
 
@@ -52,12 +80,14 @@ export class Pilot {
        whichever way the guide is facing, which is the other reason a
        carried board is held upright and in close rather than out in front. */
     this.local = new Local({
-      maxV: opts.maxV ?? 0.85, maxW: opts.maxW ?? 1.5,
+      maxV: opts.maxV ?? 1.45, maxW: opts.maxW ?? 1.9,
       nv: 6, nw: 17, horizon: 2.0, steps: 12,
       radius: this.radius, clearCap: 1.1,
       wHead: 1.0, wClear: 0.42, wSpeed: 0.30,
       field: grid
     });
+    this.look = Math.max(LOOK_MIN,
+                         this.local.maxV * this.local.horizon * 1.15);
     this.stuck = 0;
     this.trip = 0;
   }
@@ -94,8 +124,8 @@ export class Pilot {
       if (d < bestD) { bestD = d; bestI = k; bestT = t; }
     }
     this.seg = bestI;
-    // Walk forward LOOK metres from that projection.
-    let need = LOOK;
+    // Walk forward that far from that projection.
+    let need = this.look;
     let k = bestI, t = bestT;
     while (k < n - 1) {
       const ax = p[k][0], az = p[k][1], bx = p[k + 1][0], bz = p[k + 1][1];
@@ -146,13 +176,20 @@ export class Pilot {
       /* Slow into the last metre rather than stopping dead on the threshold.
          The gait's cadence follows speed, so this is also what makes the
          last two steps shorten the way a person's do. */
-      const cap = Math.min(this.local.maxV, 0.35 + (toEnd - ARRIVE) * 0.9);
-      this.v = Math.min(cmd[0], cap);
+      const cap = Math.min(this.local.maxV, 0.45 + (toEnd - ARRIVE) * 1.15);
+      const want = Math.min(cmd[0], cap);
+      const rate = (want > this.v ? ACC : BRAKE) * dt;
+      this.v += Math.max(-rate, Math.min(rate, want - this.v));
       this.w = cmd[1];
       /* Wandered off the plan, or boxed in: ask for a new one rather than
          grinding. The threshold is generous because the controller is
-         allowed to leave the path to get round something. */
-      if (off > 1.6 || cmd[2] < 0) this.stuck += dt; else this.stuck = 0;
+         allowed to leave the path to get round something -- and it scales
+         with the carrot, because a carrot further ahead cuts corners further
+         inside them. At a 3.3 m look-ahead the fixed 1.6 m fired on an
+         ordinary corner out of the door and the guide replanned mid-stride,
+         which reads as a stumble and resets the walk. */
+      const stray = Math.max(1.6, this.look * 0.75);
+      if (off > stray || cmd[2] < 0) this.stuck += dt; else this.stuck = 0;
       if (this.stuck > 1.2) this.goTo(this.goal[0], this.goal[1], this.faceYaw);
       this.integrate(dt);
       this.trip += Math.abs(this.v) * dt;

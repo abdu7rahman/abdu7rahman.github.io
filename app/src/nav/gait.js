@@ -72,8 +72,19 @@ export class Gait {
        what the leg can reach: the foot swings half the stance excursion
        either side of the hip, so stride is bounded by 2 * maxHalf / DUTY. */
     this.strideCap = this.maxHalf * 2 / DUTY * 0.9;
-    this.stride = Math.min(opts.stride ?? 0.50, this.strideCap);
-    this.lift = opts.lift ?? 0.055;
+    /* 0.72 m, against a ceiling of 0.79. A guide showing somebody around a
+       66 m building at a 0.50 m stride is a machine on a stroll, and the
+       walk from the door to the office took three quarters of a minute of
+       watching it. Stride and top speed set the cadence between them --
+       cadence is speed over stride -- so both go up together: at 1.45 m/s on
+       a 0.72 m stride the cycle is 2.01 Hz, which is a person walking
+       briskly. Raising speed alone would have given 2.9 Hz, a scuttle. */
+    this.stride = Math.min(opts.stride ?? 0.72, this.strideCap);
+    /* A longer step needs more air under the foot: the swing arc is the same
+       shape stretched over a longer base, so at 0.055 m the toe grazed the
+       slab through the middle third of swing. Scaled off stride, at the same
+       ratio the old pair had. */
+    this.lift = opts.lift ?? this.stride * 0.11;
     this.phase = 0;
     this.cadence = 0;
     this.sway = 0;
@@ -205,7 +216,19 @@ export class Gait {
     // is stride. Turning on the spot still steps, at a floor cadence.
     const eff = Math.max(Math.abs(this.speed), Math.abs(this.turn) * 0.22);
     this.cadence = eff / this.stride;
+    /* Snapped at both ends, for the same reason the sign's raise is.
+     *
+     * An exponential ease never arrives, and this one decides how much of a
+     * walking stance is blended into a standing one -- so a machine that has
+     * been stopped in front of a cell for twenty seconds is still 1.3 per
+     * cent of the way into a stride. Measured: at settle 0.987 the nearest
+     * elbow cleared the chest by 15 mm where the same pose fully settled
+     * clears 42, and the grip test read anywhere between 0.9 and 16.4 mm
+     * depending on which frame it happened to catch. That is not a tolerance,
+     * it is a pose that is still moving. */
     this.settle += ((moving ? 0 : 1) - this.settle) * Math.min(1, dt * 3.5);
+    if (this.settle > 0.995) this.settle = 1;
+    else if (this.settle < 0.005) this.settle = 0;
     if (moving) this.phase = (this.phase + this.cadence * dt) % 1;
     else if (this.phase > 0.001) {
       // Finish the step rather than freezing in it.
