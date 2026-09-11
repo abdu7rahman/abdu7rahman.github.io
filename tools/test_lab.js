@@ -59,6 +59,20 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   /* Finish whatever walk is outstanding, by running the guide's own
      controller rather than by waiting for frames that will not come. */
   const walk = async () => {
+    /* Wait for the ask to reach the controller before driving it.
+     *
+     * A station is chosen in the store, React renders, and the guide's effect
+     * calls the controller -- which is one frame, and one frame here is about
+     * two thirds of a second. A fixed wait shorter than that finds the
+     * controller still idle and this returns having walked nowhere, which is
+     * indistinguishable from a product that did not respond. It cost two
+     * false failures on the about route.
+     */
+    for (let i = 0; i < 40; i++) {
+      const busy = await pg.evaluate(() => window.__lab.guide.phase !== 'idle');
+      if (busy) break;
+      await pg.waitForTimeout(500);
+    }
     const r = await pg.evaluate(() => {
       const g = window.__lab.guide;
       let n = 0;
@@ -245,7 +259,7 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       { id: 'reach', how: 'wait',  what: 'the envelope fills' },
       { id: 'foresee', how: 'hover', what: 'the replanner sees your hand' },
       { id: 'terrain', how: 'click', what: 'the quadruped takes a goal' },
-      { id: 'assemble', how: 'wait', what: 'the sorting cell works' }
+      { id: 'assemble', how: 'wait', what: 'the sorting cell is running' }
     ];
     for (const c of cases) {
       await goTo(c.id);
@@ -290,6 +304,42 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       ok(c.what, moved, (before[0] || '(no readout)') + '  ->  ' + (after[0] || '(none)') +
          (moved ? '' : '   [phase ' + j2.phase + ', at ' + j2.at + ', target ' + j2.target + ']'));
     }
+  }
+
+  console.log('\nF1. and the sorting cell actually sorts');
+  {
+    /* The one check in this file that asks for an outcome rather than for a
+     * response, and it is here because the cell passed every response test
+     * while sorting nothing: the states advance, the readout changes, both
+     * arms track, and no tool goes in a bin. A demo that moves is not the
+     * same as a demo that works, and a suite that cannot tell them apart is
+     * worth less than no suite.
+     *
+     * Driven through the cell's own step function because a pick-and-place
+     * cycle is twelve simulated seconds and this page renders at about one
+     * and a half frames a second.
+     */
+    const r = await pg.evaluate(async () => {
+      const c = window.__lab.controls('assemble');
+      if (!c || !c.tick) return { err: 'no cell' };
+      // The physics scene compiles asynchronously; until it does, a tick is
+      // a no-op and the soak measures nothing.
+      for (let i = 0; i < 400 && !c.sim(); i++) {
+        c.tick(1 / 60);
+        await new Promise(res => setTimeout(res, 50));
+      }
+      if (!c.sim()) return { err: 'no scene' };
+      let peak = 0;
+      for (let i = 0; i < 60 * 200; i++) {
+        c.tick(1 / 60);
+        if (i % 1800 === 0) await new Promise(res => setTimeout(res, 0));
+      }
+      const rows = c.readout();
+      const sorted = parseInt(String(rows[0][1]).split('/')[0], 10);
+      return { sorted, of: String(rows[0][1]), floor: rows[3] && rows[3][1] };
+    });
+    ok('a tool ends up in a bin', !r.err && r.sorted > 0,
+       r.err || ('sorted ' + r.of + ' in 200 simulated seconds, ' + r.floor + ' on the floor'));
   }
 
   console.log('\nG. the office holds up cards');

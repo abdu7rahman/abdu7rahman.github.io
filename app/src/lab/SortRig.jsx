@@ -405,8 +405,14 @@ export default function SortRig({ stop }) {
        * none of six tools, and this is why.
        *
        * So it winds only inside 25 mm, which is the band a standing offset
-       * lives in, and its range is 30 mm rather than 90. Outside that band
-       * the arm is travelling and there is nothing to integrate.
+       * lives in, and its range is 30 mm rather than 90.
+       *
+       * Gating it instead on being over the tool horizontally was tried,
+       * on the argument that gating on the vertical error is circular --
+       * that error is the thing the term removes, so a droop larger than the
+       * gate would never be corrected. The argument is reasonable and the
+       * measurement disagrees with it: the descent error went from 35-45 mm
+       * to 89-92. This is the version that measured better.
        */
       if (Math.abs(off) < 0.025) {
         kit.trim[arm] = Math.max(-0.015, Math.min(0.030, kit.trim[arm] + off * d * 1.6));
