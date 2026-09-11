@@ -4,6 +4,9 @@ import * as THREE from "three";
 import Go2 from "./Go2.jsx";
 import { Search } from "./demos/astar.js";
 import { heights, COSTS, RELIEF } from "./demos/terrain.js";
+import { Crawl, HOME, STAND } from "./demos/crawl.js";
+import { useSim } from "../sim/useSim.js";
+import { terrainScene } from "../sim/models.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
@@ -27,6 +30,41 @@ import { WORK } from "../lib/plan.js";
  * within 4 cm of each other on length and 25 to 31 cm apart on climb. The
  * console reports the number that can actually differ.
  *
+ * And the dog walks it, which it did not.
+ *
+ * The Go2 used to slide: the body was placed a fraction along the chosen
+ * path every frame, the legs held the stance lab/Go2.jsx derives from the
+ * URDF, and the ground it was crossing had no say in any of it. So the one
+ * claim this bay makes -- that the four costs disagree about what it takes
+ * to cross this ground -- was untestable, because nothing was crossing
+ * anything. It is twelve joints on MuJoCo now, over a height field built
+ * from the same samples the planners read and the bench top is displaced
+ * by, driven by the crawl in demos/crawl.js, and where it ends up is
+ * wherever its feet leave it.
+ *
+ * Walking all four of its own planned paths in a browser, on the ground the
+ * planners read, it crosses every one of them without falling: 11 to 13
+ * seconds each, worst trunk tilt anywhere on any of them 2.7 degrees.
+ *
+ * Two of those degrees were bought rather than found, and both fixes are
+ * below: the pursuit works in arc length from the nearest node ahead rather
+ * than advancing a node index, and the ground is sampled the way MuJoCo
+ * triangulates a height field rather than bilinearly. Before them the same
+ * four paths cost up to 15.3 degrees, and the ridge path took 28 seconds
+ * against the 10 the flattest one did -- which read like the bay's own
+ * result and was mostly the controller fighting itself. It is worth being
+ * careful about that: the honest version of this bay's claim is the climb in
+ * the readout, which is measured off the height field, and not a tilt number
+ * that moves when the path follower is fixed.
+ *
+ * What the dog cannot do is on record too. Driven corner to corner across
+ * the same ground by tools/test_crawl.mjs, which is a harder pair of ends
+ * than the cell itself ever picks, it crosses 3 of 4. Which one fails moves
+ * with any parameter touched -- trunk height, command speed, a body shift --
+ * and none of those sweeps came out monotone, so it is a controller at its
+ * margin rather than one that is mistuned. Fixing it properly means solving
+ * for contact forces, which is a different piece of work.
+ *
  * The goal is the cursor, which is what the written section says it is.
  */
 /* One lattice for the mesh and the samples, which it was not.
@@ -42,8 +80,53 @@ const CELL = 0.075;
 const COURSE_X = NX * CELL;   // 2.325
 const COURSE_Y = NY * CELL;   // 2.700
 const TUBE_R = 0.009;
-const WALK = 0.34;              // metres per second along the chosen path
-const SHOW = 5.5;               // seconds each cost function leads the walk
+/* What the gait is asked for, and what it holds. Both measured in
+   tools/test_crawl.mjs on this bay's own terrain: at 0.30 m/s commanded it
+   makes 0.244 and stays inside 3.1 degrees of trunk tilt; at 0.35 it starts
+   veering, a metre sideways over twelve seconds. Turning degrades earlier --
+   0.4 rad/s asked returns about two thirds, and past that it leans instead
+   of turning. The path follower closes on the measured pose, so what these
+   cost is time and not accuracy. */
+const WALK = 0.30;              // metres per second asked of the gait
+const TURN = 0.4;               // and radians per second
+const LOOK = 0.30;              // pure pursuit lookahead, metres
+/* How far ahead the nearest-node search may look, in nodes. Unbounded, it
+   can teleport: a path that comes back near its own start has a late node
+   within a few centimetres of an early one, so the search jumps the machine
+   most of the way along the route on the first tick and it sets off at the
+   wrong heading. Measured unbounded, the ridge path fell 4 per cent in.
+   Twelve nodes is 0.9 m of path, which is three lookaheads and far more than
+   the 0.6 mm the machine covers between ticks. */
+const WINDOW = 12;
+const ARRIVE = 0.16;            // close enough to the last node to be there
+const DRIVE_MAX = 90;           // seconds before a crossing is given up on
+const SHOW = 5.5;               // seconds it stands at the end before repeating
+const UP_MIN = Math.cos(55 * Math.PI / 180);   // trunk z, below which it is over
+const HZ = 0.002;               // the controller's tick, which is the model's
+/* The twelve actuators, in the order sim/models.js declares them and
+   demos/crawl.js writes them. */
+const ACT = ["FL", "FR", "RL", "RR"].flatMap(
+  k => [`dog_${k}_hip`, `dog_${k}_thigh`, `dog_${k}_calf`]);
+
+/* The physical ground runs wider than the drawn course, and it has to.
+ *
+ * A MuJoCo height field is finite: past its last row there is no ground at
+ * all, not a drop but an absence. The course's cell centres land exactly on
+ * the field's outer vertices, so a path along the rim puts the dog's centre
+ * on the last sample -- and a Go2 reaches 0.193 m to its own hip, plus up to
+ * 0.089 m of Raibert foot placement ahead of it at the speed this bay walks,
+ * plus a 0.022 m foot. Something over 0.30 m of robot was being placed off
+ * the end of the world, which is not a stumble, it is a fall with nothing
+ * under it. Measured in a browser before this: 7 falls in 120 seconds and it
+ * never got a quarter of the way along anything.
+ *
+ * Six cells of margin is 0.45 m, which covers that with room. The pad is
+ * filled by clamping to the nearest real sample, so the ground continues out
+ * of the course at the height the course ends at rather than dropping to
+ * zero and making a cliff out of the fix. Nothing is drawn out there; it is
+ * bench, not terrain. */
+const HPAD = 6;
+const HNX = NX + HPAD * 2, HNY = NY + HPAD * 2;
 
 const gx = (i) => (i + 0.5) * CELL - COURSE_X / 2;
 const gy = (j) => (j + 0.5) * CELL - COURSE_Y / 2;
@@ -96,10 +179,40 @@ export default function TerrainRig({ stop }) {
     return g;
   }, [kit]);
 
+  /* The ground under a point, sampled the way the physics builds it.
+   *
+   * This was bilinear, which is what the bench top's own vertices draw and
+   * is the obvious thing to interpolate four samples with. MuJoCo does not
+   * build a height field that way: it splits every quad into two triangles,
+   * and a bilinear surface sits above the triangulated one on one diagonal
+   * and below it on the other. Measured over this bay's grid, the two differ
+   * by up to 11.8 mm, mean 3.7.
+   *
+   * Which matters because the gait places its feet at whatever this returns.
+   * Where the bilinear value is low, the swing foot is commanded into the
+   * hill: the leg drives it under the surface, the contact solver loads up,
+   * and when it lets go it throws the robot. That is precisely what the
+   * ridge path did -- fourteen seconds walking on the spot at 9 to 12 degrees
+   * of trunk tilt, then 172 degrees, which is upside down.
+   *
+   * So take the larger of the two triangulations. Whichever diagonal MuJoCo
+   * chose, its surface is one of them, so the maximum is never below the
+   * real ground -- and an error that is only ever high means a foot lands a
+   * fraction early, which is nothing, instead of landing inside something,
+   * which is everything. Where the two agree, as on any quad without twist,
+   * this is exactly the bilinear answer. */
   const height = (px, py) => {
-    const i = Math.max(0, Math.min(NX - 1, Math.round((px + COURSE_X / 2) / CELL - 0.5)));
-    const j = Math.max(0, Math.min(NY - 1, Math.round((py + COURSE_Y / 2) / CELL - 0.5)));
-    return kit.h[j * NX + i];
+    const u = Math.max(0, Math.min(NX - 1.001, (px + COURSE_X / 2) / CELL - 0.5));
+    const v = Math.max(0, Math.min(NY - 1.001, (py + COURSE_Y / 2) / CELL - 0.5));
+    const i = Math.floor(u), j = Math.floor(v), s = u - i, t = v - j;
+    const a = kit.h[j * NX + i], b = kit.h[j * NX + i + 1];
+    const c = kit.h[(j + 1) * NX + i], d = kit.h[(j + 1) * NX + i + 1];
+    // Split (0,0)-(1,1), then split (1,0)-(0,1).
+    const p = s >= t ? a + (b - a) * s + (d - b) * t
+                     : a + (c - a) * t + (d - c) * s;
+    const q = s + t <= 1 ? a + (b - a) * s + (c - a) * t
+                         : d + (c - d) * (1 - s) + (b - d) * (1 - t);
+    return p > q ? p : q;
   };
 
   const goal = useRef(new THREE.Vector2(0.75, 0.95));
@@ -108,8 +221,38 @@ export default function TerrainRig({ stop }) {
   const tubes = useRef([]);
   const geos = useRef([]);
   const dog = useRef();
-  const walk = useRef({ which: 0, u: 0, t: 0 });
+  /* `path` is a snapshot, and that is a fix rather than a detail. The goal
+     orbits when nobody is pointing at the bench and the four searches re-run
+     twice a second, which is the comparison this bay is for -- but it means
+     kit.paths[k] is a different array every half second. Walking it directly
+     handed the dog a new route mid-stride with its node index still pointing
+     into the old one: measured in a browser, 29 falls in 120 seconds and it
+     never got past 26 per cent of anything. The four drawn paths still update
+     live; the one the machine is on is the one it was given when it set off,
+     and it takes the next one when it arrives. */
+  const walk = useRef({ which: 0, at: 0, t: 0, fell: 0, done: 0, travel: 0,
+                        path: null, px: 0, py: 0 });
   const start = useMemo(() => [2, 2], []);
+
+  /* The physics, and the gait that drives it. One scene for the life of the
+     cell: new ground rewrites the height field in place rather than
+     recompiling, which is what a height field is for. */
+  const [sim, simReady] = useSim(() => terrainScene({
+    nx: HNX, ny: HNY, cell: CELL, relief: RELIEF, start: [gx(2), gy(2), 0]
+  }), []);
+  // The padded samples, allocated once and refilled whenever the ground is.
+  const pad = useMemo(() => new Float32Array(HNX * HNY), []);
+  /* Eight sub-ticks is one 60 Hz frame of simulated time; the cap is what a
+     frame may buy back after a stall, scaled so a weak machine falls behind
+     in slow motion rather than integrating a second of physics at once. */
+  const subMax = useMemo(() => Math.max(4, Math.round(16 * detect().quality.work)), []);
+  const gait = useMemo(() => new Crawl({
+    period: 0.7, duty: 0.85, lift: 0.05, height: STAND
+  }), []);
+  /* The twelve measured joint angles, handed to Go2 so the drawing follows
+     the simulation rather than the command. */
+  const joints = useRef(new Float64Array(12));
+  const _acc = useRef(0);
 
   function solve() {
     const gi = Math.max(1, Math.min(NX - 2,
@@ -139,6 +282,32 @@ export default function TerrainRig({ stop }) {
 
   const solved = useRef(false);
 
+  /* The terrain, written into the model once it exists. MJCF cannot carry
+     hfield samples, so this is where the ground the planners read becomes
+     the ground the feet touch -- one array, no second copy to drift. */
+  useEffect(() => {
+    const sm = sim.current;
+    if (!simReady || !sm) return;
+    pushGround();
+    restart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simReady]);
+
+  /* The course's samples into the middle of the padded field, and the rim
+     clamped outward into the margin. */
+  function pushGround() {
+    const sm = sim.current;
+    if (!sm) return;
+    for (let J = 0; J < HNY; J++) {
+      const j = Math.max(0, Math.min(NY - 1, J - HPAD));
+      for (let I = 0; I < HNX; I++) {
+        const i = Math.max(0, Math.min(NX - 1, I - HPAD));
+        pad[J * HNX + I] = kit.h[j * NX + i];
+      }
+    }
+    sm.hfield(pad, RELIEF);
+  }
+
   /* Which cost the machine is actually walking, chosen rather than cycled.
      The four paths are all drawn all the time -- that is the comparison --
      but only one of them is being driven, and being able to say which is
@@ -150,7 +319,7 @@ export default function TerrainRig({ stop }) {
     actions: [{ label: "New ground", on: () => reseed() }],
     choice: {
       get: () => walk.current.which,
-      set: (v) => { walk.current.which = v; walk.current.u = 0; walk.current.t = 0; },
+      set: (v) => { walk.current.which = v; restart(); },
       options: COSTS.map((c, i) => ({ value: i, label: c.label }))
     },
     /* Climb, not length, and that correction is the bay.
@@ -177,7 +346,35 @@ export default function TerrainRig({ stop }) {
                   : "--"];
       });
     },
-    hint: "Hover the ground to move the goal. Climb is what each path costs to walk."
+    /* The dog's own frame of the run, for the interaction suite. Every number
+       is read out of the simulation rather than out of the command: the joint
+       angles are the ones the model is holding, the tilt is the trunk's own,
+       and travel is how far it went and not how far it was told to go. */
+    tick: step,
+    sim: () => !!sim.current,
+    state: () => {
+      const w = walk.current, sm = sim.current;
+      const out = {
+        which: w.which, fell: w.fell, done: w.done,
+        travel: +w.travel.toFixed(3),
+        frac: w.path && w.path.length > 1
+          ? +(w.at / (w.path.length - 1)).toFixed(3) : 0,
+        sim: sm ? 1 : 0
+      };
+      if (sm) {
+        const a = sm.jointAdr("dog_free"), q = sm.qpos;
+        out.z = +q[a.q + 2].toFixed(4);
+        const qx = q[a.q + 4], qy = q[a.q + 5];
+        out.tilt = +(Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (qx * qx + qy * qy))))
+                     * 57.3).toFixed(1);
+        /* One knee, because a dog whose legs are a frozen stance has a knee
+           that never moves and a dog that is walking has one that does. It is
+           the cheapest thing to ask that separates the two. */
+        out.knee = +q[a.q + 9].toFixed(3);
+      }
+      return out;
+    },
+    hint: "Hover the ground to move the goal. Climb is what each path costs to walk, and the dog walks the one you pick."
   }), [stop.id, kit]);
 
   function reseed() {
@@ -198,8 +395,9 @@ export default function TerrainRig({ stop }) {
     pos.needsUpdate = true;
     ground.attributes.color.needsUpdate = true;
     ground.computeVertexNormals();
-    walk.current.u = 0;
+    pushGround();
     solve();
+    restart();
   }
 
   useFrame(({ clock }, dt) => {
@@ -229,21 +427,140 @@ export default function TerrainRig({ stop }) {
       if (tick !== kit.lastSolve) { kit.lastSolve = tick; solve(); }
     }
 
-    /* The walk loops on its own path rather than stepping to the next cost
-       when it finishes. Which cost is being driven belongs to the reader
-       now; a timer taking it back after five seconds is the cell arguing
-       with somebody who just answered it. */
+    step(d);
+  });
+
+  /* One frame of the walk, taken out of useFrame so the suite can drive it.
+   *
+   * The controller runs at the physics rate and not the frame rate, and that
+   * is measured rather than tidy. Driven at one tick per browser frame the
+   * dog crossed 2 of the bay's own 4 planned paths and fell on the other
+   * two; at 120 Hz it crossed 4 but rolled to 45 degrees doing it; at the
+   * 500 Hz the model steps at, 4 of 4 with a worst trunk tilt of 25. A crawl
+   * is a sequence of catches and a catch that arrives 16 ms late is a catch
+   * that missed.
+   *
+   * The number of sub-ticks a frame may buy is capped, and scales with the
+   * tier, so a slow machine walks the dog slowly instead of dropping it. */
+  function step(d) {
     const w = walk.current;
     w.t += d;
-    if (w.u >= 1 && w.t > SHOW) { w.t = 0; w.u = 0; }
-    const path = kit.paths[w.which];
-    if (path && path.length > 1 && dog.current) {
-      w.u = Math.min(1, w.u + (WALK * d) / Math.max(0.2, pathLength(path)));
-      const [px, py, psi] = along(path, w.u);
-      dog.current.position.set(px, py, height(px, py));
-      dog.current.rotation.z = psi;
+    const sm = sim.current;
+    if (!sm) return;
+    if (!w.path || w.path.length < 2) { restart(); if (!w.path) return; }
+
+    _acc.current = Math.min(_acc.current + d, 0.2);
+    let n = 0;
+    while (_acc.current >= HZ && n < subMax) { _acc.current -= HZ; sub(); n++; }
+    if (n === subMax) _acc.current = 0;
+
+    /* And the drawing, from the simulation. The trunk's pose is read out of
+       qpos rather than through Sim.point, because this group is already in
+       the model's own frame -- the rig is rotated once and everything inside
+       it is z-up -- so the conversion three.js wants has already happened. */
+    const a = sm.jointAdr("dog_free"), q = sm.qpos;
+    if (dog.current) {
+      dog.current.position.set(q[a.q], q[a.q + 1], q[a.q + 2]);
+      dog.current.quaternion.set(q[a.q + 4], q[a.q + 5], q[a.q + 6], q[a.q + 3]);
     }
-  });
+    for (let i = 0; i < 12; i++) joints.current[i] = q[a.q + 7 + i];
+    /* How far it went, sampled once a frame rather than once a sub-tick. A
+       trunk carrying a gait jiggles at the physics rate, and summing that at
+       500 Hz measures the jiggle rather than the ground covered. */
+    w.travel += Math.hypot(q[a.q] - w.px, q[a.q + 1] - w.py);
+    w.px = q[a.q]; w.py = q[a.q + 1];
+  }
+
+  /* One controller tick, at the rate the model steps at. */
+  function sub() {
+    const sm = sim.current, w = walk.current;
+    const path = w.path;
+    const a = sm.jointAdr("dog_free"), q = sm.qpos;
+    const qw = q[a.q + 3], qx = q[a.q + 4], qy = q[a.q + 5], qz = q[a.q + 6];
+    const at = {
+      x: q[a.q], y: q[a.q + 1], z: q[a.q + 2],
+      yaw: Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+    };
+    const up = 1 - 2 * (qx * qx + qy * qy);
+
+    /* On its side. A dog that has gone over is not a failure of the bay --
+       it is the bay's own answer about that path over that ground, and the
+       readout says so -- but it has to get up, because the next thing a
+       reader does is pick a different cost. */
+    if (up < UP_MIN) { w.fell++; restart(); return; }
+
+    /* Pure pursuit, the same shape as the wheeled cells', with the speed and
+       the turn rate held inside what the gait measured it can hold: past
+       0.30 m/s it veers, and past 0.4 rad/s it stops turning as much as it
+       is asked and starts leaning instead. */
+    /* Pure pursuit, by arc length from the nearest node ahead.
+     *
+     * Written first the usual quick way -- advance the node index while the
+     * current node is inside the lookahead, aim at whatever index that lands
+     * on -- and that formulation can circle. A machine whose turn rate is
+     * capped gets beside a node, the index advance stops because the node is
+     * no longer inside the lookahead once it is behind, and it orbits it. It
+     * never falls and it never arrives: measured on two of this bay's own
+     * four courses, 19 and 20 per cent of the path in 70 simulated seconds,
+     * upright the whole time.
+     *
+     * So: take the nearest node ahead of where it has already got to, which
+     * is monotone and cannot be captured by a node it has passed, then walk
+     * forward along the path until a lookahead of arc length has been spent.
+     * The target is then always in front of the machine by construction. */
+    let c = w.at, cd = Infinity;
+    for (let k = w.at; k < Math.min(path.length, w.at + WINDOW); k++) {
+      const dd = Math.hypot(path[k][0] - at.x, path[k][1] - at.y);
+      if (dd < cd) { cd = dd; c = k; }
+    }
+    w.at = c;
+    let arc = 0, j = c;
+    while (j < path.length - 1 && arc < LOOK) {
+      arc += Math.hypot(path[j + 1][0] - path[j][0], path[j + 1][1] - path[j][1]);
+      j++;
+    }
+    const tgt = path[j];
+    let err = Math.atan2(tgt[1] - at.y, tgt[0] - at.x) - at.yaw;
+    while (err > Math.PI) err -= 2 * Math.PI;
+    while (err < -Math.PI) err += 2 * Math.PI;
+    const last = path[path.length - 1];
+    const home = Math.hypot(last[0] - at.x, last[1] - at.y) < ARRIVE;
+    if (home && !w.done) { w.done = 1; w.t = 0; }
+    const cmd = home || w.t > DRIVE_MAX
+      ? { v: 0, w: 0 }
+      : { v: WALK * Math.max(0, 1 - Math.abs(err) / 1.4),
+          w: Math.max(-TURN, Math.min(TURN, 1.1 * err)) };
+
+    const target = gait.step(HZ, cmd, height, at);
+    for (let i = 0; i < 12; i++) sm.actuate(ACT[i], target[i]);
+    sm.step(HZ);
+
+    // Round again, once it has stood at the end long enough to be seen.
+    if ((w.done || w.t > DRIVE_MAX) && w.t > SHOW) restart();
+  }
+
+  /* Stand the dog on the first cell of the path it is walking, facing the
+     second, with the gait's own clock back at the start of a cycle. */
+  function restart() {
+    const sm = sim.current, w = walk.current;
+    const path = kit.paths[w.which];
+    // A copy, so a later solve cannot reach it even if solve() ever
+    // starts writing in place instead of reassigning.
+    w.path = path && path.length > 1 ? path.slice() : null;
+    if (!sm || !w.path) return;
+    const yaw = Math.atan2(path[1][1] - path[0][1], path[1][0] - path[0][0]);
+    sm.place("dog_free", path[0][0], path[0][1],
+             height(path[0][0], path[0][1]) + STAND, yaw);
+    const a = sm.jointAdr("dog_free");
+    for (let i = 0; i < 12; i++) {
+      sm.qpos[a.q + 7 + i] = HOME[i % 3];
+      sm.actuate(ACT[i], HOME[i % 3]);
+    }
+    gait.reset();
+    w.at = 0; w.t = 0; w.done = 0; w.travel = 0;
+    w.px = w.path[0][0]; w.py = w.path[0][1];
+    _acc.current = 0;
+  }
 
   return (
     <group position={[x, 0.9, 0]} rotation-x={-Math.PI / 2}>
@@ -284,7 +601,7 @@ export default function TerrainRig({ stop }) {
 
       <group ref={dog}>
         <group rotation-x={Math.PI / 2}>
-          <Go2 phase={0} />
+          <Go2 phase={0} joints={joints} />
         </group>
       </group>
     </group>
@@ -299,29 +616,3 @@ function climbOf(p, at) {
   return c;
 }
 
-function pathLength(p) {
-  let s = 0;
-  for (let i = 0; i < p.length - 1; i++)
-    s += Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
-  return s;
-}
-
-/* Where a fraction along a path is, and which way it faces there. Returns
-   the tangent rather than the bearing to the next node so a machine on a
-   staircase of grid cells is not snapped to eight headings. */
-function along(p, u) {
-  const total = pathLength(p);
-  let want = u * total, acc = 0;
-  for (let i = 0; i < p.length - 1; i++) {
-    const seg = Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
-    if (acc + seg >= want || i === p.length - 2) {
-      const t = seg > 0 ? (want - acc) / seg : 0;
-      const a = Math.max(0, i - 2), b = Math.min(p.length - 1, i + 3);
-      return [p[i][0] + (p[i + 1][0] - p[i][0]) * t,
-              p[i][1] + (p[i + 1][1] - p[i][1]) * t,
-              Math.atan2(p[b][1] - p[a][1], p[b][0] - p[a][0])];
-    }
-    acc += seg;
-  }
-  return [p[0][0], p[0][1], 0];
-}

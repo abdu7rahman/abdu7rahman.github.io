@@ -94,6 +94,10 @@ const STAND = 2 * THIGH_L * Math.cos(THIGH0);
 const BREATH = 5.5;
 const SWAY = 0.012;
 
+// The leg order everything outside this file uses, and no offset at all.
+const ORDER = ["FL", "FR", "RL", "RR"];
+const ZERO = [0, 0, 0];
+
 let cached = null;
 
 export function useGo2() {
@@ -142,7 +146,17 @@ function leg(dx, dy, dz, side, out) {
   return out;
 }
 
-export default function Go2({ phase = 0, scale = 1, tint }) {
+/* `joints`, when it is given, is a ref to twelve angles in FL FR RL RR order
+ * and hip, thigh, calf within each -- the URDF's own joints, which is also
+ * the order sim/models.js declares them in and the order demos/crawl.js
+ * writes. Given it, this draws the robot those angles describe and nothing
+ * else: no breath, no lift, no derived stance. Where the base goes is then
+ * the caller's, because the caller is the one holding the physics.
+ *
+ * Without it, the stance and the breath below are what it draws, which is
+ * what every bay that only needs a Go2 standing there still wants.
+ */
+export default function Go2({ phase = 0, scale = 1, tint, joints = null }) {
   const mesh = useGo2();
   const groups = useRef([]);
   const body = useRef();
@@ -237,9 +251,10 @@ export default function Go2({ phase = 0, scale = 1, tint }) {
     if (!geom) return;
     /* Off the clock, not accumulated, so the cell is in step with the rest of
        the building whenever it comes back on screen. */
+    const driven = joints && joints.current;
     const t = clock.elapsedTime + phase * BREATH;
     const w = (2 * Math.PI * t) / BREATH;
-    const d = [
+    const d = driven ? ZERO : [
       SWAY * Math.sin(w),
       SWAY * Math.sin(w + (2 * Math.PI) / 3),
       SWAY * Math.sin(w + (4 * Math.PI) / 3)
@@ -250,7 +265,13 @@ export default function Go2({ phase = 0, scale = 1, tint }) {
        it never moves, and everything that does move is a joint angle the link
        lengths asked for. */
     if (body.current) {
-      body.current.matrix.makeTranslation(d[0], d[1], lift + d[2]);
+      /* Driven, the base is wherever the simulation put it and the caller has
+         already placed this whole group there, so there is nothing left to
+         offset. The lift exists only for the standing pose: it is how far the
+         drawn foot triangles sit below the joint, which is not the same as
+         the collision sphere's radius and is why it is measured off the mesh
+         rather than taken from the URDF. */
+      body.current.matrix.makeTranslation(d[0], d[1], driven ? 0 : lift + d[2]);
       body.current.matrixWorldNeedsUpdate = true;
     }
 
@@ -260,9 +281,16 @@ export default function Go2({ phase = 0, scale = 1, tint }) {
       const L = links[i];
       if (L.leg === null) { g.matrix.identity(); g.matrixWorldNeedsUpdate = true; continue; }
       const k = L.leg, s = SIDE[k], h = HIP[k];
-      const q = leg(rest[k][0] - d[0] - h[0],
-                    rest[k][1] - d[1] - h[1],
-                    rest[k][2] - d[2] - h[2], s, M.q);
+      let q;
+      if (driven) {
+        const b = ORDER.indexOf(k) * 3;
+        M.q[0] = driven[b]; M.q[1] = driven[b + 1]; M.q[2] = driven[b + 2];
+        q = M.q;
+      } else {
+        q = leg(rest[k][0] - d[0] - h[0],
+                rest[k][1] - d[1] - h[1],
+                rest[k][2] - d[2] - h[2], s, M.q);
+      }
 
       M.hip.makeRotationX(q[0]).setPosition(h[0], h[1], h[2]);
       if (L.part === "hip") {

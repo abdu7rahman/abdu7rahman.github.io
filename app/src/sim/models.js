@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { ORIGINS, TCP_Z } from "../../../world/kinematics.js";
+import { LEGS, HIP, SIDE, ABD, THIGH, CALF } from "../lab/demos/crawl.js";
 
 /* The MJCF the cells are simulated from, written out of the same numbers the
  * cells are drawn from.
@@ -211,7 +212,8 @@ function head(opts = {}) {
   return `<mujoco model="cell">
     <compiler angle="radian" autolimits="true"/>
     <option timestep="${opts.timestep ?? 0.002}" gravity="0 0 -9.81"
-            integrator="implicitfast" cone="elliptic" impratio="10"/>
+            integrator="implicitfast" cone="elliptic"
+            impratio="${opts.impratio ?? 10}"/>
     <default>
       <geom density="${opts.density ?? 1100}" friction="0.9 0.01 0.001"
             solref="0.006 1" solimp="0.95 0.99 0.001"/>
@@ -509,5 +511,148 @@ export function sortScene() {
       ${bin("bin_short_r", SORT.bin[1][0], -SORT.bin[1][1])}
     </worldbody>
     <actuator>${l.act}${r.act}</actuator>
+  </mujoco>`;
+}
+
+/* A Unitree Go2, as physics.
+ *
+ * Every number is Unitree's, taken from go2_description by way of
+ * mujoco_menagerie's own go2.xml (BSD-3-Clause, DeepMind's transcription of
+ * Unitree's URDF): link masses and diagonal inertias, the inertial frames
+ * they are expressed in, joint ranges, joint damping and armature, the
+ * motor torque limits, and the collision primitives -- which the vendor
+ * already writes as boxes, cylinders and a sphere at each foot, so nothing
+ * here is a proxy somebody chose. lab/Go2.jsx draws the same robot from the
+ * same description's meshes; this is what moves it.
+ *
+ * Position actuators rather than the vendor's torque motors, for the same
+ * reason the UR arm here uses them: what drives this is a heuristic gait
+ * that thinks in joint angles, and a torque motor would need a joint
+ * controller in front of it that would be a PD anyway. The force ranges are
+ * the published ones, so the thing that cannot be exceeded is still the
+ * thing Unitree says cannot be exceeded.
+ */
+export const GO2 = {
+  stand: 0.27,                 // the menagerie keyframe's trunk height
+  home: [0, 0.9, -1.8],        // and its joint angles, per leg
+  trunk: [0.1881, 0.04675, 0.057]
+};
+
+/* Which limit each hip joint carries. The URDF gives the front legs
+   [-1.5708, 3.4907] and the rear [-0.5236, 4.5379], which is not symmetry
+   anybody would invent and is why it is quoted rather than derived. */
+const HIP_RANGE = { FL: "-1.5708 3.4907", FR: "-1.5708 3.4907",
+                    RL: "-0.5236 4.5379", RR: "-0.5236 4.5379" };
+/* The inertial frames, which are per leg because the left and right sides
+   are mirrors and the front and rear hips are not. Quaternions w first. */
+const LEG_I = {
+  hip: {
+    FL: ["-0.0054 0.00194 -0.000105", "0.497014 0.499245 0.505462 0.498237"],
+    FR: ["-0.0054 -0.00194 -0.000105", "0.498237 0.505462 0.499245 0.497014"],
+    RL: ["0.0054 0.00194 -0.000105", "0.505462 0.498237 0.497014 0.499245"],
+    RR: ["0.0054 -0.00194 -0.000105", "0.499245 0.497014 0.498237 0.505462"]
+  },
+  thighQ: ["0.829533 0.0847635 -0.0200632 0.551623",
+           "0.551623 -0.0200632 0.0847635 0.829533"],
+  calfQ: ["0.710672 0.00154099 -0.00450087 0.703508",
+          "0.703508 -0.00450087 0.00154099 0.710672"]
+};
+
+/* The dog's own contact class. It touches the ground and nothing else in
+   the cell, which is what its bay contains: one piece of terrain. */
+const DOG = 'contype="8" conaffinity="2"';
+
+function go2Leg(name, k) {
+  const s = SIDE[k], [hx, hy] = HIP[k], L = s > 0 ? 0 : 1;
+  const [ip, iq] = LEG_I.hip[k];
+  return `
+    <body name="${name}_${k}_hip" pos="${f(hx)} ${f(hy)} 0">
+      <inertial pos="${ip}" quat="${iq}" mass="0.678"
+        diaginertia="0.00088403 0.000596003 0.000479967"/>
+      <joint name="${name}_${k}_hip" axis="1 0 0" range="-1.0472 1.0472"
+             damping="2" armature="0.01" frictionloss="0.2"/>
+      <geom ${DOG} type="cylinder" size="0.046 0.02" pos="0 ${f(0.08 * s)} 0"
+            quat="1 1 0 0" friction="0.6" margin="0.001" condim="1" rgba="0 0 0 0"/>
+      <body name="${name}_${k}_thigh" pos="0 ${f(ABD * s)} 0">
+        <inertial pos="-0.00374 ${f(-0.0223 * s)} -0.0327" quat="${LEG_I.thighQ[L]}"
+          mass="1.152" diaginertia="0.00594973 0.00584149 0.000878787"/>
+        <joint name="${name}_${k}_thigh" axis="0 1 0" range="${HIP_RANGE[k]}"
+               damping="2" armature="0.01" frictionloss="0.2"/>
+        <geom ${DOG} type="box" size="0.1065 0.01225 0.017" pos="0 0 -0.1065"
+              quat="0.707107 0 0.707107 0" friction="0.6" margin="0.001"
+              condim="1" rgba="0 0 0 0"/>
+        <body name="${name}_${k}_calf" pos="0 0 ${f(-THIGH)}">
+          <inertial pos="0.00629595 ${f(-0.000622121 * s)} -0.141417"
+            quat="${LEG_I.calfQ[L]}" mass="0.241352"
+            diaginertia="0.0014901 0.00146356 5.31397e-05"/>
+          <joint name="${name}_${k}_calf" axis="0 1 0" range="-2.7227 -0.83776"
+                 damping="2" armature="0.01" frictionloss="0.2"/>
+          <geom ${DOG} type="cylinder" size="0.012 0.06" pos="0.008 0 -0.06"
+                quat="0.994493 0 -0.104807 0" friction="0.6" margin="0.001"
+                condim="1" rgba="0 0 0 0"/>
+          <geom ${DOG} type="cylinder" size="0.011 0.0325" pos="0.02 0 -0.148"
+                quat="0.999688 0 0.0249974 0" friction="0.6" margin="0.001"
+                condim="1" rgba="0 0 0 0"/>
+          <!-- The foot. priority and condim 6 are the vendor's: the foot wins
+               the contact parameters over whatever it lands on, which is how
+               a rubber pad on rock behaves and not how MuJoCo's default
+               averaging would have it. -->
+          <geom name="${name}_${k}_foot" ${DOG} type="sphere" size="0.022"
+                pos="-0.002 0 ${f(-CALF)}" priority="1" solimp="0.015 1 0.022"
+                condim="6" friction="0.8 0.02 0.01" rgba="0 0 0 0"/>
+        </body>
+      </body>
+    </body>`;
+}
+
+export function go2(name, { pos = [0, 0], z = GO2.stand, yaw = 0, kp = 400, kv = 10 } = {}) {
+  const body = `<body name="${name}" pos="${f(pos[0])} ${f(pos[1])} ${f(z)}"
+      euler="0 0 ${f(yaw)}">
+      <inertial pos="0.021112 0 -0.005366" quat="-0.000543471 0.713435 -0.00173769 0.700719"
+        mass="6.921" diaginertia="0.107027 0.0980771 0.0244531"/>
+      <freejoint name="${name}_free"/>
+      <geom ${DOG} type="box" size="${GO2.trunk.map(f).join(" ")}"
+            friction="0.6" margin="0.001" condim="1" rgba="0 0 0 0"/>
+      ${LEGS.map(k => go2Leg(name, k)).join("")}
+    </body>`;
+  /* FL FR RL RR, hip thigh calf, which is the order demos/crawl.js writes its
+     twelve angles in and the order the menagerie's keyframe uses. */
+  const act = LEGS.map(k => `
+    <position name="${name}_${k}_hip" joint="${name}_${k}_hip" kp="${kp}" kv="${kv}"
+      forcerange="-23.7 23.7"/>
+    <position name="${name}_${k}_thigh" joint="${name}_${k}_thigh" kp="${kp}" kv="${kv}"
+      forcerange="-23.7 23.7"/>
+    <position name="${name}_${k}_calf" joint="${name}_${k}_calf" kp="${kp}" kv="${kv}"
+      forcerange="-45.43 45.43"/>`).join("");
+  return { body, act };
+}
+
+/* The cost bay: one height field, and a dog standing on it.
+ *
+ * The terrain is a MuJoCo hfield rather than a mesh, and it is the same
+ * array the four planners read and the same array the bench top's vertices
+ * are displaced by -- written in after the model compiles, because MJCF can
+ * only load hfield data from a file. So the ground the dog's feet touch is
+ * the ground the cost functions are arguing about, to the sample. There is
+ * no second copy to drift.
+ *
+ * The hfield's grid spans one cell less than the course in each axis, with
+ * ncol by nrow vertices: that puts its outer vertices exactly on the outer
+ * cell centres, which is where the rig's own PlaneGeometry puts them.
+ */
+export function terrainScene({ nx, ny, cell, relief, start = [0, 0, 0] } = {}) {
+  const g = go2("dog", { pos: [start[0], start[1]], yaw: start[2] });
+  return `${head({ timestep: 0.002, impratio: 100 })}
+    <asset>
+      <hfield name="ground" nrow="${ny}" ncol="${nx}"
+              size="${f((nx * cell - cell) / 2)} ${f((ny * cell - cell) / 2)}
+                    ${f(relief)} 0.05"/>
+    </asset>
+    <worldbody>
+      <geom name="floor" ${WORLD} type="hfield" hfield="ground"
+            friction="0.9 0.01 0.001" rgba="0.3 0.3 0.32 0"/>
+      ${g.body}
+    </worldbody>
+    <actuator>${g.act}</actuator>
   </mujoco>`;
 }

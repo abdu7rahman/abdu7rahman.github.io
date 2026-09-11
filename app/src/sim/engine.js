@@ -287,6 +287,22 @@ export class Sim {
   get ctrl() { return this.data.ctrl; }
   get time() { return this.data.time; }
 
+  /* A height field's samples, written after the model has compiled.
+   *
+   * MJCF can only load hfield data from a PNG or a binary file, and the
+   * terrain this drives is generated in the page. So the XML declares the
+   * grid and its extent and the numbers arrive here, normalised against the
+   * elevation the XML named -- MuJoCo stores hfield samples as a fraction of
+   * it. Done once, before anything steps, which is why a plain mj_forward is
+   * enough to make the collider see the new ground. */
+  hfield(values, elevation) {
+    const d = this.model.hfield_data;
+    const k = 1 / (elevation || 1);
+    const n = Math.min(d.length, values.length);
+    for (let i = 0; i < n; i++) d[i] = values[i] * k;
+    this.mj.mj_forward(this.model, this.data);
+  }
+
   /* Command every actuator at once, which is what a joint controller does. */
   command(q) {
     const c = this.data.ctrl;
