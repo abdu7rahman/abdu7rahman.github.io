@@ -3,6 +3,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { Local } from "./demos/dwa.js";
+import { useSim } from "../sim/useSim.js";
+import { wheeledScene, wheelsFor } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
@@ -75,7 +77,18 @@ export default function DriveRig({ stop }) {
     return new Local({ maxV: MAX_V, maxW: MAX_W, horizon: HORIZON,
                        nv: odd(7 * w), nw: odd(21 * w) });
   }, []);
+  /* The physics, built once from the obstacle layout the cell starts with.
+     The obstacles are mocap bodies, so moving one later is a write and not a
+     recompile -- only their number is baked in, and the cell's Reset is what
+     puts that back. */
+  const [sim] = useSim(() => wheeledScene({
+    starts: [[-0.40, -0.52, 0.6]], obstacles: OBS0
+  }), []);
+
   const pose = useRef({ x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 });
+  /* Scratch for reading the simulation, so a frame allocates nothing. */
+  const _p = useMemo(() => new THREE.Vector3(), []);
+  const _h = useMemo(() => new THREE.Vector3(), []);
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
   const goal = useRef(new THREE.Vector2(0.40, 0.49));
   /* Seconds since the cursor left the bench, and whether it is on it at all.
@@ -183,6 +196,26 @@ export default function DriveRig({ stop }) {
       ["v", cmd.current.v.toFixed(3) + " m/s"],
       ["w", cmd.current.w.toFixed(2) + " rad/s"]
     ],
+    /* The base's own state, for a probe that needs to ask where it actually
+       is rather than what it was told to do -- the difference between those
+       two is the whole point of the cell running on physics. */
+    state: () => {
+      const sm = sim.current;
+      const out = { ...pose.current, v: cmd.current.v, w: cmd.current.w,
+                    sim: !!sm };
+      if (sm) {
+        sm.point("tb0", _p);
+        out.z = +_p.y.toFixed(4);
+        out.ncon = sm.contacts;
+        out.wl = +sm.jointAt("tb0_wl").toFixed(2);
+        out.wr = +sm.jointAt("tb0_wr").toFixed(2);
+        // How far the body's own up-axis has fallen away from vertical.
+        sm.dir("tb0", 2, _h);
+        out.tilt = +(Math.acos(Math.max(-1, Math.min(1, _h.y))) * 57.3).toFixed(1);
+        out.touch = (sm.touching("floor") ? 1 : 0);
+      }
+      return out;
+    },
     hint: "Hover to move the goal. Click the pad to drop an obstacle, click one to lift it."
   }), [stop.id, ctrl]);
 
@@ -213,18 +246,64 @@ export default function DriveRig({ stop }) {
       paintFan(pickIdx);
     }
 
-    // Integrate the held command, so what the base does between plans is the
-    // arc the planner scored and not an interpolation of two of them.
+    /* The command goes to the wheels, and where the robot ends up is
+       whatever the wheels manage.
+     *
+     * This used to integrate the held command straight into the pose, which
+     * is the unicycle the controller is written against rather than the
+     * machine it is written for. A unicycle arrives wherever the arithmetic
+     * says: it cannot slip, cannot be pushed, cannot fail to turn, and drives
+     * through a drum without noticing. Every one of those is something this
+     * bay claims to be demonstrating.
+     *
+     * The conversion is exact and needs nothing from the controller -- a
+     * differential drive turns (v, w) into two wheel speeds by geometry --
+     * so what the plan asks for has not changed. What has changed is that
+     * asking is now different from getting. */
     const { v, w } = cmd.current;
-    q.psi += w * d; q.turned += w * d;
-    q.x += Math.cos(q.psi) * v * d;
-    q.y += Math.sin(q.psi) * v * d;
-    q.travel += Math.abs(v) * d;
-
-    // Off the bench is not a state the machine can reach, but a numerical
-    // one it can: clamp rather than let a bad tick throw it into the aisle.
-    q.x = Math.max(-COURSE_X / 2, Math.min(COURSE_X / 2, q.x));
-    q.y = Math.max(-COURSE_Y / 2, Math.min(COURSE_Y / 2, q.y));
+    const sm = sim.current;
+    if (sm) {
+      const [wl, wr] = wheelsFor(v, w);
+      sm.actuate("tb0_wl", wl);
+      sm.actuate("tb0_wr", wr);
+      /* Obstacles the reader has moved, written through to the physics.
+         A mocap body takes the write and gives nothing back, which is what a
+         hand in a workspace is. */
+      for (let i = 0; i < obs.current.length; i++) {
+        const o = obs.current[i];
+        sm.setMocap(`obs${i}`, o[0], o[1], 0.09);
+      }
+      sm.step(d);
+      /* And read the pose back out. These are the lines that make the cell a
+         simulation: the drawing follows the physics rather than the physics
+         being absent.
+       
+         The cell's frame is the bench's -- x across, y along, z up -- and
+         Sim.point answers in three's, where the bench's y is minus z. */
+      sm.point("tb0", _p);
+      sm.dir("tb0", 0, _h);
+      const nx = _p.x, ny = -_p.z;
+      /* Travel is how far it went, not how far it was told to go. That is
+         the whole difference between this and the arithmetic it replaces,
+         and a wheel that slips should show up in the odometer. */
+      q.travel += Math.hypot(nx - q.x, ny - q.y);
+      const npsi = Math.atan2(-_h.z, _h.x);
+      let dpsi = npsi - q.psi;
+      while (dpsi > Math.PI) dpsi -= Math.PI * 2;
+      while (dpsi < -Math.PI) dpsi += Math.PI * 2;
+      q.turned += dpsi;
+      q.x = nx; q.y = ny; q.psi = npsi;
+    } else {
+      /* Until the scene has compiled -- the engine is a WASM fetch and a
+         cell can be on screen before it lands -- the unicycle keeps the
+         machine moving rather than leaving it parked on a dead bench. */
+      q.psi += w * d; q.turned += w * d;
+      q.x += Math.cos(q.psi) * v * d;
+      q.y += Math.sin(q.psi) * v * d;
+      q.travel += Math.abs(v) * d;
+      q.x = Math.max(-COURSE_X / 2, Math.min(COURSE_X / 2, q.x));
+      q.y = Math.max(-COURSE_Y / 2, Math.min(COURSE_Y / 2, q.y));
+    }
 
     if (flag.current) flag.current.position.set(goal.current.x, goal.current.y, 0.02);
     mat.uEye.value.copy(cam.position);

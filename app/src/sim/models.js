@@ -218,6 +218,135 @@ function head(opts = {}) {
     </default>`;
 }
 
+/* A TurtleBot3 Burger, as a machine rather than as a pose.
+ *
+ * The wheeled cells integrated a unicycle by hand -- q.x += cos(psi) * v * dt
+ * -- which is the model the controllers are written against and is not a
+ * robot. A unicycle cannot slip, cannot be pushed, cannot tip, and arrives
+ * wherever the arithmetic says regardless of what is in the way: drive a
+ * commanded velocity at a wall and the wall is simply where the drawing
+ * overlaps. Every one of those is a thing this bay claims to be showing.
+ *
+ * So the Burger is built here and driven through its wheels. The numbers are
+ * ROBOTIS's own, the same ones lab/TurtleBot.jsx draws from: 0.160 m between
+ * the axles, a 0.033 m tyre, the axle 0.023 above base_link, 0.22 m/s and
+ * 2.84 rad/s at the ceiling, and about a kilogram all told.
+ *
+ * Two wheels and a caster, which is what a Burger is. The caster is a low
+ * friction sphere rather than a third wheel because that is what a ball
+ * caster does and because a rolling joint there would be a joint whose only
+ * job is to not resist -- the friction number does that in one line.
+ *
+ * Velocity actuators on the hinges, with a torque ceiling. A differential
+ * drive turns (v, w) into two wheel speeds exactly -- wl = (v - w T / 2) / R
+ * and wr = (v + w T / 2) / R -- so a controller written for a unicycle needs
+ * no changes at all to drive this; what changes is that the wheels can now
+ * fail to deliver. The ceiling is 0.1 Nm, which at a 0.033 m tyre is 3 N of
+ * tractive effort per wheel against a 1 kg robot: enough to accelerate it in
+ * about a tenth of a second and not enough to shove a drum out of the way,
+ * which is the distinction the cell exists to show.
+ */
+export const BURGER = {
+  track: 0.160,       // between the axles
+  tyre: 0.033,        // rolling radius
+  axle: 0.023,        // axle height above base_link
+  maxV: 0.22,         // BURGER_MAX_LIN_VEL
+  maxW: 2.84          // BURGER_MAX_ANG_VEL
+};
+
+/* Wheel speeds for a body velocity, which is the whole of a differential
+   drive and is exact rather than fitted. */
+export function wheelsFor(v, w) {
+  const half = (w * BURGER.track) / 2;
+  return [(v - half) / BURGER.tyre, (v + half) / BURGER.tyre];
+}
+
+export function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
+  const R = BURGER.tyre, T = BURGER.track;
+  /* The chassis sits so that base_link is `axle` above the wheel centres,
+     which puts the whole robot at the height its own URDF says. */
+  const z = R;
+  const body = `<body name="${name}" pos="${f(pos[0])} ${f(pos[1])} ${f(z)}"
+      euler="0 0 ${f(yaw)}">
+      <freejoint name="${name}_free"/>
+      <!-- The mass, as one low box, and low is the whole of it.
+           
+           The plates and standoffs are drawn by lab/TurtleBot.jsx from the
+           vendor's own mesh; what the physics needs from them is where the
+           mass is. Written first as a box the height of the real deck stack,
+           it put the centre of mass 88 mm up over a 160 mm track, and a
+           machine whose published turn rate is 2.84 rad/s rolled itself over
+           inside two seconds -- measured, the body climbed from 33 mm to
+           48 mm, shed two of its four contacts and flipped.
+           
+           Low was necessary and it was not sufficient. Lowered to 63 mm it
+           still rolled over, and the reason is in the contact count: two,
+           for a robot with two wheels and a caster, all the way to the floor.
+           The mass was centred on the axle, so nothing pressed the caster
+           down -- a two-wheeled machine balanced on its axle line, which
+           falls over whichever way it is nudged and did, in about four
+           seconds, every time.
+           
+           So the box sits back, between the axle and the caster, which is
+           where a Burger's battery and motors actually are. Gravity then
+           carries the caster and the robot stands on three points. -->
+      <geom ${WORLD} type="box" size="0.045 0.045 0.025" pos="-0.022 0 0.030"
+            mass="0.85" rgba="0.4 0.42 0.45 0"/>
+      <body name="${name}_wl" pos="0 ${f(T / 2)} 0">
+        <!-- Armature is the rotor and gearbox seen from the output shaft, and
+             it is what makes a velocity actuator behave. Without it the wheel
+             has only the tyre's own inertia, the servo's correction arrives
+             as a step, and the contact spends every tick recovering from the
+             last one. -->
+        <joint name="${name}_wl" type="hinge" axis="0 1 0"
+               armature="0.0008" damping="0.002"/>
+        <geom ${WORLD} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
+              mass="0.05" friction="1.4 0.02 0.002" rgba="0.2 0.2 0.22 0"/>
+      </body>
+      <body name="${name}_wr" pos="0 ${f(-T / 2)} 0">
+        <joint name="${name}_wr" type="hinge" axis="0 1 0"
+               armature="0.0008" damping="0.002"/>
+        <geom ${WORLD} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
+              mass="0.05" friction="1.4 0.02 0.002" rgba="0.2 0.2 0.22 0"/>
+      </body>
+      <!-- The ball caster, aft, riding on almost nothing. -->
+      <geom ${WORLD} type="sphere" size="0.012" pos="-0.052 0 ${f(-R + 0.012)}"
+            mass="0.01" friction="0.04 0.005 0.0002" rgba="0.3 0.3 0.32 0"/>
+    </body>`;
+  const act = `<velocity name="${name}_wl" joint="${name}_wl" kv="0.6"
+                 forcerange="-0.1 0.1"/>
+               <velocity name="${name}_wr" joint="${name}_wr" kv="0.6"
+                 forcerange="-0.1 0.1"/>`;
+  return { body, act };
+}
+
+/* A bench top with Burgers on it, which is the drive cell, the race cell and
+ * anything else that wants wheels.
+ *
+ * The obstacles are mocap bodies for the same reason the replan cell's is --
+ * a thing the reader drags has to push the robot without the robot pushing
+ * back, or the first contact throws the cursor across the bench. They are
+ * still real geometry to the robot, which is the point: it has to go round
+ * them because it cannot go through them, not because a cost term said so.
+ */
+export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [], radius = 0.12 } = {}) {
+  const bots = starts.map((st, i) =>
+    burger(`tb${i}`, { pos: [st[0], st[1]], yaw: st[2] || 0 }));
+  const obs = obstacles.map((o, i) => `
+    <body name="obs${i}" mocap="true" pos="${f(o[0])} ${f(o[1])} 0.09">
+      <geom ${WORLD} type="cylinder" size="${f(o[2] || radius)} 0.09"
+            rgba="0.45 0.47 0.5 0"/>
+    </body>`).join("");
+  return `${head({ timestep: 0.004 })}
+    <worldbody>
+      <geom name="floor" ${WORLD} type="plane" size="4 4 0.1"
+            friction="1.0 0.02 0.002" rgba="0.3 0.3 0.32 0"/>
+      ${bots.map(b => b.body).join("")}${obs}
+    </worldbody>
+    <actuator>${bots.map(b => b.act).join("")}</actuator>
+  </mujoco>`;
+}
+
 /* The replan cell: one arm on a bench, a part in front of it, and a movable
  * obstacle the reader pushes into its way.
  *

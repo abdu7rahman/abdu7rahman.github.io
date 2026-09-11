@@ -4,6 +4,8 @@ import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { purePursuit, stanley, MPPI, nearest, ahead } from "./demos/controllers.js";
 import { Local } from "./demos/dwa.js";
+import { useSim } from "../sim/useSim.js";
+import { wheeledScene, wheelsFor } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
@@ -199,6 +201,23 @@ export default function RaceRig({ stop }) {
     hint: "Each one on its own odometer, and the line it took this lap."
   }), [stop.id, kit]);
 
+  /* The starts, spaced along the path the same way reset() spaces them, so
+     the compiled scene opens with the grid already formed. */
+  const [sim] = useSim(() => {
+    const p = makePath();
+    const starts = [0, 1, 2, 3].map(i => {
+      let acc = 0, k = 0;
+      while (k < p.length - 2 && acc < i * LEAD) {
+        acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
+      }
+      return [p[k][0], p[k][1],
+              Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0])];
+    });
+    return wheeledScene({ starts });
+  }, []);
+  const _p = useMemo(() => new THREE.Vector3(), []);
+  const _h = useMemo(() => new THREE.Vector3(), []);
+
   function reset() {
     const p = kit.path;
     poses.current.forEach((q, i) => {
@@ -223,16 +242,45 @@ export default function RaceRig({ stop }) {
     const tick = acc.current >= TICK;
     if (tick) acc.current -= TICK;
 
+    const sm = sim.current;
+    /* One step for the whole world, before anybody is read back: four bodies
+       in one simulation advance together or they are not in the same world. */
+    if (sm) {
+      poses.current.forEach((q, i) => {
+        const [wl, wr] = wheelsFor(q.v, q.w);
+        sm.actuate(`tb${i}_wl`, wl);
+        sm.actuate(`tb${i}_wr`, wr);
+      });
+      sm.step(d);
+    }
     const N = kit.path.length;
     poses.current.forEach((q, i) => {
       if (tick) {
         const [v, w] = kit.runners[i].step([q.x, q.y, q.psi]);
         q.v = v; q.w = w;
       }
-      q.psi += q.w * d; q.turned += q.w * d;
-      q.x += Math.cos(q.psi) * q.v * d;
-      q.y += Math.sin(q.psi) * q.v * d;
-      q.travel += Math.abs(q.v) * d;
+      if (sm) {
+        /* Where it actually got to. What makes this a race rather than four
+           animations played side by side is that they are in one world: a
+           controller that cuts a corner into the machine ahead of it now
+           pays for that, and the odometer that decides the order counts the
+           distance travelled rather than the distance commanded. */
+        sm.point(`tb${i}`, _p);
+        sm.dir(`tb${i}`, 0, _h);
+        const nx = _p.x, ny = -_p.z;
+        q.travel += Math.hypot(nx - q.x, ny - q.y);
+        const npsi = Math.atan2(-_h.z, _h.x);
+        let dp = npsi - q.psi;
+        while (dp > Math.PI) dp -= Math.PI * 2;
+        while (dp < -Math.PI) dp += Math.PI * 2;
+        q.turned += dp;
+        q.x = nx; q.y = ny; q.psi = npsi;
+      } else {
+        q.psi += q.w * d; q.turned += q.w * d;
+        q.x += Math.cos(q.psi) * q.v * d;
+        q.y += Math.sin(q.psi) * q.v * d;
+        q.travel += Math.abs(q.v) * d;
+      }
 
       /* A lap is the plan's own index wrapping, not a line crossed: the
          start is an arbitrary node on a closed loop and a finish line at it
