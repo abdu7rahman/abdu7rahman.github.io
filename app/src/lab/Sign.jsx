@@ -171,6 +171,24 @@ export default function Sign({ face, up, onGrips }) {
     if (!yaw.current || !tilt.current) return;
     const k = 1 - Math.pow(0.004, Math.min(0.1, dt));
     t.current += ((raise ? 1 : 0) - t.current) * k;
+    /* Snapped at the ends, because an exponential ease never arrives.
+     *
+     * The gait blends the solved hold against the arm's swing by this
+     * number, so 0.993 means the pose is seven parts in a thousand of the
+     * way back toward a swinging arm -- which over a metre of arm is a
+     * centimetre of hand. Measured on a raised sign, the palm read 12.3 mm
+     * off the rail while the solve itself was 3 mm out: the missing 9 mm was
+     * an ease that had stopped moving but not finished. A sign that is up is
+     * up.
+     *
+     * Two per cent rather than a half, because the snap has to be reachable
+     * on a slow renderer as well as a fast one: this ease closes 42.5 per
+     * cent of the remaining gap per frame at a tenth of a second a frame, so
+     * under the software rasteriser it takes nine frames to pass 0.993 and
+     * ten to pass 0.995. At 60 Hz the difference is 0.83 s against 0.95 s,
+     * and neither is a motion anybody can see the end of. */
+    if (t.current > 0.98) t.current = 1;
+    else if (t.current < 0.02) t.current = 0;
     const a = t.current;
     if (swapping && a < 0.06) setShown(want);
     const x = DOWN.x + (UP.x - DOWN.x) * a;
