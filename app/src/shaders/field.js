@@ -34,6 +34,7 @@ export const FIELD_FRAG = /* glsl */`
   uniform vec3  uClosed;
   uniform vec3  uPath;
   uniform vec3  uEnds;
+  uniform vec3  uInfl;
   uniform vec3  uAir;
   uniform float uFogNear, uFogFar;
   uniform float uFade;       // the whole layer, 0 to 1
@@ -57,6 +58,11 @@ export const FIELD_FRAG = /* glsl */`
     // of a closed set is its shape, not any one cell in it.
     else if (s > 2.5 && s < 3.5) { col = uClosed; a = 0.42; }
     else if (s > 3.5 && s < 4.5) { col = uPath;   a = 0.95; }
+    /* The inflated collar: free floor the planner is not allowed to use
+       because a robot centred there would be inside a wall. Faint, and drawn
+       so a reader can see that the path keeps its distance on purpose rather
+       than by luck. */
+    else if (s > 5.5)            { col = uInfl;   a = 0.22; }
     else if (s > 4.5)            { col = uEnds;   a = 1.00; }
     else if (s > 0.5)            { col = uWall;   a = 0.55; }
 

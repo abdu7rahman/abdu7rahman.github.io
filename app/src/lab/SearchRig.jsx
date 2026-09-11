@@ -3,7 +3,10 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import TurtleBot, { MAX_V, MAX_W } from "./TurtleBot.jsx";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
-import { Search, FREE, WALL, OPEN, CLOSED, PATH, ENDS } from "./demos/astar.js";
+import { Search, FREE, WALL, OPEN, CLOSED, PATH, ENDS, INFL } from "./demos/astar.js";
+import { seeded, layout, inflate, ends } from "./demos/course.js";
+import { useSim } from "../sim/useSim.js";
+import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
 import { register, isRunning } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
@@ -19,18 +22,30 @@ import { WORK } from "../lib/plan.js";
  * frontier crawl round an obstacle, and the real TurtleBot driving the path
  * that comes out of it.
  *
- * Nothing here is animation. lab/demos/astar.js is an ordinary
- * eight-connected A* with an octile heuristic and a binary heap; the cells
- * that light up are its own open and closed sets, the path is its parent
- * chain, and if the goal is walled off the run ends unreachable and the bay
- * lays a new map. The robot follows with pure pursuit at the Burger's own
- * teleop ceilings, so its wheels turn at the speed its odometry says.
+ * Nothing here is animation, in either half. lab/demos/astar.js is an
+ * ordinary eight-connected A* with an octile heuristic and a binary heap;
+ * the cells that light up are its own open and closed sets, the path is its
+ * parent chain, and if the goal is walled off the run ends unreachable and
+ * the bay lays a new map. And the drive is MuJoCo: the path goes to a pure
+ * pursuit controller, the controller's (v, w) goes through the Burger's own
+ * differential-drive geometry to two wheel speeds, and where the machine
+ * ends up is wherever those wheels take it. It can clip a slab, and used to.
+ *
+ * That last sentence is the whole reason this was worth converting, because
+ * what the physics found was not a bug in the physics. A* plans for a point;
+ * the thing following the path is 0.178 m wide on a 0.10 m grid. Driven as
+ * arithmetic the machine tracked the path exactly and the bay looked
+ * finished. Driven as a robot, 31 of 40 seeded courses ended with the
+ * TurtleBot inside a wall -- and both faults it exposed were real, had been
+ * there the whole time, and are fixed in the two places they belong: the
+ * planner now searches an inflated map (demos/course.js) and the lookahead
+ * is the one that measures best rather than the one that sounded right.
  */
 
 /* The bench is 2.6 by 3.0 m. The course is inset from that so the machine
-   never overhangs, and the cell is 0.1 m -- a Burger is 0.14 m across, so a
-   cell is a little under a footprint and the one-cell inflation below is the
-   honest amount to keep it off a wall. */
+   never overhangs, and the cell is 0.1 m -- a Burger is 0.178 m across the
+   wheels, so a cell is about half a footprint and the one-cell inflation in
+   demos/course.js is what keeps the path off a wall. */
 const COURSE_X = 2.30, COURSE_Y = 2.70;
 const CELL = 0.10;
 const NX = Math.round(COURSE_X / CELL);   // 23
@@ -42,6 +57,52 @@ const NY = Math.round(COURSE_Y / CELL);   // 27
 const POPS_PER_S = 420;
 const HOLD_FOUND = 1.1;    // seconds the finished path sits before the drive
 const HOLD_END = 2.2;      // seconds after arrival before the next map
+const DRIVE_MAX = 45;      // and the longest a drive may take before the bay
+                           // gives up on it. The mean is 26 s, measured.
+
+/* The lookahead, in metres, and it is measured rather than reasoned.
+ *
+ * This used to be 0.24 m, on the argument that it is a little over one and a
+ * half footprints and that shorter saws at grid corners while longer cuts
+ * them. The second half of that was right and the first half was worth about
+ * nothing. Forty seeded courses through tools/test_search.mjs, which drives
+ * the real generator and the real search through the real physics:
+ *
+ *   look   arrived   clipped   worst clearance   steering
+ *   0.10    40/40      0/40         29 mm         8.2 rad
+ *   0.12    40/40      0/40         30 mm         7.9 rad
+ *   0.14    40/40      0/40         25 mm         7.7 rad
+ *   0.16    40/40      0/40          9 mm         7.5 rad
+ *   0.18    40/40      2/40         -0 mm         7.3 rad
+ *   0.24     9/40     31/40        -64 mm            --
+ *
+ * Corner cutting costs clearance monotonically and sawing costs almost
+ * nothing: the whole range from 0.10 to 0.18 is 0.9 rad of extra steering
+ * over a 3.1 m drive, which is not a thing a reader can see. So take the
+ * clearance. 0.12 m it is, and the 30 mm is what the machine actually held
+ * with its own wheels on its own bench, not what the inflation promised. */
+const LOOK = 0.12;
+
+/* The physical wall pool, and why 81 blocks are the same simulation as 621.
+ *
+ * The map is editable, so the set of occupied cells changes while the scene
+ * is running and a physics model cannot be recompiled per drag. The blocks
+ * are therefore a fixed pool of mocap bodies written every frame, with the
+ * unused ones parked under the floor. What the pool costs is linear in its
+ * size and it is broadphase rather than contacts -- measured on this scene:
+ * 0.49 ms per 60 Hz frame at zero blocks, 1.08 at 96, 5.59 at 525, 6.05 at
+ * 621. A bay that spends six milliseconds a frame on walls the robot is two
+ * metres away from is a bay that has given up a third of its frame to
+ * nothing.
+ *
+ * So only the near window goes in: every cell within four of the robot's
+ * own. That is exact, not an approximation. The nearest cell left out has
+ * its near face 0.40 m from the machine, the machine is 0.089 m to its own
+ * edge, and it travels at most 22 mm between writes even on a frame clamped
+ * at 0.1 s -- fourteen times the margin. A block outside the window cannot
+ * touch the robot before the next write puts it back in. */
+const WIN = 4;
+const POOL = (WIN * 2 + 1) * (WIN * 2 + 1);   // 81
 
 /* Grid to bench-local metres. The model frame is Z-up inside UPRIGHT, so the
    course lives in its x and y and the y axis is the one that runs along the
@@ -49,50 +110,13 @@ const HOLD_END = 2.2;      // seconds after arrival before the next map
 const gx = (i) => (i + 0.5) * CELL - COURSE_X / 2;
 const gy = (j) => (j + 0.5) * CELL - COURSE_Y / 2;
 
-/* A map, laid rather than drawn: three to five slabs at grid-aligned
-   positions with a gap left through them, from a seeded generator so a
-   reader who comes back to this bay does not get the same course twice and
-   the sequence is still reproducible. */
-function layout(rand, wall) {
-  wall.fill(0);
-  const bars = 3 + Math.floor(rand() * 3);
-  for (let b = 0; b < bars; b++) {
-    const horizontal = rand() < 0.5;
-    if (horizontal) {
-      const y = 3 + Math.floor(rand() * (NY - 6));
-      const gap = 2 + Math.floor(rand() * (NX - 6));
-      const gw = 3 + Math.floor(rand() * 2);
-      for (let x = 0; x < NX; x++)
-        if (x < gap || x >= gap + gw) wall[y * NX + x] = 1;
-    } else {
-      const x = 3 + Math.floor(rand() * (NX - 6));
-      const gap = 2 + Math.floor(rand() * (NY - 6));
-      const gw = 3 + Math.floor(rand() * 2);
-      for (let y = 0; y < NY; y++)
-        if (y < gap || y >= gap + gw) wall[y * NX + x] = 1;
-    }
-  }
-  // The rim, so a path cannot leave the bench.
-  for (let x = 0; x < NX; x++) { wall[x] = 1; wall[(NY - 1) * NX + x] = 1; }
-  for (let y = 0; y < NY; y++) { wall[y * NX] = 1; wall[y * NX + NX - 1] = 1; }
-}
-
-// Mulberry32: four lines, a full 2^32 period, and reproducible from a seed.
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 export default function SearchRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
 
   const kit = useMemo(() => {
-    const wall = new Uint8Array(NX * NY);
+    const wall = new Uint8Array(NX * NY);      // what is there
+    const free = new Uint8Array(NX * NY);      // and what a planner may use
     const cells = new Uint8Array(NX * NY);
     const tex = new THREE.DataTexture(cells, NX, NY, THREE.RedFormat,
                                       THREE.UnsignedByteType);
@@ -100,9 +124,15 @@ export default function SearchRig({ stop }) {
     tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
-    return { wall, cells, tex, search: new Search(NX, NY, wall),
+    return { wall, free, cells, tex, search: new Search(NX, NY, free),
              rand: seeded(0x5EA12C) };
   }, []);
+
+  /* One scene for the life of the cell. Only the pool size is baked in; the
+     map itself is written through mocap every frame. */
+  const [sim, simReady] = useSim(() => wheeledScene({
+    starts: [[0, 0, 0]], walls: POOL, cell: CELL
+  }), []);
 
   const uniforms = useMemo(() => ({
     tCells:   { value: kit.tex },
@@ -112,6 +142,7 @@ export default function SearchRig({ stop }) {
     uClosed:  { value: new THREE.Color("#1d4f57") },
     uPath:    { value: new THREE.Color(P.hazard) },
     uEnds:    { value: new THREE.Color(P.ink) },
+    uInfl:    { value: new THREE.Color(P.hazard) },
     uAir:     { value: new THREE.Color(P.haze) },
     uFogNear: { value: 20 },
     uFogFar:  { value: 78 },
@@ -125,6 +156,24 @@ export default function SearchRig({ stop }) {
   const mat = useRef();
   // 1 while painting walls, 0 while erasing, null when not dragging.
   const paint = useRef(null);
+  /* Scratch for reading the simulation, so a frame allocates nothing. */
+  const _p = useMemo(() => new THREE.Vector3(), []);
+  const _h = useMemo(() => new THREE.Vector3(), []);
+
+  /* The engine is a ten megabyte fetch and the bay is on screen before it
+     lands, so the first seconds of a cell are driven by the fallback in
+     drive(). When the scene does compile, the body is still at the origin of
+     its own model while the machine is somewhere on the bench -- adopting
+     the pose rather than resetting to it is the difference between the
+     physics taking over and the robot jumping back to the start. */
+  useEffect(() => {
+    const sm = sim.current;
+    if (!simReady || !sm) return;
+    const q = pose.current;
+    sm.place("tb0_free", q.x, q.y, BURGER.tyre, q.psi);
+    pushWalls();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simReady]);
 
   /* Lay the first map before the first frame, so the bay is never blank.
      The frame loop guards on r.sx anyway, because R3F's loop is already
@@ -146,21 +195,40 @@ export default function SearchRig({ stop }) {
           // aisle.
           for (let j = 1; j < NY - 1; j++)
             for (let i = 1; i < NX - 1; i++) kit.wall[j * NX + i] = 0;
-          paintWalls(); replan();
+          remap(); replan();
         } },
       { label: "Step", on: () => step(12) }
     ],
     readout: () => {
-      const r = run.current, se = kit.search;
+      const r = run.current, se = kit.search, q = pose.current;
       return [
         ["state", r.phase === "search" ? (se.done ? "done" : "expanding")
                : r.phase === "drive" ? "driving" : "holding"],
         ["expanded", String(se.expanded)],
         ["open", String(se.heap.size)],
-        ["path", se.found ? se.path.length + " cells" : "--"]
+        ["path", se.found ? se.path.length + " cells" : "--"],
+        ["driven", q.travel.toFixed(2) + " m"]
       ];
     },
-    hint: "Drag on the grid to build walls, drag from a wall to knock them down. It re-searches on every edit."
+    /* What the harness reads. The wheel speeds are the ones the simulation
+       is turning, not the ones the controller asked for, which is the only
+       way to tell from outside that the drive is physics. */
+    state: () => {
+      const sm = sim.current, q = pose.current, out = { phase: run.current.phase };
+      out.x = +q.x.toFixed(4); out.y = +q.y.toFixed(4);
+      out.travel = +q.travel.toFixed(3);
+      if (sm) {
+        out.wl = +sm.jointAt("tb0_wl").toFixed(2);
+        out.wr = +sm.jointAt("tb0_wr").toFixed(2);
+        sm.dir("tb0", 2, _h);
+        out.tilt = +(Math.acos(Math.max(-1, Math.min(1, _h.y))) * 57.3).toFixed(1);
+        out.sim = 1;
+      } else out.sim = 0;
+      return out;
+    },
+    tick,
+    sim: () => !!sim.current,
+    hint: "Drag on the grid to build walls, drag from a wall to knock them down. It re-searches on every edit, and the faint collar is the inflation the planner keeps off them."
   }), [stop.id, kit]);
 
   /* The obstacles as real boxes, not only as cells in the texture. They cast
@@ -191,6 +259,39 @@ export default function SearchRig({ stop }) {
     inst.computeBoundingSphere();
   }
 
+  /* The near window of blocks, written through to the physics pool. See the
+     POOL comment for why the window is the whole map as far as the machine
+     is concerned. */
+  function pushWalls() {
+    const sm = sim.current;
+    if (!sm) return;
+    const q = pose.current;
+    const ci = Math.floor((q.x + COURSE_X / 2) / CELL);
+    const cj = Math.floor((q.y + COURSE_Y / 2) / CELL);
+    let n = 0;
+    for (let j = cj - WIN; j <= cj + WIN; j++) {
+      if (j < 0 || j >= NY) continue;
+      for (let i = ci - WIN; i <= ci + WIN; i++) {
+        if (i < 0 || i >= NX) continue;
+        if (!kit.wall[j * NX + i]) continue;
+        sm.setMocap(`wall${n++}`, gx(i), gy(j), 0.05);
+      }
+    }
+    for (let k = n; k < POOL; k++) sm.setMocap(`wall${k}`, 0, 0, -5);
+  }
+
+  /* Put the machine on a cell, standing still, and tell the physics where
+     the walls round it are before anything steps. */
+  function placeAt(i, j) {
+    const q = pose.current;
+    q.x = gx(i); q.y = gy(j); q.psi = 0; q.travel = 0; q.turned = 0;
+    const sm = sim.current;
+    if (sm) { sm.place("tb0_free", q.x, q.y, BURGER.tyre, 0); pushWalls(); }
+  }
+
+  // The inflated layer, from whatever the map is now.
+  function remap() { inflate(kit.wall, kit.free, NX, NY); paintWalls(); }
+
   /* The texture, from the search's own state array. A copy rather than a
      second piece of bookkeeping: the algorithm's open and closed sets are
      the truth and this is a view of them. */
@@ -200,14 +301,15 @@ export default function SearchRig({ stop }) {
     for (let i = 0; i < cells.length; i++) {
       if (kit.wall[i]) { cells[i] = WALL; continue; }
       const st = search.state[i];
-      cells[i] = st === OPEN ? OPEN : st === CLOSED ? CLOSED : FREE;
+      cells[i] = st === OPEN ? OPEN : st === CLOSED ? CLOSED
+               : kit.free[i] ? INFL : FREE;
     }
     cells[r.sy * NX + r.sx] = ENDS; cells[r.ey * NX + r.ex] = ENDS;
     kit.tex.needsUpdate = true;
   }
 
   /* One frame's worth of expansion, wherever it is called from.
-  
+
      Step used to call search.step and repaint directly, and repaint rebuilds
      every cell from the search's own state array -- which has no PATH value
      in it, because the path is written once, on the transition to holding.
@@ -247,8 +349,18 @@ export default function SearchRig({ stop }) {
     // Neither end can be built on: a start or a goal inside a wall is a
     // search that reports unreachable and tells you nothing about the map.
     if (c === r.sy * NX + r.sx || c === r.ey * NX + r.ex) return;
+    /* Nor the cell the machine is standing in. A block dropped on top of a
+       robot used to be a cell in an array; it is now a box that shares space
+       with one, and MuJoCo resolves that by throwing the robot out of it. */
+    if (paint.current === 1) {
+      const q = pose.current;
+      const ci = Math.floor((q.x + COURSE_X / 2) / CELL);
+      const cj = Math.floor((q.y + COURSE_Y / 2) / CELL);
+      if (Math.abs((c % NX) - ci) <= 1 && Math.abs(Math.floor(c / NX) - cj) <= 1)
+        return;
+    }
     kit.wall[c] = paint.current;
-    paintWalls();
+    remap();
     replan();
   }
 
@@ -257,43 +369,45 @@ export default function SearchRig({ stop }) {
     const r = run.current;
     kit.search.start(r.sx, r.sy, r.ex, r.ey);
     r.phase = "search"; r.t = 0; r.at = 0; r.pts = [];
-    pose.current = { x: gx(r.sx), y: gy(r.sy), psi: 0, travel: 0, turned: 0 };
+    placeAt(r.sx, r.sy);
     repaint();
   }
 
   function newRun() {
-    const { wall, cells, search, rand } = kit;
-    for (let tries = 0; tries < 24; tries++) {
-      layout(rand, wall);
-      // Start and goal at opposite ends, on the first free cell found.
-      let sx = -1, sy = -1, ex = -1, ey = -1;
-      for (let y = 1; y < NY - 1 && sy < 0; y++)
-        for (let xx = 1; xx < NX - 1; xx++)
-          if (!wall[y * NX + xx]) { sx = xx; sy = y; break; }
-      for (let y = NY - 2; y > 0 && ey < 0; y--)
-        for (let xx = NX - 2; xx > 0; xx--)
-          if (!wall[y * NX + xx]) { ex = xx; ey = y; break; }
-      if (sx < 0 || ex < 0 || (sx === ex && sy === ey)) continue;
+    const { wall, free, search, rand } = kit;
+    for (let tries = 0; tries < 8; tries++) {
+      layout(rand, wall, NX, NY);
+      inflate(wall, free, NX, NY);
+      /* The two ends of the longest run through the biggest piece of free
+         floor, rather than the first and last free cells. See demos/course.js
+         -- corner to corner discarded four maps in five once the slabs were
+         inflated, and made every course that survived look the same. */
+      const e = ends(free, NX, NY);
+      if (!e) continue;
+      const [sx, sy, ex, ey] = e;
       search.start(sx, sy, ex, ey);
-      cells.set(wall);
-      cells[sy * NX + sx] = ENDS; cells[ey * NX + ex] = ENDS;
-      kit.tex.needsUpdate = true;
-      run.current = { phase: "search", t: 0, at: 0, pts: [],
-                      sx, sy, ex, ey };
-      pose.current = { x: gx(sx), y: gy(sy), psi: 0, travel: 0, turned: 0 };
+      run.current = { phase: "search", t: 0, at: 0, pts: [], sx, sy, ex, ey };
       paintWalls();
+      placeAt(sx, sy);
+      repaint();
       return;
     }
   }
 
   useFrame(({ camera }, dt) => {
-    const d = Math.min(0.1, dt);
     if (mat.current) mat.current.uniforms.uEye.value.copy(camera.position);
+    if (!isRunning(stop.id)) return;
+    tick(Math.min(0.1, dt));
+  });
 
-    const { cells, search } = kit;
+  /* A frame of the cell, taken out of useFrame so something else can call
+     it. The interaction suite drives whole runs through here: a search and a
+     drive is half a minute of cell time and the headless page renders at
+     about one frame a second, so a test that waited for the renderer would
+     be a test that waited eight minutes for one course. */
+  function tick(d) {
     const r = run.current;
     if (r.sx === undefined) return;
-    if (!isRunning(stop.id)) return;
     r.t += d;
 
     if (r.phase === "search") {
@@ -301,49 +415,84 @@ export default function SearchRig({ stop }) {
       return;
     }
 
+    /* Pure pursuit, at the Burger's own ceilings, and only during the drive.
+       Heading error drives w, and v is throttled by that error so the machine
+       slows into a turn rather than understeering through it -- which is the
+       whole reason a pure pursuit controller needs a speed term at all. */
+    let v = 0, w = 0;
+    if (r.phase === "drive") {
+      const q = pose.current, pts = r.pts;
+      while (r.at < pts.length - 1 &&
+             Math.hypot(pts[r.at][0] - q.x, pts[r.at][1] - q.y) < LOOK) r.at++;
+      const tgt = pts[Math.min(r.at, pts.length - 1)];
+      let err = Math.atan2(tgt[1] - q.y, tgt[0] - q.x) - q.psi;
+      while (err > Math.PI) err -= 2 * Math.PI;
+      while (err < -Math.PI) err += 2 * Math.PI;
+      w = Math.max(-MAX_W, Math.min(MAX_W, 3.2 * err));
+      v = MAX_V * Math.max(0.12, 1 - Math.abs(err) / 1.2);
+    }
+
+    drive(v, w, d);
+
     if (r.phase === "hold") {
       if (r.t > HOLD_FOUND) { r.phase = "drive"; r.t = 0; }
       return;
     }
 
     if (r.phase === "drive") {
-      /* Pure pursuit, at the Burger's own ceilings.
-      
-         The lookahead is 0.24 m, which is a little over one and a half
-         footprints: shorter and it saws at every grid corner, longer and it
-         cuts them. Heading error drives w, and v is throttled by that error
-         so the machine slows into a turn rather than understeering through
-         it -- which is the whole reason a pure pursuit controller needs a
-         speed term at all. */
-      const q = pose.current;
-      const pts = r.pts;
-      const LOOK = 0.24;
-      while (r.at < pts.length - 1 &&
-             Math.hypot(pts[r.at][0] - q.x, pts[r.at][1] - q.y) < LOOK) r.at++;
-      const tgt = pts[Math.min(r.at, pts.length - 1)];
-      const dx = tgt[0] - q.x, dy = tgt[1] - q.y;
-      const want = Math.atan2(dy, dx);
-      let err = want - q.psi;
-      while (err > Math.PI) err -= 2 * Math.PI;
-      while (err < -Math.PI) err += 2 * Math.PI;
-
-      const w = Math.max(-MAX_W, Math.min(MAX_W, 3.2 * err));
-      const v = MAX_V * Math.max(0.12, 1 - Math.abs(err) / 1.2);
-
-      q.psi += w * d; q.turned += w * d;
-      q.x += Math.cos(q.psi) * v * d;
-      q.y += Math.sin(q.psi) * v * d;
-      q.travel += v * d;
-
+      const q = pose.current, pts = r.pts;
       const last = pts[pts.length - 1];
-      if (Math.hypot(last[0] - q.x, last[1] - q.y) < 0.06 || r.t > 26) {
+      /* 0.09 m, which is the machine's own half width: a wheel over the goal
+         cell is an arrival. The timeout is the other way out, and the mean
+         drive is 26 s of the 45. */
+      if (Math.hypot(last[0] - q.x, last[1] - q.y) < 0.09 || r.t > DRIVE_MAX) {
         r.phase = "rest"; r.t = 0;
       }
       return;
     }
 
     if (r.t > HOLD_END) newRun();
-  });
+  }
+
+  /* The command to the wheels, and the pose back off them.
+   *
+   * These are the lines that make the cell a simulation rather than a
+   * drawing of one. The conversion is exact and asks nothing of the
+   * controller -- a differential drive turns (v, w) into two wheel speeds by
+   * geometry -- so what the pursuit wants has not changed. What has changed
+   * is that wanting is now different from getting: a machine that clips a
+   * slab is stopped by it, and a wheel that slips shows up in the odometer
+   * because the odometer counts where it went and not where it was sent. */
+  function drive(v, w, d) {
+    const q = pose.current, sm = sim.current;
+    if (!sm) {
+      /* Until the scene has compiled -- the engine is a WASM fetch and a cell
+         can be on screen before it lands -- the unicycle keeps the machine
+         moving rather than leaving it parked on a dead bench. */
+      q.psi += w * d; q.turned += w * d;
+      q.x += Math.cos(q.psi) * v * d;
+      q.y += Math.sin(q.psi) * v * d;
+      q.travel += Math.abs(v) * d;
+      return;
+    }
+    const [wl, wr] = wheelsFor(v, w);
+    sm.actuate("tb0_wl", wl);
+    sm.actuate("tb0_wr", wr);
+    pushWalls();
+    sm.step(d);
+    /* The cell's frame is the bench's -- x across, y along, z up -- and
+       Sim.point answers in three's, where the bench's y is minus z. */
+    sm.point("tb0", _p);
+    sm.dir("tb0", 0, _h);
+    const nx = _p.x, ny = -_p.z;
+    q.travel += Math.hypot(nx - q.x, ny - q.y);
+    const npsi = Math.atan2(-_h.z, _h.x);
+    let dpsi = npsi - q.psi;
+    while (dpsi > Math.PI) dpsi -= Math.PI * 2;
+    while (dpsi < -Math.PI) dpsi += Math.PI * 2;
+    q.turned += dpsi;
+    q.x = nx; q.y = ny; q.psi = npsi;
+  }
 
   const wallMesh = useMemo(() => new THREE.BoxGeometry(CELL, CELL, 0.075), []);
 
@@ -382,7 +531,7 @@ export default function SearchRig({ stop }) {
           if (c !== null) edit(c);
         }}
         /* A click on the course is a click on the course.
-           
+
            R3F walks the ray and delivers a click to the first object that
            has a handler for one -- so a pad carrying only pointer-move
            handlers is transparent to clicks, and the next thing along the

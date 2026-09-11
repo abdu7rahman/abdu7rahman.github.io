@@ -240,16 +240,46 @@ export class Sim {
    *
    * The address is cached because model.jnt() allocates an embind handle
    * every call and these are read every frame for every joint. */
-  jointAt(name) {
+  jointAt(name) { return this.data.qpos[this.jointAdr(name).q]; }
+
+  /* Where a joint lives, as the pair of addresses everything needs: q into
+     qpos and d into qvel. Two different numbers for a free joint -- seven
+     qpos and six qvel -- and using one for the other is the mis-addressing
+     the paragraph above is about, one indirection further down. */
+  jointAdr(name) {
     if (!this._jnts) this._jnts = new Map();
-    let adr = this._jnts.get(name);
-    if (adr === undefined) {
+    let a = this._jnts.get(name);
+    if (a === undefined) {
       const h = this.model.jnt(name);
-      adr = h.qposadr !== undefined ? h.qposadr : h.qpos_adr;
+      a = { q: h.qposadr !== undefined ? h.qposadr : h.qpos_adr,
+            d: h.dofadr !== undefined ? h.dofadr : h.dof_adr };
       if (h.delete) h.delete();
-      this._jnts.set(name, adr);
+      this._jnts.set(name, a);
     }
-    return this.data.qpos[adr];
+    return a;
+  }
+
+  /* Put a free body somewhere, standing still.
+   *
+   * A cell that lays a new course has to move the machine to the new start,
+   * and there is no force that does that: writing qpos alone leaves the old
+   * velocity behind, so a robot teleported mid-drive arrives at the start
+   * already travelling and drives itself into the first wall. Six zeros into
+   * qvel is what makes it a placement rather than a throw.
+   *
+   * Yaw only, because everything this is used for stands on a floor. The
+   * quaternion is w first, which is MuJoCo's order and not three's. */
+  place(name, x, y, z, yaw = 0) {
+    const a = this.jointAdr(name);
+    const q = this.data.qpos, v = this.data.qvel;
+    q[a.q] = x; q[a.q + 1] = y; q[a.q + 2] = z;
+    q[a.q + 3] = Math.cos(yaw / 2);
+    q[a.q + 4] = 0; q[a.q + 5] = 0;
+    q[a.q + 6] = Math.sin(yaw / 2);
+    for (let i = 0; i < 6; i++) v[a.d + i] = 0;
+    /* And recompute, so anything read back before the next step sees where
+       the body now is rather than where it was. */
+    this.mj.mj_forward(this.model, this.data);
   }
 
   get qpos() { return this.data.qpos; }

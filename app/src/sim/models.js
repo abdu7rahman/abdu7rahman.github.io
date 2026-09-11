@@ -329,7 +329,8 @@ export function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
  * still real geometry to the robot, which is the point: it has to go round
  * them because it cannot go through them, not because a cost term said so.
  */
-export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [], radius = 0.12 } = {}) {
+export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [],
+                               radius = 0.12, walls = 0, cell = 0.1 } = {}) {
   const bots = starts.map((st, i) =>
     burger(`tb${i}`, { pos: [st[0], st[1]], yaw: st[2] || 0 }));
   const obs = obstacles.map((o, i) => `
@@ -337,11 +338,27 @@ export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [], radius = 0.
       <geom ${WORLD} type="cylinder" size="${f(o[2] || radius)} 0.09"
             rgba="0.45 0.47 0.5 0"/>
     </body>`).join("");
+  /* A pool of wall blocks, as mocap bodies.
+   *
+   * The search cell's map is editable -- a reader drags to build a wall and
+   * drags again to knock it down -- so the set of occupied cells changes
+   * while the scene is running, and recompiling a physics model on every
+   * drag is not a thing that can happen at sixty frames a second. A fixed
+   * pool written every frame is: the blocks that are wanted get put where
+   * the map says, and the rest are parked well under the floor where nothing
+   * can reach them. Mocap is right for them for the same reason it is right
+   * for the drive cell's drums -- the reader moves them and they do not move
+   * back. */
+  const wall = Array.from({ length: walls }, (_, i) => `
+    <body name="wall${i}" mocap="true" pos="0 0 -5">
+      <geom ${WORLD} type="box" size="${f(cell / 2)} ${f(cell / 2)} 0.05"
+            rgba="0.3 0.32 0.35 0"/>
+    </body>`).join("");
   return `${head({ timestep: 0.004 })}
     <worldbody>
       <geom name="floor" ${WORLD} type="plane" size="4 4 0.1"
             friction="1.0 0.02 0.002" rgba="0.3 0.3 0.32 0"/>
-      ${bots.map(b => b.body).join("")}${obs}
+      ${bots.map(b => b.body).join("")}${obs}${wall}
     </worldbody>
     <actuator>${bots.map(b => b.act).join("")}</actuator>
   </mujoco>`;

@@ -17,7 +17,8 @@
  * visible here -- a looser heuristic is a wider blob of expanded cells, which
  * is exactly what this bay is showing.
  */
-export const FREE = 0, WALL = 1, OPEN = 2, CLOSED = 3, PATH = 4, ENDS = 5;
+export const FREE = 0, WALL = 1, OPEN = 2, CLOSED = 3, PATH = 4, ENDS = 5,
+             INFL = 6;
 
 const SQ2 = Math.SQRT2;
 // dx, dy, cost. Diagonals cost sqrt(2) and are refused when either orthogonal

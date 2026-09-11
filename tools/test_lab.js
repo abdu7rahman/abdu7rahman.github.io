@@ -370,6 +370,47 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        r.err || ('sorted ' + r.of + ' in 200 simulated seconds, ' + r.floor + ' on the floor'));
   }
 
+  console.log('\nF1b. and the search cell drives the path it found');
+  {
+    /* The other outcome test, and it is here for the same reason as F1: the
+     * search bay answered every response check while its robot was a line of
+     * arithmetic that could not fail. Now that the drive is MuJoCo it can
+     * fail, so somebody has to look. Run whole courses through the cell's
+     * own tick -- a search and a drive is about half a minute of cell time
+     * and this page renders at roughly one frame a second -- and ask for
+     * the two things the conversion was for: that the machine is on the
+     * physics at all, and that it gets where the path went.
+     */
+    const r = await pg.evaluate(async () => {
+      const c = window.__lab.controls('space');
+      if (!c || !c.tick || !c.state) return { err: 'no cell' };
+      for (let i = 0; i < 400 && !c.sim(); i++) {
+        c.tick(1 / 60);
+        await new Promise(res => setTimeout(res, 50));
+      }
+      if (!c.sim()) return { err: 'no scene' };
+      let drove = 0, arrived = 0, wheel = 0;
+      let was = c.state().phase;
+      for (let i = 0; i < 60 * 220; i++) {
+        c.tick(1 / 60);
+        const st = c.state();
+        if (st.phase === 'drive') { drove = st.travel; wheel = Math.max(wheel, Math.abs(st.wl)); }
+        if (was === 'drive' && st.phase === 'rest') arrived++;
+        was = st.phase;
+        if (i % 1800 === 0) await new Promise(res => setTimeout(res, 0));
+      }
+      const st = c.state();
+      return { arrived, drove, wheel, sim: st.sim, tilt: st.tilt };
+    });
+    ok('the robot is driven by the wheels, not by the clock',
+       !r.err && r.sim === 1 && r.wheel > 0.5,
+       r.err || ('wheel ' + r.wheel + ' rad/s, tilt ' + r.tilt + ' deg'));
+    ok('and it gets to the end of the path',
+       !r.err && r.arrived > 0,
+       r.err || (r.arrived + ' courses finished in 220 simulated seconds, '
+                 + r.drove + ' m on the last'));
+  }
+
   console.log('\nF2. and it holds the sign in its hands');
   {
     /* Four things, and all of them were wrong at some point.
