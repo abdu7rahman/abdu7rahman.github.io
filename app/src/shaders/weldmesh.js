@@ -61,7 +61,25 @@ export function weldmesh(material, opt = {}) {
       float wm_d = min(wm_g.x, wm_g.y);
       float wm_aa = fwidth(wm_d) + 1e-5;
       float wm_cov = 1.0 - smoothstep(uWire * 0.5 - wm_aa, uWire * 0.5 + wm_aa, wm_d);
-      float wm_lod = max(fwidth(vMesh.x), fwidth(vMesh.y)) / uPitch;
+      /* How many apertures one pixel spans -- and the smaller of the two
+         axes, not the larger, which is the whole of a bug this had.
+       *
+       * A panel seen down its own length is foreshortened in one axis and
+       * not the other, so one derivative explodes while the other stays
+       * small. Taking the max meant a fence six metres away went straight to
+       * the far field the moment you looked along it -- and because uFade
+       * sits above uCut, "far field" here means nothing is discarded at all
+       * and the panel is a solid sheet. Standing at the front door, which is
+       * the one place in this building where you look down sixty-six metres
+       * of aisle, both runs of guarding were grey slabs; the near one on the
+       * right covered a quarter of the first frame anybody sees.
+       *
+       * The min is the honest measure. It asks whether the grid is resolvable
+       * at all, which it is whenever either axis still has pixels to spare,
+       * and it only saturates when the panel is genuinely too small to
+       * resolve in both. Distance still fades to a sheet. A grazing angle no
+       * longer does. */
+      float wm_lod = min(fwidth(vMesh.x), fwidth(vMesh.y)) / uPitch;
       if (max(wm_cov, smoothstep(0.30, 1.60, wm_lod) * uFade) < uCut) discard;
       /* A crossing is two wires deep and catches more light than a straight
          run does. Cheap, and it is the difference between a grid of lines

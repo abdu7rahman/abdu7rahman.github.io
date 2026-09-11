@@ -67,6 +67,11 @@ const CUT = 0.00000004;   // near enough to a cut, for the greeting
  */
 const SWING = 1.6;
 const TURN = 1.1;
+/* Below this, in metres a second, the guide counts as standing rather than
+   walking and its heading stops driving the lens. The pilot's own cruise is
+   1.45, so this is well under a walking pace and only catches the turn in
+   place at either end of a walk. */
+const STILL = 0.12;
 
 const _eye = new THREE.Vector3();
 const _look = new THREE.Vector3();
@@ -131,7 +136,21 @@ export default function Follow() {
        fraction, so a corner takes the same time whatever the frame rate and
        a wiggle goes nowhere. */
     if (yawS.current === null) yawS.current = g.pose.yaw;
-    {
+    /* And only while the guide is actually going somewhere.
+     *
+     * The walking shot sits at this heading plus an offset, so the camera
+     * orbits by whatever the heading does. That is right while the guide is
+     * travelling -- the lens should lead a corner. It is wrong the moment it
+     * stops, because the last thing the guide does at a station is turn on
+     * the spot to face the bay, and the camera was following that round: a
+     * 90 degree turn in place swung the lens 90 degrees round the subject,
+     * for no reason a viewer could see. Departures did the same thing in
+     * reverse, whipping before anything had moved.
+     *
+     * A heading is information about where something is going. A machine
+     * standing still is not going anywhere, so below a walking pace this
+     * stops reading it and the camera holds where it is. */
+    if (Math.abs(g.v) > STILL) {
       let e = g.pose.yaw - yawS.current;
       while (e > Math.PI) e -= Math.PI * 2;
       while (e < -Math.PI) e += Math.PI * 2;

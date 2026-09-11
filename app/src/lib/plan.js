@@ -56,6 +56,18 @@ export const STOPS = [
   { id: "entry",    kind: "room", side:  0, at: 0,   title: "About",
     lede: "Robotics engineer. Motion planning, manipulation, and the bringup that gets it onto real hardware." },
 
+  /* Every bay first, then the rooms, and that is a correction.
+   *
+   * The reading rooms used to be interleaved with the machines -- a room at
+   * 3.0, another at 5.2, two more at the far end -- on the idea that a walk
+   * wants pauses in it. What a visitor actually got was two demos, then a
+   * wall of prose, then two more demos. The seven bays are the only thing
+   * here nobody else's site has; they are what somebody came to see and they
+   * now run one after another. The rooms are what you read once the machines
+   * have made you want to, so they come after.
+   *
+   * Sides still alternate along the aisle, so the walk zig-zags rather than
+   * running down one wall. */
   { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search", frame: "course",
     sub: "A*, Theta*, RRT, SMAC, hybrid",
     note: "Draw a map and search it. Five planners over one costmap." },
@@ -71,36 +83,37 @@ export const STOPS = [
   { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
     sub: "four controllers, one plan",
     note: "The same plan and the same clock, four ways of following it." },
-
-  { id: "work",     kind: "room", side:  1, at: 3.0, title: "Archive",
-    lede: "Ten systems worth showing. Everything else lives on GitHub." },
-
-  { id: "reach",    kind: "rig",  side: -1, at: 3.8, title: "Reach", frame: "envelope",
+  { id: "reach",    kind: "rig",  side:  1, at: 3,   title: "Reach", frame: "envelope",
     sub: "UR12e workspace",
     note: "The arm's reachable set, solved rather than drawn." },
-  { id: "foresee",  kind: "rig",  side:  1, at: 4.4, title: "Replan", frame: "machine",
+  { id: "foresee",  kind: "rig",  side: -1, at: 3.6, title: "Replan", frame: "machine",
     sub: "UR12e, continuous",
     note: "Block the arm mid-motion and watch it cancel and replan around your hand." },
-
-  { id: "measured", kind: "room", side: -1, at: 5.2, title: "Metrology",
-    lede: "Claims I could check, checked — including the ones that came out badly." },
-
-  { id: "terrain",  kind: "rig",  side:  1, at: 6.0, title: "Cost", frame: "course",
+  { id: "terrain",  kind: "rig",  side:  1, at: 4.3, title: "Cost", frame: "course",
     sub: "Go2, four cost functions",
     note: "Click a point on a course and watch four cost functions drive to it." },
   /* The task the recordings in this project are actually of. It was a
      handover of one block through eight solved poses; it is six tools, two
      bins and two arms that each take whatever is nearest them, simulated
      rather than played back. */
-  { id: "assemble", kind: "rig",  side: -1, at: 6.7, title: "Sorting", frame: "pair",
+  { id: "assemble", kind: "rig",  side: -1, at: 5,   title: "Sorting", frame: "pair",
     sub: "bimanual, simulated",
     note: "Two arms sorting a bench of tools. Every tool is a free body and every grasp can fail." },
 
-  { id: "stack",    kind: "room", side:  1, at: 7.5, title: "Stores",
+  /* And the reading. Named for what is in them rather than for the part of a
+     factory they would be: "Metrology" is the trade word for measurement and
+     told a visitor nothing, "Archive" reads as the place work goes to be
+     forgotten when it is the ten systems worth showing, and "Service
+     history" is what a garage keeps on a van. */
+  { id: "stack",    kind: "room", side:  1, at: 5.8, title: "Toolkit",
     lede: "Things I have shipped something with, not things I have read about." },
-  { id: "path",     kind: "room", side: -1, at: 8.3, title: "Service history",
+  { id: "path",     kind: "room", side: -1, at: 6.6, title: "Background",
     lede: "Five ABU Robocon seasons, then grad school." },
-  { id: "contact",  kind: "room", side:  0, at: 9.2, title: "Office",
+  { id: "work",     kind: "room", side:  1, at: 7.4, title: "Projects",
+    lede: "Ten systems worth showing. Everything else lives on GitHub." },
+  { id: "measured", kind: "room", side: -1, at: 8.2, title: "Benchmarks",
+    lede: "Claims I could check, checked — including the ones that came out badly." },
+  { id: "contact",  kind: "room", side:  0, at: 9,   title: "Office",
     lede: "Happy to talk about any of the above, including the parts that did not work." }
 ];
 

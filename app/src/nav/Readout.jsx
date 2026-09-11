@@ -85,7 +85,10 @@ export default function Readout() {
               <span className="meet__s">The office, and what I have actually built.</span>
             </button>
           </div>
-          <a className="meet__doc" href="written.html">Read it as a document instead</a>
+          {/* No document link here. The corner block carries one already and
+              it is on screen at the same time, so the greeting was offering
+              the same exit twice at the one moment it should be asking a
+              single question. */}
         </div>
       )}
 

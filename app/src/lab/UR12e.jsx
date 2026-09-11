@@ -6,6 +6,15 @@ import { creaseNormals } from "../lib/mesh.js";
 import { poseAt, linkFrames, UPRIGHT } from "../../../world/kinematics.js";
 import { P } from "../lib/palette.js";
 
+/* Where the two fingers sit in the baked link list, and how far each may
+   slide. A Hand-E's stroke is 25 mm a side; the asset records that as
+   grip_max and the bake puts the closed pose at zero. The simulated jaw in
+   sim/models.js opens wider than a real one does, so this clamps rather
+   than scales: what is drawn is the real gripper's own travel. */
+const FINGER_L = 8, FINGER_R = 9;
+const GRIP_MAX = 0.025;
+const SLIDE = new THREE.Matrix4();
+
 /* The actual machine: Universal Robots' own triangles, articulated by the
  * same measured kinematics the rest of this project solves against.
  *
@@ -94,11 +103,33 @@ export default function UR12e({ phase = 0, scale = 1, tint, q: driven }) {
       poseAt(t < 1 ? t : 2 - t, q);
       linkFrames(q, frames);
     }
+    /* The jaw, which was drawn shut whatever the gripper was doing.
+     *
+     * The asset carries the two fingers as their own links, baked in the
+     * flange frame at the closed position with the right one's half turn
+     * already applied -- tools/bake_arm.py says in as many words that a page
+     * wanting to open them slides each along tool0's x. Nothing did. Every
+     * link past the wrist took frames[5] through a Math.min, so the coupler,
+     * the body and both fingers were pinned to the wrist, and the gripper
+     * was a solid block that never moved while the simulation underneath it
+     * opened and closed two real slide joints on friction.
+     *
+     * The baked left finger sits on the negative side of the flange's x and
+     * the right on the positive, so opening is minus for one and plus for
+     * the other. The slide is the simulation's own finger joint, which is
+     * why it arrives as a seventh number in the driven array rather than as
+     * anything this file decides. */
+    const jaw = driven && driven.current && driven.current.length > 6
+      ? Math.max(0, Math.min(GRIP_MAX, driven.current[6])) : 0;
     for (let li = 0; li < groups.current.length; li++) {
       const g = groups.current[li];
       if (!g) continue;
       if (li === 0) g.matrix.identity();
       else g.matrix.copy(frames[Math.min(5, li - 1)]);
+      if (li === FINGER_L || li === FINGER_R) {
+        SLIDE.makeTranslation(li === FINGER_L ? -jaw : jaw, 0, 0);
+        g.matrix.multiply(SLIDE);
+      }
       g.matrixWorldNeedsUpdate = true;
     }
   });

@@ -102,7 +102,7 @@ function partition(steel, panel, paint, x, z, w, ry) {
   put(paint, -half, 0.05, half, 0.05, 0.10, 0.05, 0.055);
 }
 
-function Shell({ side, deep }) {
+function Shell({ side, deep, centre }) {
   const s = side || 1;
   const x = s * WORK;
   const back = s * (AISLE / 2 + BAY_D);
@@ -112,20 +112,34 @@ function Shell({ side, deep }) {
   useEffect(() => () => wall.dispose(), [wall]);
   return (
     <group>
-      {/* Back wall and one return, so a room is a corner rather than a flat. */}
-      <mesh position={[back, WALL_H / 2, 0]} rotation-y={-s * Math.PI / 2} receiveShadow>
+      {/* Back wall and one return, so a room is a corner rather than a flat.
+          Not for the two rooms on the centreline: they are the ends of the
+          building rather than bays off the aisle, the structure already
+          carries walls there, and a room shell at the front door is a wall
+          across the greeting camera. */}
+      {!centre && <mesh position={[back, WALL_H / 2, 0]} rotation-y={-s * Math.PI / 2} receiveShadow>
         <planeGeometry args={[deep, WALL_H]} />
         <primitive object={wall} attach="material" />
-      </mesh>
+      </mesh>}
       {/* The glass in the return. One pane the width of the opening rather
           than one per bay: the mullions are drawn over it and a pane per bay
-          would be six transparent surfaces to sort instead of one. */}
-      <mesh position={[x, DADO_H + (WALL_H - HEAD_H - DADO_H) / 2, -deep / 2]}>
+          would be six transparent surfaces to sort instead of one.
+       *
+       * Not on the two rooms that sit on the centreline. A room with a side
+       * of 0 is an end of the building rather than a bay off the aisle -- the
+       * front door and the office -- and it has no return to glaze. It was
+       * getting one anyway, because the side was read as `side || 1` and zero
+       * is falsy, so the front door grew a double-sided pane at 42 per cent
+       * across the aisle at z = 0. That is exactly where the greeting camera
+       * stands, so the first thing anybody saw of this building was a grey
+       * sheet over the top right of the frame with the building faintly
+       * visible through it. */}
+      {!centre && <mesh position={[x, DADO_H + (WALL_H - HEAD_H - DADO_H) / 2, -deep / 2]}>
         <planeGeometry args={[BAY_D, WALL_H - HEAD_H - DADO_H]} />
         <meshStandardMaterial
           color={"#171a1f"} roughness={0.08} metalness={0.25}
           transparent opacity={0.42} side={THREE.DoubleSide} />
-      </mesh>
+      </mesh>}
       {/* Fittings, and then the light out of them.
        *
        * Every room in this building was measurably darker than every cell in
@@ -555,7 +569,7 @@ export default function Rooms() {
         const deep = roomDeep(r);
         return (
           <group key={r.id} position={[0, 0, z]}>
-            <Shell side={side} deep={deep} />
+            <Shell side={side} deep={deep} centre={r.side === 0} />
             {r.id === "work"     && <Racking side={side} bays={3} deep={deep} />}
             {r.id === "stack"    && <Racking side={side} bays={3} deep={deep} />}
             {r.id === "measured" && <Metrology side={side} />}

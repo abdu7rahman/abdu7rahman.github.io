@@ -178,7 +178,10 @@ export default function SortRig({ stop }) {
   const kit = useMemo(() => ({
     cmd: [new Float32Array([0, -1.2, 1.4, -1.75, -1.57, 0]),
           new Float32Array([0, -1.2, 1.4, -1.75, -1.57, 0])],
-    act: [new Float32Array(6), new Float32Array(6)],
+    /* Six joints and the jaw. The seventh is what lab/UR12e.jsx slides the
+       drawn fingers by; without it the gripper was drawn shut whatever the
+       two simulated slide joints were doing. */
+    act: [new Float32Array(7), new Float32Array(7)],
     /* Per arm: what it is doing, how long it has been doing it, and which
        tool it has claimed. The claim is what keeps two arms off one tool
        without either of them knowing about the other's programme. */
@@ -678,6 +681,9 @@ export default function SortRig({ stop }) {
         const e = Math.abs(kit.act[i][j] - kit.cmd[i][j]);
         if (e > worst) worst = e;
       }
+      /* And the jaw, as the simulation has it rather than as it was asked
+         for: a gripper closing on a tool stops where the tool is. */
+      kit.act[i][6] = sm.jointAt(`${a}_ga`);
       kit.lag[i] = worst;
     }
     SORT.tools.forEach((t, i) => {

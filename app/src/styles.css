@@ -44,20 +44,24 @@ canvas { display: block; touch-action: pan-y; }
 .index {
   position: fixed; left: clamp(14px, 2vw, 34px); top: 50%;
   transform: translateY(-50%); z-index: 5;
-  padding: 12px 16px 12px 13px;
-  background: linear-gradient(to bottom, rgba(9,9,10,.88), rgba(9,9,10,.82));
+  padding: 14px 18px 15px 15px;
+  background: linear-gradient(to bottom, rgba(12,12,14,.80), rgba(9,9,10,.74));
+  border: 1px solid rgba(255,255,255,.07);
   border-left: 2px solid var(--steel);
+  border-radius: 12px;
+  backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: 0 18px 44px -22px rgba(0,0,0,.85);
 }
 .index ol { list-style: none; margin: 0; padding: 0; }
-.index li + li { margin-top: 2px; }
+.index li + li { margin-top: 3px; }
 .index button {
   display: flex; align-items: baseline; gap: 10px; width: 100%;
-  background: none; border: 0; padding: 3px 8px 3px 0;
-  color: #9e9ea6; font: 600 11px/1.1 var(--mono);
-  letter-spacing: .10em; text-transform: uppercase;
+  background: none; border: 0; padding: 4px 10px 4px 2px; border-radius: 7px;
+  color: #a6a7af; font: 600 13px/1.35 var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
   cursor: pointer; transition: color .18s;
 }
-.index button:hover { color: var(--ink); }
+.index button:hover { color: var(--ink); background: rgba(255,255,255,.055); }
 .index .n { color: #7d7e86; font-variant-numeric: tabular-nums; }
 .index li.on button { color: var(--ink); }
 .index li.on .n { color: var(--hazard); }
@@ -269,7 +273,7 @@ canvas { display: block; touch-action: pan-y; }
 .panel .stack > div { display: grid; grid-template-columns: 116px 1fr; gap: 14px;
                       padding: 9px 0; border-top: 1px solid #26262a; }
 .panel .stack > div:first-child { border-top: 0; }
-.panel dt { color: var(--accent); font: 600 11px/1.4 var(--mono);
+.panel dt { color: var(--accent); font: 600 12.5px/1.45 var(--mono);
             letter-spacing: .08em; text-transform: uppercase; }
 .panel dd { margin: 0; }
 
@@ -277,11 +281,11 @@ canvas { display: block; touch-action: pan-y; }
 .panel .card { display: grid; grid-template-columns: 26px 1fr auto; gap: 12px;
                padding: 14px 0; border-top: 1px solid #26262a; }
 .panel .card:first-child { border-top: 0; }
-.panel .idx { color: var(--hazard); font: 700 11px/1.6 var(--mono); }
+.panel .idx { color: var(--hazard); font: 700 12.5px/1.6 var(--mono); }
 .panel .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 5px;
                 margin: 8px 0 0; padding: 0; }
 .panel .chips li { border: 1px solid #303036; border-radius: 999px;
-                   padding: 2px 8px; font: 500 11px/1.5 var(--ui); color: #a8a8ad; }
+                   padding: 3px 9px; font: 500 12.5px/1.5 var(--ui); color: #b4b4ba; border-radius: 999px; }
 .panel .stats { margin: 0; display: flex; gap: 16px; align-items: flex-start; }
 .panel .stat dd { font: 700 17px/1.1 var(--ui); color: var(--ink); }
 
@@ -299,7 +303,7 @@ canvas { display: block; touch-action: pan-y; }
 .panel .tl > li { display: grid; grid-template-columns: 92px 1fr; gap: 14px;
                   padding: 13px 0; border-top: 1px solid #26262a; }
 .panel .tl > li:first-child { border-top: 0; }
-.panel .when { color: var(--accent); font: 600 11px/1.5 var(--mono); margin: 0; }
+.panel .when { color: var(--accent); font: 600 12.5px/1.5 var(--mono); margin: 0; }
 
 .panel .rows li { padding: 9px 0; border-top: 1px solid #26262a; }
 .panel .rows li:first-child { border-top: 0; }
@@ -399,16 +403,20 @@ canvas { display: block; touch-action: pan-y; }
   position: fixed; left: 50%; bottom: clamp(18px, 5vh, 56px);
   transform: translateX(-50%); z-index: 8;
   width: min(760px, calc(100vw - 28px));
-  padding: 15px 22px 17px;
-  background: linear-gradient(to bottom, rgba(9,9,10,.90), rgba(9,9,10,.86));
+  padding: 18px 24px 20px;
+  background: linear-gradient(to bottom, rgba(12,12,14,.86), rgba(9,9,10,.82));
+  border: 1px solid rgba(255,255,255,.08);
   border-left: 2px solid var(--hazard);
+  border-radius: 14px;
+  backdrop-filter: blur(16px) saturate(1.1);
+  box-shadow: 0 26px 60px -26px rgba(0,0,0,.9);
   animation: meet-in .5s cubic-bezier(.2,.7,.2,1) both;
 }
 @keyframes meet-in { from { opacity: 0; transform: translateX(-50%) translateY(12px); }
                      to   { opacity: 1; transform: translateX(-50%) translateY(0); } }
 .meet__who {
   margin: 0 0 6px; color: var(--accent);
-  font: 600 10px/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+  font: 600 11.5px/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase;
 }
 .meet__ask {
   margin: 0 0 12px; color: var(--ink);
@@ -417,20 +425,21 @@ canvas { display: block; touch-action: pan-y; }
 .meet__pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .meet__btn {
   display: block; text-align: left; cursor: pointer;
-  padding: 11px 14px 12px; background: rgba(255,255,255,.045);
+  padding: 13px 16px 14px; background: rgba(255,255,255,.045);
   border: 1px solid #303036; border-left: 2px solid var(--steel);
+  border-radius: 10px;
   transition: background .18s, border-color .18s;
 }
 .meet__btn:hover { background: rgba(255,255,255,.085); border-left-color: var(--hazard); }
 .meet__btn:focus-visible { outline: 2px solid var(--hazard); outline-offset: 3px; }
 .meet__t {
   display: block; color: var(--ink);
-  font: 700 13px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  font: 700 14px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase;
 }
-.meet__s { display: block; margin-top: 6px; color: #a8a8ad; font-size: 12.5px; line-height: 1.45; }
+.meet__s { display: block; margin-top: 7px; color: #b4b4ba; font-size: 14px; line-height: 1.5; }
 .meet__doc {
-  display: inline-block; margin-top: 10px; color: #9e9ea6;
-  font: 600 10px/1.6 var(--mono); letter-spacing: .10em; text-transform: uppercase;
+  display: inline-block; margin-top: 12px; color: #a6a7af;
+  font: 600 11.5px/1.6 var(--mono); letter-spacing: .09em; text-transform: uppercase;
   border-bottom: 1px solid #303036; text-decoration: none;
 }
 .meet__doc:hover { color: var(--ink); border-bottom-color: var(--hazard); }
