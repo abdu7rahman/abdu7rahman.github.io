@@ -47,7 +47,27 @@ const send = (events, { origin = ORIGIN, ua = "test-agent", raw = null } = {}) =
 
 const ev = (session, kind, extra = {}) => ({ session, kind, ...extra });
 
+/* Is there anything to drive. Without this the first fetch throws an undici
+   TypeError with a stack through node:internal, which says ECONNREFUSED
+   127.0.0.1:8788 nine frames down and nothing about wrangler -- and the
+   instructions for starting it are right there at the top of this file.
+   tools/test_feedback.js already says this properly when its own worker is
+   missing; this is the same courtesy.
+
+   Exits 2 rather than 0, because nothing was checked and a harness that
+   reports success for a run it never made is worse than one that crashes. */
+async function up() {
+  try { await fetch(BASE + "/", { signal: AbortSignal.timeout(4000) }); return true; }
+  catch { return false; }
+}
+
 (async () => {
+  if (!await up()) {
+    console.log("\n  no worker at " + BASE + " -- nothing was checked.\n" +
+                "  start one with:  cd worker && npm run dev\n" +
+                "  (see the note at the top of this file for the D1 setup)\n");
+    process.exit(2);
+  }
   console.log("\nA. the door is shut");
   {
     const r1 = await fetch(BASE + "/");
