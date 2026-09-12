@@ -54,6 +54,14 @@
      these numbers, and rebuilding all of that under a rotating phone is a lot
      of risk for a case a reload already handles. */
   function fitCanvas(cv, wideAspect, narrowAspect) {
+    /* A missing canvas is an answer, not a crash. Four of the five demos
+       below already read it that way -- `if (!cvX) return { start: noop }`
+       on the line after the call -- but the guard could never fire, because
+       this dereferenced the element first and threw on the way to it. The
+       lab serves this file inside a frame with the sections it does not use
+       stripped out, so the day a cell was retired the arm demo took its
+       canvas with it and this threw on every visit to the building. */
+    if (!cv) return null;
     var w = Math.max(280, Math.round(cv.getBoundingClientRect().width));
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var h = Math.round(w * (w < 640 ? narrowAspect : wideAspect));

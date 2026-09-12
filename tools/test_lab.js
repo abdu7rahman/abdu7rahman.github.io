@@ -48,6 +48,21 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   const pg = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const errs = [];
   pg.on('pageerror', e => errs.push(String(e).slice(0, 200)));
+  /* console.error as well, not just a thrown exception. The building has
+     code that refuses to draw something wrong and says so instead of
+     throwing -- lab/TurtleBot.jsx on a pose with no odometer in it -- and a
+     suite that only listens for exceptions treats that as silence.
+
+     Resource failures are dropped: this file's own static server aborts
+     transfers under load and those come through here as console errors with
+     nothing wrong on the page. A fetch that genuinely fails takes a cell's
+     simulation with it, which section F is already watching for. */
+  pg.on('console', m => {
+    if (m.type() !== 'error') return;
+    const t = m.text();
+    if (/Failed to load resource/.test(t)) return;
+    errs.push(t.slice(0, 200));
+  });
   await pg.goto(`http://127.0.0.1:${port}/?lab=high`, { waitUntil: 'load' });
   // The map is surveyed off the built scene, so nothing can be asked until
   // it exists -- and its existence is the first thing worth knowing.
@@ -573,6 +588,41 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        String((await J()).card));
   }
 
+  console.log('\nG1. nothing in the building has a broken matrix');
+  {
+    /* A NaN in a transform does not throw and does not log. It draws: three
+       multiplies it into the world matrix, the object lands nowhere the
+       frustum test agrees about, and what the reader sees is a part that has
+       quietly stopped moving while everything around it works.
+       That is not a hypothetical: lab/PolicyRig.jsx shipped a pose with no
+       `turned` field, lab/TurtleBot.jsx divided undefined by the tyre radius,
+       and that cell's wheels were NaN on every frame for as long as the cell
+       existed -- while the base drove, the readout read, and every case in
+       section F passed.
+
+       This would not have caught that one. Checked by putting the fault back
+       and looking: TurtleBot refuses a pose it cannot use now and says so, so
+       the NaN never reaches a matrix and section J is what fails. This is the
+       net under that -- the whole graph, because the shape of the bug is not
+       tied to the place it happened. */
+    const bad = await pg.evaluate(() => {
+      const L = window.__lab, out = [];
+      let seen = 0;
+      L.scene.updateMatrixWorld(true);
+      L.scene.traverse(o => {
+        seen++;
+        for (const m of [o.matrix, o.matrixWorld]) {
+          if (m.elements.some(v => !Number.isFinite(v))) {
+            out.push(o.name || o.type); return;
+          }
+        }
+      });
+      return { seen, bad: [...new Set(out)].slice(0, 6) };
+    });
+    ok('the scene has objects in it', bad.seen > 100, String(bad.seen));
+    ok('and every transform in it is finite', bad.bad.length === 0, bad.bad.join(', '));
+  }
+
   console.log('\nH. every rig stop has a rig');
   {
     /* Read off the source, not the page: a stop with no component in
@@ -603,7 +653,11 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     ok('the corner block links to the document', href === '/written.html', String(href));
   }
 
-  if (errs.length) { console.log('\npage errors:'); for (const e of [...new Set(errs)].slice(0, 5)) console.log('  ' + e); }
+  console.log('\nJ. and it ran without complaining');
+  {
+    const seen = [...new Set(errs)];
+    ok('no page or console errors', seen.length === 0, seen.slice(0, 5).join(' | '));
+  }
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   await b.close(); srv.close();
   process.exit(fail ? 1 : 0);

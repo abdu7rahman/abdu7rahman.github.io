@@ -12,8 +12,9 @@ import { P } from "../lib/palette.js";
  * solid because a whole-mesh quadric collapse ate the plates. The bake writes
  * down that measurement; this file is only concerned with driving it.
  *
- * Two cells show this machine -- drive and race -- so, like the arm, it is
- * fetched once and shared, and only the phase differs between them.
+ * Four cells show this machine -- search, local control, race and cloned --
+ * so, like the arm, it is fetched once and shared; what differs between them
+ * is the controller driving it, which is not this file's.
  *
  * The colours came out of turtlebot3_burger.urdf rather than out of the mesh,
  * because STL carries no material at all: light_black for the plates, dark
@@ -52,20 +53,8 @@ export const MAX_W = 2.84;     // BURGER_MAX_ANG_VEL, rad/s
    the bench with nothing added to make it. The baked wheel geometry agrees --
    its lowest vertex lands at base_link z = -0.0099. */
 
-/* The rate profile is a raised cosine over each leg of the run, so the robot
-   eases out of rest instead of arriving at speed, and its peak is set to the
-   machine's own ceiling. For a leg of length D that makes the duration fall
-   out rather than be picked: v(u) = D (pi/2) sin(pi u) / T peaks at pi D / 2T,
-   so T = pi D / (2 MAX_V). The same argument on a half turn, which sweeps pi
-   rather than D, gives the constant below.
-
-   It comes out at 1.74 s for the turn, and a 2.79 m run across the bench takes
-   19.9 s at a mean 0.14 m/s. That is slow. It is also what a Burger does. */
-const TURN = (Math.PI * Math.PI) / (2 * MAX_W);
-
-const ease = u => (1 - Math.cos(Math.PI * u)) / 2;
-
 let cached = null;
+let warned = false;
 
 export function useTurtleBot() {
   const [mesh, setMesh] = useState(cached);
@@ -81,38 +70,7 @@ export function useTurtleBot() {
   return mesh;
 }
 
-/* How far a corner of this robot gets from base_footprint's z axis, which is
-   what decides how far it can run before something overhangs the bench.
-   Measured off the geometry that was actually loaded rather than written down
-   here, so it cannot quietly go stale when the bake changes.
-
-   A tyre only ever turns about its own axle, and the joint's rpy lays that
-   axle along the base's y, so spinning moves a tyre vertex within a plane
-   containing base x and z and leaves its base y alone. Its bound is therefore
-   hypot(in-plane radius, |joint y| + half width), taken over the wheel's own
-   extremes -- an over-estimate, in the direction that keeps the robot on the
-   bench. It comes out at 0.104 m, and it is the base plate's corner that sets
-   it, not the wheels. */
-function sweptRadius(mesh) {
-  let r = 0;
-  for (const link of mesh.links) {
-    const jy = link.name === "wheel_left_link" ? WHEEL_L_Y
-             : link.name === "wheel_right_link" ? WHEEL_R_Y : null;
-    for (const part of link.parts) {
-      for (let i = 0; i < part.v.length; i += 3) {
-        const x = part.v[i] * mesh.unit;
-        const y = part.v[i + 1] * mesh.unit;
-        const z = part.v[i + 2] * mesh.unit;
-        r = Math.max(r, jy === null
-          ? Math.hypot(x, y)
-          : Math.hypot(Math.hypot(x, y), Math.abs(jy) + Math.abs(z)));
-      }
-    }
-  }
-  return r;
-}
-
-export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint, pose }) {
+export default function TurtleBot({ scale = 1, tint, pose }) {
   const mesh = useTurtleBot();
   const groups = useRef([]);
   const drive = useRef();
@@ -158,19 +116,8 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint, pos
     );
   }, [mesh, tint]);
 
-  /* The run, and therefore the clock. The bench is 3.0 m deep along the aisle
-     -- Bay.jsx's bench box, which Rig.jsx passes in rather than this file
-     assuming -- and the robot needs its own swept radius clear at each end,
-     so the straight is the bench less twice that. Everything after follows. */
-  const path = useMemo(() => {
-    if (!mesh) return null;
-    const run = bench - 2 * sweptRadius(mesh);
-    const straight = (Math.PI * run) / (2 * MAX_V);
-    return { run, straight, cycle: 2 * straight + 2 * TURN };
-  }, [mesh, bench]);
-
-  /* The URDF chain, given the two wheel angles. Shared by the canned traverse
-     and by an outside controller so there is one place the frames are built. */
+  /* The URDF chain, given the two wheel angles. One place the frames are
+     built, for all four cells that drive one of these. */
   const poseLinks = (phiL, phiR) => {
     for (let li = 0; li < groups.current.length; li++) {
       const g = groups.current[li];
@@ -195,98 +142,62 @@ export default function TurtleBot({ phase = 0, scale = 1, bench = 3.0, tint, pos
     }
   };
 
-  useFrame(({ clock }) => {
-    if (!parts || !path) return;
-    const { run, straight, cycle } = path;
+  useFrame(() => {
+    if (!parts) return;
 
-    /* Driven from outside, when something outside is driving.
+    /* Driven from outside, always: a bay that shows this machine is a bay
+       running a controller over it. It used to carry a canned traverse as
+       well -- a raised-cosine run up the bench and back, with the run length
+       taken off its own swept radius -- for the bays that only stood one
+       next to a picture of its demo. There are no such bays left, so that
+       went, and with it the profile, the turn constant and the swept radius
+       nothing else measured.
 
-       A bay that is only showing the machine gets the canned traverse below,
-       which is what this file was written for. A bay running an actual
-       controller -- the search rig plans a path across the bench and follows
-       it -- hands the pose in instead, and everything downstream is
-       identical: the same wheel arithmetic off the same odometer, the same
-       URDF frames. The robot does not know which one is driving it, which is
-       the only way the wheels stay honest in both. */
-    if (pose && pose.current) {
-      const q = pose.current;
-      if (drive.current) {
-        /* No quarter turn here, and that is the difference between this
-           branch and the canned one below.
-        
-           The traverse measures its heading from the bench's y axis, because
-           it drives along setPosition(0, p, 0), so it adds pi/2 to get the
-           baked base_link -- which is +x forward -- pointing along y. Every
-           outside controller in this building integrates x += cos(psi) and
-           y += sin(psi), so its psi is measured from x and is already the
-           model's own forward. Adding the quarter turn to that renders the
-           machine exactly perpendicular to its velocity: all three Burger
-           bays crabbed, and in the local control cell the argmin arc the
-           planner drew left the robot's left flank. */
-        drive.current.matrix
-          .makeRotationZ(q.psi)
-          .setPosition(q.x, q.y, 0);
-        drive.current.matrixWorldNeedsUpdate = true;
+       The wheel arithmetic is the same either way and always was, which is
+       the only reason the wheels stayed honest through all of it: the same
+       odometer, the same URDF frames. */
+    const q = pose && pose.current;
+    if (!q) return;
+
+    /* A pose missing `turned` is a caller that has not integrated its
+       heading, and the arithmetic below turns that into NaN on both wheels
+       -- a base that drives perfectly with wheels that never move, which is
+       exactly what the cloned cell shipped until somebody looked at it. Said
+       once, loudly, rather than drawn. */
+    if (!Number.isFinite(q.travel) || !Number.isFinite(q.turned)) {
+      if (!warned) {
+        warned = true;
+        console.error("TurtleBot: pose needs finite travel and turned, got "
+                      + q.travel + " and " + q.turned);
       }
-      poseLinks((q.travel - (TRACK / 2) * q.turned) / TYRE_R,
-                (q.travel + (TRACK / 2) * q.turned) / TYRE_R);
       return;
     }
 
-    /* Derived from the clock rather than accumulated, the same way the arm is,
-       so a cell that has been off screen for a minute comes back in step. The
-       completed-cycle count is carried separately because the wheels keep
-       turning across a cycle boundary even though the pose returns. */
-    const t = clock.elapsedTime + phase * cycle;
-    const n = Math.floor(t / cycle);
-    let u = t - n * cycle;
-
-    /* Four legs: out, half turn, back, half turn. `p` is where the body is
-       along the bench, `psi` its heading, and `s` the distance it has covered
-       -- p returns to where it started every cycle and s and psi do not, which
-       is the whole difference between a position and an odometer. */
-    let p, psi, s, yaw;
-    if (u < straight) {
-      const e = ease(u / straight);
-      p = -run / 2 + run * e; psi = 0; s = run * e; yaw = 0;
-    } else if (u < straight + TURN) {
-      const e = ease((u - straight) / TURN);
-      p = run / 2; psi = Math.PI * e; s = run; yaw = Math.PI * e;
-    } else if (u < 2 * straight + TURN) {
-      const e = ease((u - straight - TURN) / straight);
-      p = run / 2 - run * e; psi = Math.PI; s = run + run * e; yaw = Math.PI;
-    } else {
-      const e = ease((u - 2 * straight - TURN) / TURN);
-      p = -run / 2; psi = Math.PI + Math.PI * e;
-      s = 2 * run; yaw = Math.PI + Math.PI * e;
+    if (drive.current) {
+      /* No quarter turn. The traverse that used to live here measured its
+         heading from the bench's y axis, because it drove along
+         setPosition(0, p, 0), and added pi/2 to point the baked base_link --
+         which is +x forward -- along y. Every controller in this building
+         integrates x += cos(psi) and y += sin(psi), so its psi is measured
+         from x and is already the model's own forward. Adding the quarter
+         turn to that renders the machine exactly perpendicular to its
+         velocity: all three Burger bays crabbed, and in the local control
+         cell the argmin arc the planner drew left the robot's left flank. */
+      drive.current.matrix
+        .makeRotationZ(q.psi)
+        .setPosition(q.x, q.y, 0);
+      drive.current.matrixWorldNeedsUpdate = true;
     }
-    const travel = n * 2 * run + s;
-    const turned = n * 2 * Math.PI + yaw;
 
     /* The wheel angles are the travel, not a rate that happens to look right
        next to it. A differential drive's left contact point advances by
        s - (b/2) psi and its right by s + (b/2) psi; divide by the tyre radius
-       and that is the angle each wheel must have turned through to have rolled
-       there without slipping. Standing still and turning on the spot falls out
-       of the same two terms with s held fixed, which is why the wheels
-       counter-rotate through the half turns without being told to. */
-    const phiL = (travel - (TRACK / 2) * turned) / TYRE_R;
-    const phiR = (travel + (TRACK / 2) * turned) / TYRE_R;
-
-    /* base_footprint on the bench: along the bay's z, because that is the 3.0 m
-       axis of the bench and the one that runs parallel to the aisle, so the
-       traverse crosses the frame rather than coming at you. Inside UPRIGHT the
-       model is still Z-up, so the body's heading is a turn about its own z and
-       the drive axis is its y -- pi/2 off the model's forward, which is what
-       the extra quarter turn in the heading is. */
-    if (drive.current) {
-      drive.current.matrix
-        .makeRotationZ(psi + Math.PI / 2)
-        .setPosition(0, p, 0);
-      drive.current.matrixWorldNeedsUpdate = true;
-    }
-
-    poseLinks(phiL, phiR);
+       and that is the angle each wheel must have turned through to have
+       rolled there without slipping. Turning on the spot falls out of the
+       same two terms with s held fixed, which is why the wheels
+       counter-rotate through a pivot without being told to. */
+    poseLinks((q.travel - (TRACK / 2) * q.turned) / TYRE_R,
+              (q.travel + (TRACK / 2) * q.turned) / TYRE_R);
   });
 
   if (!parts) return null;

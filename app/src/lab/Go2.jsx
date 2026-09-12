@@ -6,7 +6,7 @@ import { creaseNormals } from "../lib/mesh.js";
 import { UPRIGHT } from "../../../world/kinematics.js";
 import { P } from "../lib/palette.js";
 
-/* A Unitree Go2, standing. Unitree's own triangles, BSD-3-Clause, baked by
+/* A Unitree Go2, walking. Unitree's own triangles, BSD-3-Clause, baked by
  * tools/bake_mobile.py from the pinned go2_description meshes: 19,678
  * triangles, 372 KB. The colours are the ones in the COLLADA effects -- the
  * pale blue-grey shell, the near-white thigh shrouds, the black feet -- and
@@ -19,13 +19,15 @@ import { P } from "../lib/palette.js";
  * one foot. Baking per link would have put the hip in the file four times.
  * So the mesh list below maps link to geometry, and the bake stayed small.
  *
- * What it does is stand. A twelve-degree-of-freedom gait is out of scope for
- * a cell you scroll past, and the alternative to a gait is not a frozen pose
- * -- a machine holding a stance against gravity with twelve motors drifts
- * while it does it. So the body moves and the feet do not, and every joint
- * angle below is what the URDF's own link lengths require for a foot to stay
- * exactly where it was put. It is a subset of the truth rather than a
- * decoration on top of it.
+ * What it does is draw twelve joint angles. It used to stand instead: a
+ * derived stance with a slow breath over planted feet, a leg IK to keep
+ * those feet still while the body swayed, and a lift taken off the baked
+ * foot so they touched the bench. That was the honest thing to draw when
+ * nothing here could walk. lab/TerrainRig.jsx steps a Go2 in MuJoCo now and
+ * hands over the twelve angles the model is holding, so the stance had no
+ * caller and has gone -- with the limits it was derived from, which nothing
+ * left computes with. Where the base goes is the caller's, because the
+ * caller is the one holding the physics.
  */
 
 /* Read off go2_description/urdf/go2_description.urdf at the commit
@@ -49,54 +51,8 @@ const MESH = {
   FL: ["thigh", "calf"], RL: ["thigh", "calf"],
   FR: ["thigh_mirror", "calf_mirror"], RR: ["thigh_mirror", "calf_mirror"]
 };
-/* The calf limit, identical on all four legs, and the only limit this file
-   needs a number for -- the stance is derived from it. The thigh's limit is
-   [-1.5708, 3.4907] on the front legs and [-0.5236, 4.5379] on the rear, and
-   the hip's is +-1.0472 everywhere; those are quoted in the stance note below
-   rather than bound here, because nothing computes with them. */
-const KNEE = [-2.7227, -0.83776];
-
-/* The stance, derived rather than posed. The URDF ships no home position --
- * there is no default in the launch files, the rviz config or the controller
- * yaml -- so the one thing that can be said about the knee without inventing
- * anything is that it should sit in the middle of its own limit, which is
- * where a joint has equal authority in both directions. That fixes the thigh:
- * the two links are the same length, so the foot hangs directly under the
- * thigh joint exactly when the calf angle is twice the thigh angle and
- * opposite, and the standing height follows as 2 L cos(thigh).
- *
- * It comes out at 0.89012 rad at the thigh, -1.78023 at the knee, and
- * 0.26809 m from the thigh joint down to the centre of the foot. Both angles
- * are well inside the limits above, and the sway never takes them near: over
- * a full breath the thigh moves between 0.818 and 0.963 and the knee between
- * -1.867 and -1.690, against a knee limit of -2.723.
- */
-const KNEE0 = (KNEE[0] + KNEE[1]) / 2;
-const THIGH0 = -KNEE0 / 2;
-const STAND = 2 * THIGH_L * Math.cos(THIGH0);
-
-/* The breath. These two are the only numbers in this file that are chosen
- * rather than measured, and there is nothing in the description package to
- * derive them from -- a robot standing still has no period of its own.
- *
- * What they are checked against is measured. The four feet stand on a
- * rectangle 0.3868 m by 0.2840 m, which is twice the hip x offset by twice
- * the hip and thigh y offsets together; 12 mm is 8.5% of that rectangle's
- * half width, so the body drifts nowhere near leaving its own support
- * polygon. And the legs stay far inside their reach: the furthest the foot
- * ever gets from the thigh joint over a breath is 0.283 m of the 0.426 m the
- * two links can make straightened.
- *
- * The three axes run a third of a cycle apart, so the body traces a slow
- * circle over the feet rather than bobbing on one line. That part is derived
- * from the one period; only the period and the amplitude are picked.
- */
-const BREATH = 5.5;
-const SWAY = 0.012;
-
 // The leg order everything outside this file uses, and no offset at all.
 const ORDER = ["FL", "FR", "RL", "RR"];
-const ZERO = [0, 0, 0];
 
 let cached = null;
 
@@ -114,49 +70,18 @@ export function useGo2() {
   return mesh;
 }
 
-/* Where the three joints of one leg have to be for its foot to be at (dx, dy,
- * dz), measured from that leg's hip joint in the base frame.
+/* `joints` is a ref to twelve angles in FL FR RL RR order and hip, thigh,
+ * calf within each -- the URDF's own joints, which is also the order
+ * sim/models.js declares them in and the order demos/crawl.js writes. This
+ * draws the robot those angles describe and nothing else.
  *
- * The thigh and the calf both turn about y and nothing past the thigh joint
- * is offset in y, so the foot is confined to the plane y = side * THIGH_Y of
- * the hip frame. That one fact pins the hip roll on its own, before any of
- * the rest: dy cos(q1) + dz sin(q1) = side * THIGH_Y, which is R cos(q1 - g)
- * = side * THIGH_Y for R and g the polar form of (dy, dz). Of the two
- * branches, the one taken here is the one that returns exactly zero for the
- * stance above -- checked, not assumed.
- *
- * What is left is the ordinary planar two-link solve in that plane, and the
- * knee takes the negative root because the URDF's calf range is entirely
- * negative and admits no other.
+ * Not optional, and nothing here fills in for it: a Go2 with no angles to
+ * hold would be a Go2 with its feet wherever the bind pose left them, and
+ * the stance that used to cover that case is gone with its last caller. The
+ * frame callback returns rather than drawing a wrong pose, so a ref that has
+ * not been written yet leaves the machine where it was.
  */
-function leg(dx, dy, dz, side, out) {
-  const L0 = side * THIGH_Y;
-  const R = Math.hypot(dy, dz);
-  const q1 = Math.atan2(dz, dy) + Math.acos(Math.min(1, Math.max(-1, L0 / R)));
-  const s1 = Math.sin(q1), c1 = Math.cos(q1);
-  // Into the hip frame. A roll about x leaves dx alone.
-  const u = -dx, w = -(-dy * s1 + dz * c1);        // down-positive from the joint
-  const r2 = u * u + w * w;
-  const c3 = Math.min(1, Math.max(-1,
-    (r2 - THIGH_L * THIGH_L - CALF_L * CALF_L) / (2 * THIGH_L * CALF_L)));
-  const q3 = -Math.acos(c3);
-  const q2 = Math.atan2(u, w)
-           - Math.atan2(CALF_L * Math.sin(q3), THIGH_L + CALF_L * Math.cos(q3));
-  out[0] = q1; out[1] = q2; out[2] = q3;
-  return out;
-}
-
-/* `joints`, when it is given, is a ref to twelve angles in FL FR RL RR order
- * and hip, thigh, calf within each -- the URDF's own joints, which is also
- * the order sim/models.js declares them in and the order demos/crawl.js
- * writes. Given it, this draws the robot those angles describe and nothing
- * else: no breath, no lift, no derived stance. Where the base goes is then
- * the caller's, because the caller is the one holding the physics.
- *
- * Without it, the stance and the breath below are what it draws, which is
- * what every bay that only needs a Go2 standing there still wants.
- */
-export default function Go2({ phase = 0, scale = 1, tint, joints = null }) {
+export default function Go2({ scale = 1, tint, joints }) {
   const mesh = useGo2();
   const groups = useRef([]);
   const body = useRef();
@@ -210,14 +135,6 @@ export default function Go2({ phase = 0, scale = 1, tint, joints = null }) {
     return out;
   }, []);
 
-  const rest = useMemo(() => {
-    const f = {};
-    for (const k of ["FL", "FR", "RL", "RR"]) {
-      f[k] = [HIP[k][0], HIP[k][1] + SIDE[k] * THIGH_Y, -STAND];
-    }
-    return f;
-  }, []);
-
   const M = useMemo(() => ({
     hip: new THREE.Matrix4(), roll: new THREE.Matrix4(), flip: new THREE.Matrix4(),
     thigh: new THREE.Matrix4(), calf: new THREE.Matrix4(), foot: new THREE.Matrix4(),
@@ -225,53 +142,18 @@ export default function Go2({ phase = 0, scale = 1, tint, joints = null }) {
     q: new Float32Array(3)
   }), []);
 
-  /* How high the base has to sit for the feet to touch the bench. Taken off
-     the baked foot geometry in the stance pose rather than from the URDF's
-     0.02 foot_radius, because what has to clear the bench is the triangles
-     that get drawn, not the sphere the collision model uses in their place.
-     The feet are planted, so this is computed once and does not move. */
-  const lift = useMemo(() => {
-    if (!geom) return 0;
-    const foot = new THREE.Matrix4()
-      .makeRotationY(THIGH0 + KNEE0)
-      .setPosition(0, 0, -STAND);
-    const v = new THREE.Vector3();
-    let low = Infinity;
-    for (const p of geom.foot) {
-      const a = p.geometry.getAttribute("position");
-      for (let i = 0; i < a.count; i++) {
-        v.fromBufferAttribute(a, i).applyMatrix4(foot);
-        if (v.z < low) low = v.z;
-      }
-    }
-    return -low;
-  }, [geom]);
-
-  useFrame(({ clock }) => {
+  useFrame(() => {
     if (!geom) return;
-    /* Off the clock, not accumulated, so the cell is in step with the rest of
-       the building whenever it comes back on screen. */
     const driven = joints && joints.current;
-    const t = clock.elapsedTime + phase * BREATH;
-    const w = (2 * Math.PI * t) / BREATH;
-    const d = driven ? ZERO : [
-      SWAY * Math.sin(w),
-      SWAY * Math.sin(w + (2 * Math.PI) / 3),
-      SWAY * Math.sin(w + (4 * Math.PI) / 3)
-    ];
+    if (!driven) return;
 
-    /* The body carries the offset and the legs are solved for feet that do
-       not, which is the whole trick: foot in the world is d + (rest - d), so
-       it never moves, and everything that does move is a joint angle the link
-       lengths asked for. */
+    /* The base is wherever the simulation put it and the caller has already
+       placed this whole group there, so this link carries no offset of its
+       own. It is still written every frame rather than left alone, because
+       matrixAutoUpdate is off on it and an identity that is never set is an
+       identity three has never been told about. */
     if (body.current) {
-      /* Driven, the base is wherever the simulation put it and the caller has
-         already placed this whole group there, so there is nothing left to
-         offset. The lift exists only for the standing pose: it is how far the
-         drawn foot triangles sit below the joint, which is not the same as
-         the collision sphere's radius and is why it is measured off the mesh
-         rather than taken from the URDF. */
-      body.current.matrix.makeTranslation(d[0], d[1], driven ? 0 : lift + d[2]);
+      body.current.matrix.identity();
       body.current.matrixWorldNeedsUpdate = true;
     }
 
@@ -281,16 +163,9 @@ export default function Go2({ phase = 0, scale = 1, tint, joints = null }) {
       const L = links[i];
       if (L.leg === null) { g.matrix.identity(); g.matrixWorldNeedsUpdate = true; continue; }
       const k = L.leg, s = SIDE[k], h = HIP[k];
-      let q;
-      if (driven) {
-        const b = ORDER.indexOf(k) * 3;
-        M.q[0] = driven[b]; M.q[1] = driven[b + 1]; M.q[2] = driven[b + 2];
-        q = M.q;
-      } else {
-        q = leg(rest[k][0] - d[0] - h[0],
-                rest[k][1] - d[1] - h[1],
-                rest[k][2] - d[2] - h[2], s, M.q);
-      }
+      const b = ORDER.indexOf(k) * 3;
+      M.q[0] = driven[b]; M.q[1] = driven[b + 1]; M.q[2] = driven[b + 2];
+      const q = M.q;
 
       M.hip.makeRotationX(q[0]).setPosition(h[0], h[1], h[2]);
       if (L.part === "hip") {

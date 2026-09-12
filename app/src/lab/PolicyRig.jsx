@@ -164,7 +164,13 @@ export default function PolicyRig({ stop }) {
      two controllers steering at different targets disagree by construction. */
   const dwa = useMemo(() => new Local({ maxV: MAX_V, maxW: MAX_W, horizon: 1.9,
                                         nv: 5, nw: 15 }), []);
-  const pose = useRef({ x: START[0], y: START[1], psi: START[2], travel: 0 });
+  /* `turned` is the heading integrated without wrapping, and it is here
+     because lab/TurtleBot.jsx needs it: a differential drive's wheel angles
+     are travel -+ (track/2) * turned, so leaving it off made both of them
+     NaN and this cell's wheels never turned at all while the base drove
+     perfectly. A missing field is not a zero. */
+  const pose = useRef({ x: START[0], y: START[1], psi: START[2],
+                        travel: 0, turned: 0 });
   const goal = useRef(new THREE.Vector2(0.80, 1.00));
   const over = useRef(false);
   const cmd = useRef({ v: 0, w: 0, dv: 0, dw: 0, acc: 0, gap: 0 });
@@ -230,7 +236,8 @@ export default function PolicyRig({ stop }) {
   }
 
   function reset() {
-    pose.current = { x: START[0], y: START[1], psi: START[2], travel: 0 };
+    pose.current = { x: START[0], y: START[1], psi: START[2],
+                     travel: 0, turned: 0 };
     cmd.current = { v: 0, w: 0, dv: 0, dw: 0, acc: 0, gap: 0 };
     nav.current = { path: [], wp: 0, cell: -1, clipped: 0, wedged: 0,
                     stalled: 0, arrived: 0, runs: 0, worst: 9, since: 0,
@@ -358,10 +365,18 @@ export default function PolicyRig({ stop }) {
       sm.dir("tb0", 0, _h);
       const nx = _p.x, ny = -_p.z;
       q.travel += Math.hypot(nx - q.x, ny - q.y);
-      q.x = nx; q.y = ny;
-      q.psi = Math.atan2(-_h.z, _h.x);
+      /* Unwrapped, because atan2 comes back inside +-pi and a wheel that has
+         rolled through three turns has rolled through three turns. Taking
+         the short way round each step is what makes it an odometer rather
+         than a heading. */
+      const npsi = Math.atan2(-_h.z, _h.x);
+      let dpsi = npsi - q.psi;
+      while (dpsi > Math.PI) dpsi -= Math.PI * 2;
+      while (dpsi < -Math.PI) dpsi += Math.PI * 2;
+      q.turned += dpsi;
+      q.x = nx; q.y = ny; q.psi = npsi;
     } else {
-      q.psi += c.w * d;
+      q.psi += c.w * d; q.turned += c.w * d;
       q.x += Math.cos(q.psi) * c.v * d;
       q.y += Math.sin(q.psi) * c.v * d;
       q.travel += Math.abs(c.v) * d;

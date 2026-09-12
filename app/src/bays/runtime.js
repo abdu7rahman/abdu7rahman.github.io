@@ -229,7 +229,12 @@ class Bundle {
     /* Sections this bundle does not serve. lab.js guards every one of its
        three demos with `if (!cv) return { init: noop }`, so dropping #space
        (the action-space reference, which is not one of them) is safe by
-       its own contract. demo.js does not guard -- its five are all kept. */
+       its own contract. demo.js guards four of its five the same way, and
+       that is load-bearing now rather than spare: the arm demo's section
+       went out of this set when the reach cell was retired, and its guard
+       was the only thing between that and a throw on every visit. It did
+       not work until demo.js's fitCanvas was taught to return null for a
+       null element instead of dereferencing it on the way to the check. */
     const keep = new Set(Object.values(this.spec.cells).map(c => c.section));
     d.querySelectorAll("main.runner > [id]").forEach(el => {
       if (!keep.has(el.id)) el.remove();
