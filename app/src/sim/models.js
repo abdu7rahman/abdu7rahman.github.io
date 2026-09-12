@@ -76,18 +76,47 @@ const f = n => (Math.round(n * 1e6) / 1e6).toString();
  * rejected by the compiler and a nearly-zero-length one is a sphere with
  * extra steps.
  */
+/* Where the last link's collision geometry stops, and it is not the tool
+ * point.
+ *
+ * The chain below draws each link from its own joint to where the next one
+ * sits, and for the last one "the next one" was the tool centre -- a capsule
+ * of 38 mm radius running the whole 156 mm from wrist three to the point the
+ * jaws are supposed to close on. That was harmless while the gripper was an
+ * adhesion actuator with no body. It is not harmless now: the gripper is
+ * real geometry in that same space, so the arm carried a 76 mm sausage
+ * through its own jaws and out to the grasp point.
+ *
+ * What that does to the sorting cell was measured rather than guessed.
+ * Every descent, on every tool, contact `l_g5 -> <tool>`: the link resting
+ * on the thing the gripper was reaching for. The wrist actuator sat pinned
+ * at its 56 N m ceiling for the whole phase, the joint stayed 0.09 rad from
+ * its command, and the tool point settled 45 mm above where it had been
+ * sent -- more than the 33 mm a pad clears the work by, so a jaw came down
+ * on top of the tool instead of beside it. The cell sorted one tool in six
+ * over four hundred simulated seconds and the reason was that the arm could
+ * not physically get its jaws around anything.
+ *
+ * So the link ends where the gripper begins: TCP_Z - 0.046 is the `_tcp`
+ * body's own origin, which is the flange the two-finger gripper bolts to.
+ * Everything past it is already modelled, once, by the gripper. */
+const FLANGE = TCP_Z - 0.046;
+
 export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
-  const R = [0.062, 0.062, 0.052, 0.045, 0.042, 0.038];
+  /* The last radius is the wrist housing's, not a guess at a gripper's: the
+     gripper's own cylinder below is 34 mm and the two are the same part of
+     the machine. */
+  const R = [0.062, 0.062, 0.052, 0.045, 0.042, 0.034];
   let open = "", close = "";
   for (let i = 0; i < 6; i++) {
     const [x, y, z, r, p, yw] = ORIGINS[i];
-    const nxt = i < 5 ? ORIGINS[i + 1] : [0, 0, TCP_Z, 0, 0, 0];
+    const nxt = i < 5 ? ORIGINS[i + 1] : [0, 0, FLANGE, 0, 0, 0];
     const len = Math.hypot(nxt[0], nxt[1], nxt[2]);
     const body = `<body name="${name}_l${i}" pos="${f(x)} ${f(y)} ${f(z)}" quat="${quat(r, p, yw)}">
       <joint name="${name}_j${i}" axis="0 0 1" range="-6.2832 6.2832" armature="0.08" damping="4"/>
       ${len > 0.06
-        ? `<geom ${ARM} type="capsule" fromto="0 0 0 ${f(nxt[0])} ${f(nxt[1])} ${f(nxt[2])}" size="${R[i]}"/>`
-        : `<geom ${ARM} type="sphere" size="${R[i]}"/>`}`;
+        ? `<geom name="${name}_g${i}" ${ARM} type="capsule" fromto="0 0 0 ${f(nxt[0])} ${f(nxt[1])} ${f(nxt[2])}" size="${R[i]}"/>`
+        : `<geom name="${name}_g${i}" ${ARM} type="sphere" size="${R[i]}"/>`}`;
     open += body;
     close = "</body>" + close;
   }
@@ -117,7 +146,7 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
      and an offset in a rig is a real offset rather than a correction for this
      file's geometry. */
   open += `<body name="${name}_tcp" pos="0 0 ${f(TCP_Z - 0.046)}">
-      <geom ${ARM} type="cylinder" size="0.034 0.022" pos="0 0 -0.022"
+      <geom name="${name}_wrist" ${ARM} type="cylinder" size="0.034 0.022" pos="0 0 -0.022"
             rgba="0.8 0.8 0.85 1" mass="0.5"/>
       <site name="${name}_grip" pos="0 0 0.046" size="0.008"/>
       <!-- The jaw, and its joint value is half the gap between the pads.
@@ -152,7 +181,7 @@ export function arm(name, { pos = [0, 0, 0], yaw = 0, density = 1100 } = {}) {
 
   const chain = `<body name="${name}_base" pos="${f(pos[0])} ${f(pos[1])} ${f(pos[2])}"
       euler="0 0 ${f(yaw)}">
-      <geom ${ARM} type="cylinder" size="0.075 0.02" pos="0 0 0.021"/>
+      <geom name="${name}_plinth" ${ARM} type="cylinder" size="0.075 0.02" pos="0 0 0.021"/>
       ${open}${close}`;
 
   /* Position servos, which is what a joint controller on a real arm is. The

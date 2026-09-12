@@ -192,14 +192,7 @@ export class Sim {
      done a thing -- so reporting it as "is the arm touching the obstacle"
      reports 4 for a cell where nothing has gone wrong. */
   touching(geomName) {
-    if (!this._geoms) this._geoms = new Map();
-    let g = this._geoms.get(geomName);
-    if (g === undefined) {
-      const h = this.model.geom(geomName);
-      g = h.id;
-      if (h.delete) h.delete();
-      this._geoms.set(geomName, g);
-    }
+    const g = this.geomId(geomName);
     const n = this.data.ncon;
     const vec = this.data.contact;
     let hit = 0;
@@ -209,6 +202,59 @@ export class Sim {
       if (c.delete) c.delete();
     }
     return hit;
+  }
+
+  /* And what a named geom is touching, as the other geom's index in each
+     contact.
+   *
+     touching() answers how many and that is the number a cell wants; it is
+     not the number somebody debugging one wants. An arm that stops 45 mm
+     above where it was sent is either resting on the work, resting on the
+     bench or folded against itself, those are three different bugs, and a
+     count of contacts cannot tell them apart. Indices rather than names
+     because the model's name table is not indexable from this binding --
+     the caller resolves the handful it cares about through geomId(). */
+  touchingWhat(geomName) {
+    const g = this.geomId(geomName);
+    const n = this.data.ncon, vec = this.data.contact, out = [];
+    for (let i = 0; i < n; i++) {
+      const c = vec.get(i);
+      if (c.geom1 === g) out.push(c.geom2);
+      else if (c.geom2 === g) out.push(c.geom1);
+      if (c.delete) c.delete();
+    }
+    return out;
+  }
+
+  /* What an actuator is actually producing, after its own force ceiling.
+   *
+     A position servo's standing error is the torque it has to hold divided
+     by its gain -- but only while it is inside its ceiling, and above it the
+     error says nothing at all about the load. Telling those two apart from
+     outside a cell is otherwise guesswork, and it is the difference between
+     "this arm is soft" and "this arm is being asked for more than it has". */
+  actuatorForce(name) {
+    if (!this._actIds) this._actIds = new Map();
+    let id = this._actIds.get(name);
+    if (id === undefined) {
+      const h = this.model.actuator(name);
+      id = h.id;
+      if (h.delete) h.delete();
+      this._actIds.set(name, id);
+    }
+    return this.data.actuator_force[id];
+  }
+
+  geomId(name) {
+    if (!this._geoms) this._geoms = new Map();
+    let g = this._geoms.get(name);
+    if (g === undefined) {
+      const h = this.model.geom(name);
+      g = h.id;
+      if (h.delete) h.delete();
+      this._geoms.set(name, g);
+    }
+    return g;
   }
 
   /* Command an actuator by name, which is how a grasp is switched on: the
