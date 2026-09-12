@@ -5,7 +5,7 @@ import { STOPS, PITCH, WORK } from "../lib/plan.js";
 import { P } from "../lib/palette.js";
 import { BUNDLES, BUNDLE_OF, acquire, release, bundle, expose } from "./runtime.js";
 import { openCell, hint } from "./overlay.js";
-import { controls, isRunning } from "../lab/console.js";
+import { controls, isRunning, isLive } from "../lab/console.js";
 
 /* The demos, on the monitors, seen from the aisle.
  *
@@ -164,7 +164,21 @@ export default function Screens() {
       }
     }
 
-    hint(!view.entered && near && nearD < range.mount ? near : null);
+    /* The affordance, and it is not the same question as the one above.
+     *
+     * It was `nearD < range.mount`, which is the fog's near plane -- 78 m,
+     * the length of the building. That range is right for standing a
+     * runtime up early, because a preload nobody notices is the point of
+     * it, and wrong for telling somebody they can click a screen: at the
+     * entrance, forty metres from the nearest bench and with no monitor
+     * legible on it, the chip said LIVE and click the screen to take the
+     * cell.
+     *
+     * The chip says LIVE, so the test is whether the cell is: lab/console.js
+     * already decides which cells are integrating and which are held, and a
+     * cell that is not running has nothing to take. It also means the one
+     * word on the chip and the state of the machine cannot disagree. */
+    hint(!view.entered && near && isLive(near, camera) ? near : null);
   });
 
   return <>{RIGS.map(s => <Monitor key={s.id} stop={s} />)}</>;

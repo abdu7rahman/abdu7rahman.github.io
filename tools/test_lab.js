@@ -157,6 +157,13 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     });
     ok('the guide is inside the building, not in a wall',
        guide.z < 6.5 && guide.clear > 0.4, JSON.stringify(guide));
+    /* Nothing here to take. The nearest bench is forty metres down the lane
+       and no monitor on it is legible, so an affordance offering to open a
+       cell is offering something the reader cannot see. Section F0 checks
+       the other half: up at every cell. */
+    ok('and no cell is offering itself from here',
+       !await pg.evaluate(() => { const el = document.getElementById('bay-hint');
+         return !!el && el.classList.contains('on'); }));
     const g1 = await pg.evaluate(() => {
       const T = window.__lab.THREE, o = window.__lab.scene.getObjectByName('g1-root');
       if (!o) return null;
@@ -261,7 +268,7 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        r.worst.toFixed(4) + ' vs ' + r.radius);
   }
 
-  const framed = [];
+  const framed = [], chipAt = {};
   console.log('\nF. every cell answers the cursor');
   {
     /* Each rig, exercised the way somebody standing at it would, and asked
@@ -310,6 +317,10 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
           }
         return { id, top: +top.toFixed(3), bot: +bot.toFixed(3) };
       }, c.id));
+      chipAt[c.id] = await pg.evaluate(() => {
+        const el = document.getElementById('bay-hint');
+        return !!el && el.classList.contains('on');
+      });
       const before = await rows();
       /* Aimed at the cell's own surface rather than at a pixel somebody
          guessed. Every rig names the thing its pointer handlers are on, so
@@ -373,6 +384,13 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
 
   console.log('\nF0. and every cell fits the shot it arrives at');
   {
+    /* And the affordance is up where it means something. It was keyed to
+       the fog's near plane -- 78 m, the whole building -- so the chip read
+       LIVE, click the screen to take the cell at the entrance, forty metres
+       from the nearest bench with no monitor legible on it. Section B
+       checks the other half: not up at the door. */
+    const off = Object.entries(chipAt).filter(([, v]) => !v).map(([k]) => k);
+    ok('the take-the-cell chip is up at every cell', off.length === 0, off.join(', '));
     const bad = framed.filter(f => f.err || f.top < 0.01 || f.bot > 0.99);
     ok('all eight rigs read their whole height', bad.length === 0,
        bad.map(f => f.id + ' ' + (f.err || f.top + '..' + f.bot)).join(', '));
