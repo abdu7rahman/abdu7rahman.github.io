@@ -6,7 +6,7 @@ import { Local } from "./demos/dwa.js";
 import { useSim } from "../sim/useSim.js";
 import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
@@ -46,7 +46,15 @@ import { WORK } from "../lib/plan.js";
    changes is how much floor it is given, which is a property of the test and
    not of the machine. A smaller course is a smaller test area, and the only
    thing that becomes untrue is nothing. */
-const COURSE_X = 1.14, COURSE_Y = 1.33;
+/* The course, and it is bigger than it was.
+ *
+ * "Too confined" was the complaint and it was fair: this bay ran on a patch
+ * the size of a chopping board, and a mobile robot with nowhere to go cannot
+ * show you a controller. The bench underneath it went to 3.0 by 3.8 m --
+ * lab/Bench.jsx carries why those two numbers and not larger ones -- and the
+ * course takes what is left after a hand's width of margin.
+ */
+const COURSE_X = 2.70, COURSE_Y = 3.40;
 const HORIZON = 2.6;
 const TICK = 1 / 20;          // 20 Hz, which is the rate the written
                               // benchmarks time this controller at
@@ -55,13 +63,19 @@ const TICK = 1 / 20;          // 20 Hz, which is the rate the written
    radius, in the bench frame. Cylinders rather than boxes because the
    clearance term is a point-to-circle distance and a circle is the shape
    that makes that exact rather than conservative. */
+/* Scaled with the course. The radii grow too and by less than the course
+   does: a drum that stayed 110 mm on a bench two and a half times wider is a
+   controller threading between specks, and one that scaled fully would leave
+   the same fraction of the bench blocked and show nothing new. Half the
+   linear scale is the middle of those, and it is what puts the gaps at about
+   three body widths of a Burger. */
 const OBS0 = [
-  [-0.29,  0.27, 0.11],
-  [ 0.26,  0.14, 0.13],
-  [-0.09, -0.27, 0.12],
-  [ 0.33, -0.40, 0.10]
+  [-0.69,  0.69, 0.16],
+  [ 0.62,  0.36, 0.19],
+  [-0.21, -0.69, 0.17],
+  [ 0.78, -1.02, 0.15]
 ];
-const OBS_R = 0.12;          // what a placed one is, in metres
+const OBS_R = 0.17;          // what a placed one is, in metres
 
 export default function DriveRig({ stop }) {
   const s = stop.side;
@@ -82,15 +96,15 @@ export default function DriveRig({ stop }) {
      recompile -- only their number is baked in, and the cell's Reset is what
      puts that back. */
   const [sim] = useSim(() => wheeledScene({
-    starts: [[-0.40, -0.52, 0.6]], obstacles: OBS0
+    starts: [[-0.95, -1.33, 0.6]], obstacles: OBS0
   }), []);
 
-  const pose = useRef({ x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 });
+  const pose = useRef({ x: -0.95, y: -1.33, psi: 0.6, travel: 0, turned: 0 });
   /* Scratch for reading the simulation, so a frame allocates nothing. */
   const _p = useMemo(() => new THREE.Vector3(), []);
   const _h = useMemo(() => new THREE.Vector3(), []);
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
-  const goal = useRef(new THREE.Vector2(0.40, 0.49));
+  const goal = useRef(new THREE.Vector2(0.95, 1.25));
   /* Seconds since the cursor left the bench, and whether it is on it at all.
    *
    * These used to be one number reset by pointer movement, which made
@@ -183,11 +197,11 @@ export default function DriveRig({ stop }) {
          the next frame reads the simulation's own answer straight back over
          it, so the button did nothing. */
       { label: "Reset", on: () => {
-          pose.current = { x: -0.40, y: -0.52, psi: 0.6, travel: 0, turned: 0 };
+          pose.current = { x: -0.95, y: -1.33, psi: 0.6, travel: 0, turned: 0 };
           cmd.current = { v: 0, w: 0, acc: 0 };
           obs.current = OBS0.map(o => o.slice());
           const sm = sim.current;
-          if (sm) sm.place("tb0_free", -0.40, -0.52, BURGER.tyre, 0.6);
+          if (sm) sm.place("tb0_free", -0.95, -1.33, BURGER.tyre, 0.6);
           setObsN(n => n + 1);
         } }
     ],
@@ -244,7 +258,11 @@ export default function DriveRig({ stop }) {
 
   useFrame(({ clock, camera: cam }, dt) => {
     const d = Math.min(0.1, dt);
-    if (!isRunning(stop.id)) { mat.uEye.value.copy(cam.position); return; }
+    /* The eye position goes to the bench shader either way: a paused cell or
+       one the reader has walked away from still gets drawn, and a grazing
+       term that is not updated is a floor that shears as the camera moves. */
+    mat.uEye.value.copy(cam.position);
+    if (!isLive(stop, cam)) return;
     const q = pose.current;
 
     /* Back to an orbit when nobody is pointing at the bench. Slow, and wide
@@ -254,7 +272,7 @@ export default function DriveRig({ stop }) {
     if (!over.current) held.current += d; else held.current = 0;
     if (held.current > 1.2) {
       const a = clock.elapsedTime * 0.42;
-      goal.current.set(Math.cos(a) * 0.40, Math.sin(a) * 0.49);
+      goal.current.set(Math.cos(a) * 0.95, Math.sin(a) * 1.25);
     }
 
     // The controller runs on its own clock, not the frame's: a 20 Hz plan is

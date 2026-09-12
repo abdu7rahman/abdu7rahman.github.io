@@ -152,7 +152,13 @@ export function standFor(grid, stop, radius = 0.50) {
        cladding; dropping the aim spends that headroom on the thing somebody
        is meant to read. */
     look = [x * 0.30 + wx * 0.70, 0.92, z * 0.30 + wz * 0.70];
-    fov = 46;
+    /* Wide enough for the bench that is actually there. The benches went to
+       3.0 by 3.8 m so the courses on them stopped reading as trays, and the
+       aisle-parallel 3.8 is what crosses the frame: at the 4.2 m this shot
+       prefers, 46 degrees covers 3.57 m and cropped the ends off every
+       course cell. 50 covers 3.92, which fits it with a hand's width to
+       spare. */
+    fov = 50;
     faceYaw = Math.atan2(ez - z, ex - x);
   }
   return { id: stop.id, x, z, clear, faceYaw, eye, look, fov };

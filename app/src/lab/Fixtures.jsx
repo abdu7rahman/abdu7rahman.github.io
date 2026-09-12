@@ -31,31 +31,31 @@ function services(s) {
   const bx = s * (AISLE / 2 + BAY_D - 0.75);   // hard against the back wall
   // The cabinet: a 2.0 m enclosure and a 1.2 m one beside it, because a cell
   // has a controller and a distribution board and they are not one box.
-  dark.push([bx, 0.02, -2.0, bx, 2.05, -2.0, 0.62, 0.90]);
+  dark.push([bx, 0.02, -2.4, bx, 2.05, -2.4, 0.62, 0.90]);
   dark.push([bx, 0.02, -0.95, bx, 1.25, -0.95, 0.55, 0.72]);
   // Plinths, so neither one is standing directly on the slab.
-  steel.push([bx, 0.0, -2.0, bx, 0.08, -2.0, 0.66, 0.94]);
+  steel.push([bx, 0.0, -2.4, bx, 0.08, -2.4, 0.66, 0.94]);
   steel.push([bx, 0.0, -0.95, bx, 0.08, -0.95, 0.59, 0.76]);
   // Door furniture: two hinges and a handle down the face of the big one.
   const fx = bx - s * 0.32;
-  for (const z of [-2.38, -1.62]) steel.push([fx, 0.5, z, fx, 1.9, z, 0.05, 0.05]);
-  steel.push([fx, 1.05, -2.0, fx, 1.35, -2.0, 0.07, 0.07]);
+  for (const z of [-2.78, -2.02]) steel.push([fx, 0.5, z, fx, 1.9, z, 0.05, 0.05]);
+  steel.push([fx, 1.05, -2.4, fx, 1.35, -2.4, 0.07, 0.07]);
   // Cable tray, off the top of the cabinet and out over the bench, with the
   // drop that feeds the machine. A tray is the one line in a cell that
   // crosses it, and crossing it is the whole job.
-  /* The run stays at z = -2.0, which is half a metre behind the bench, and
-     the drop lands 1.6 m off the bench centreline. Both numbers are
-     clearances rather than composition: the bench is 2.6 by 3.0 m and
+  /* The run stays at z = -2.4, which is half a metre behind the bench, and
+     the drop lands 1.8 m off the bench centreline. Both numbers are
+     clearances rather than composition: the bench is 3.0 by 3.8 m and
      everything above its top inside that footprint belongs to whatever the
      cell is running. A conduit through the middle of an occupancy grid is
      not a detail, it is a fault. */
-  const tx = s * (WORK + 1.6);
-  steel.push([bx, 2.55, -2.0, tx, 2.55, -2.0, 0.10, 0.34]);
-  steel.push([tx, 1.05, -2.0, tx, 2.55, -2.0, 0.07, 0.07]);
+  const tx = s * (WORK + 1.8);
+  steel.push([bx, 2.55, -2.4, tx, 2.55, -2.4, 0.10, 0.34]);
+  steel.push([tx, 1.05, -2.4, tx, 2.55, -2.4, 0.07, 0.07]);
   // Hangers holding the tray up, which is what stops it reading as a beam.
   for (const u of [0.28, 0.62]) {
     const hx = bx + (tx - bx) * u;
-    steel.push([hx, 2.6, -2.0, hx, 3.3, -2.0, 0.035, 0.035]);
+    steel.push([hx, 2.6, -2.4, hx, 3.3, -2.4, 0.035, 0.035]);
   }
   return { steel, dark };
 }

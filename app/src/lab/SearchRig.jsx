@@ -7,7 +7,7 @@ import { Search, FREE, WALL, OPEN, CLOSED, PATH, ENDS, INFL } from "./demos/asta
 import { seeded, layout, inflate, ends } from "./demos/course.js";
 import { useSim } from "../sim/useSim.js";
 import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -46,7 +46,15 @@ import { WORK } from "../lib/plan.js";
    never overhangs, and the cell is 0.1 m -- a Burger is 0.178 m across the
    wheels, so a cell is about half a footprint and the one-cell inflation in
    demos/course.js is what keeps the path off a wall. */
-const COURSE_X = 2.30, COURSE_Y = 2.70;
+/* The course, and it is bigger than it was.
+ *
+ * "Too confined" was the complaint and it was fair: this bay ran on a patch
+ * the size of a chopping board, and a mobile robot with nowhere to go cannot
+ * show you a controller. The bench underneath it went to 3.0 by 3.8 m --
+ * lab/Bench.jsx carries why those two numbers and not larger ones -- and the
+ * course takes what is left after a hand's width of margin.
+ */
+const COURSE_X = 2.70, COURSE_Y = 3.40;
 const CELL = 0.10;
 const NX = Math.round(COURSE_X / CELL);   // 23
 const NY = Math.round(COURSE_Y / CELL);   // 27
@@ -414,7 +422,7 @@ export default function SearchRig({ stop }) {
 
   useFrame(({ camera }, dt) => {
     if (mat.current) mat.current.uniforms.uEye.value.copy(camera.position);
-    if (!isRunning(stop.id)) return;
+    if (!isLive(stop, camera)) return;
     tick(Math.min(0.1, dt));
   });
 

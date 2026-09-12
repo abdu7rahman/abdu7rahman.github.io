@@ -4,7 +4,7 @@ import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
 import { lerpQ, clear, clearance, replan } from "./demos/via.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { useSim } from "../sim/useSim.js";
 import { replanScene } from "../sim/models.js";
 import { P } from "../lib/palette.js";
@@ -202,9 +202,9 @@ export default function ForeseeRig({ stop }) {
     })
   }), [stop.id, kit, sim]);
 
-  useFrame(({ clock }, dt) => {
+  useFrame(({ clock, camera }, dt) => {
     const d = Math.min(0.1, dt);
-    if (!isRunning(stop.id)) return;
+    if (!isLive(stop, camera)) return;
     if (!painted.current && tube.current) { paintPlan(); painted.current = true; }
     /* Drifts when nobody is pointing at it, and "nobody is pointing at it"
        means the cursor has left the cell -- not that it has stopped moving.

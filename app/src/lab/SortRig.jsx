@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { useSim } from "../sim/useSim.js";
 import { sortScene, SORT } from "../sim/models.js";
 import { solve, roll, tcp } from "../sim/ik.js";
@@ -246,6 +246,7 @@ export default function SortRig({ stop }) {
     /* How long the tool point has been standing still, and where it was last
        frame. A descent that has stopped descending is as low as it is going,
        and waiting out its clock only presses harder. */
+    cam: null,
     stall: [0, 0], lastP: [new THREE.Vector3(), new THREE.Vector3()],
     /* How long the bench has been empty, for the reload below. */
     idle: 0,
@@ -498,7 +499,7 @@ export default function SortRig({ stop }) {
     const sm = sim.current;
     if (!sm) return;
     const d = dt;
-    const run = isRunning(stop.id);
+    const run = isLive(stop, kit.cam);
 
     /* Round again once the bench is clear.
      *
@@ -867,7 +868,11 @@ export default function SortRig({ stop }) {
     });
   }
 
-  useFrame((_, dt) => tick(dt));
+  /* The camera is kept on the kit rather than passed down, because the
+     cell's own step runs at the physics rate inside tick() and does not take
+     a frame state. It is only ever read to decide whether this bay is close
+     enough to the reader to be worth integrating. */
+  useFrame(({ camera }, dt) => { kit.cam = camera; tick(dt); });
 
   const bin = (bx, yy, key, label) => (
     <group key={key} position={toScene(bx, yy, 0)}>

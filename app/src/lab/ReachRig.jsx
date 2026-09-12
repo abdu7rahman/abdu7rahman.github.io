@@ -4,7 +4,7 @@ import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
 import { solve } from "../sim/ik.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
@@ -438,8 +438,8 @@ export default function ReachRig({ stop }) {
     }
   }), [stop.id, kit, n]);
 
-  useFrame((_, dt) => {
-    if (!isRunning(stop.id)) return;
+  useFrame(({ camera }, dt) => {
+    if (!isLive(stop, camera)) return;
     if (kit.n >= n) return;
     const add = Math.min(n - kit.n, Math.max(1, Math.round(PER_S * cap * Math.min(0.1, dt))));
     for (let i = 0; i < add; i++) {
@@ -478,8 +478,8 @@ export default function ReachRig({ stop }) {
      keeps moving after the shell has finished filling and the sampler above
      has returned. Rate limited per joint rather than eased as a fraction, so
      a big change takes longer than a small one the way a machine does. */
-  useFrame((_, dt) => {
-    if (!isRunning(stop.id)) return;
+  useFrame(({ camera }, dt) => {
+    if (!isLive(stop, camera)) return;
     const d = Math.min(0.1, dt);
     const a = shown.current, b = cmd.current;
     for (let i = 0; i < 6; i++) {
@@ -543,9 +543,20 @@ export default function ReachRig({ stop }) {
             target.current.set(probe.current.depth, p.x, 0.62 - p.y);
             ask();
           }}
-          onClick={(e) => e.stopPropagation()}
+          /* And it does not take clicks, which the course pads in the other
+             cells do.
+          
+             Those are flat on a bench and a click on one has to be stopped,
+             or it carries on to the monitor behind and opens the cell full
+             screen. This one is a sheet standing up across the bay, so from
+             the aisle it is an invisible wall in front of the whole cell --
+             and a handler on it swallows the click that walks a reader over
+             here. Measured on the interaction suite: with the click stopped,
+             three of six sweeps across the frame reached a cell instead of
+             the four the suite requires, and the reach bay was one of the
+             ones that could no longer be clicked on. */
         >
-          <planeGeometry args={[2.0, 1.8]} />
+          <planeGeometry args={[1.6, 1.5]} />
           <meshBasicMaterial side={THREE.DoubleSide} />
         </mesh>
 

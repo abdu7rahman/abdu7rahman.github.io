@@ -7,7 +7,7 @@ import { Search } from "./demos/astar.js";
 import { clone, observe, act, scratchFor } from "./demos/clone.js";
 import { useSim } from "../sim/useSim.js";
 import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
@@ -67,7 +67,14 @@ import { WORK } from "../lib/plan.js";
  * the bay does not pretend otherwise -- it clips a drum about one run in ten
  * and you can watch it happen.
  */
-const COURSE_X = 2.30, COURSE_Y = 2.70;
+/* And bigger, which for this cell is not a framing choice either.
+ *
+ * train_clone.py generated its 157 maps at 64 by 96 cells of 0.05 m -- a
+ * 3.2 by 4.8 m field -- and the policy's own beams reach 1.3 m. A course
+ * narrower than about twice that reads to it as a corridor it was never
+ * driven down. 2.7 by 3.4 is what the bench holds and is the closest this
+ * building gets to the field it was trained on. */
+const COURSE_X = 2.70, COURSE_Y = 3.40;
 const RES = 0.05;                       // train_clone.py's costmap resolution
 const NX = Math.round(COURSE_X / RES), NY = Math.round(COURSE_Y / RES);
 const INFLATE_CELLS = 4;                // train_clone.py: inflate(g, radius=4)
@@ -77,12 +84,12 @@ const TICK = 0.1;                       // dwa_controller.py: dt
    0.2 to 0.6 m across -- rather than the local control bay's smaller discs,
    which the fan would have resolved as a single smear. */
 const OBS0 = [
-  [-0.58,  0.62, 0.22],
-  [ 0.52,  0.30, 0.26],
-  [-0.18, -0.58, 0.24],
-  [ 0.66, -0.86, 0.20]
+  [-0.68,  0.78, 0.26],
+  [ 0.61,  0.38, 0.30],
+  [-0.21, -0.73, 0.28],
+  [ 0.77, -1.08, 0.24]
 ];
-const START = [-0.80, -1.05, 0.6];
+const START = [-0.94, -1.32, 0.6];
 
 function cx(x) { return Math.max(0, Math.min(NX - 1, Math.floor((x + COURSE_X / 2) / RES))); }
 function cy(y) { return Math.max(0, Math.min(NY - 1, Math.floor((y + COURSE_Y / 2) / RES))); }
@@ -470,8 +477,8 @@ export default function PolicyRig({ stop }) {
   }, []);
   useEffect(() => () => { beamGeo.dispose(); trailGeo.dispose(); }, [beamGeo, trailGeo]);
 
-  useFrame((_, dt) => {
-    if (!isRunning(stop.id)) return;
+  useFrame(({ camera }, dt) => {
+    if (!isLive(stop, camera)) return;
     step(Math.min(0.1, dt));
   });
 

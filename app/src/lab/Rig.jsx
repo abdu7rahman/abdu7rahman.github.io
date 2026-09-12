@@ -41,14 +41,14 @@ const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
                assemble: SortRig, policy: PolicyRig };
 
-/* The bench is 2.6 by 3.0 m and the 3.0 m side runs parallel to the aisle.
+/* The bench is 3.0 by 3.8 m and the 3.8 m side runs parallel to the aisle.
    That is the axis a mobile base gets to drive along, so it is the one
    passed down; TurtleBot.jsx takes its own swept radius off the geometry and
    works out the rest. lab/Bench.jsx owns the number as BENCH_D and does not
    export it, which is deliberate -- it is a dimension of a piece of
    furniture, not an interface -- so this is a second statement of it rather
    than a second definition. */
-const BENCH_RUN = 3.0;
+const BENCH_RUN = 3.8;
 export default function Rig({ stop }) {
   const s = stop.side;
   const x = s * WORK;

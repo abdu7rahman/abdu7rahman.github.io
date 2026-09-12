@@ -84,15 +84,15 @@ export const STOPS = [
   { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control", frame: "course",
     sub: "a velocity-space sampler",
     note: "Put obstacles in a TurtleBot's way with the cursor. Every arc it draws is a trajectory that was scored." },
-  /* Four, not the written section's five. lab/demos/controllers.js
-     implements pure pursuit, Stanley, a velocity-space sampler and MPPI --
-     four published controllers, each the thing it is named after. TEB is a
+  /* Four, not the written section's five. lab/demos/controllers.js and
+     lab/demos/dwa.js implement pure pursuit, Stanley, DWA and MPPI -- four
+     published controllers, each the thing it is named after. TEB is a
      nonlinear optimisation over a timed elastic band and is not something
      this building runs; the written section benchmarks all five and this
      bay says four because four is what is on the bench. */
   { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
-    sub: "four controllers, one plan",
-    note: "The same plan and the same clock, four ways of following it." },
+    sub: "DWA, MPPI, pure pursuit, Stanley",
+    note: "The same plan, the same clock and the same base, four ways of following it." },
   { id: "reach",    kind: "rig",  side:  1, at: 3,   title: "Reach", frame: "envelope",
     sub: "UR12e workspace",
     note: "The arm's reachable set, solved rather than drawn." },

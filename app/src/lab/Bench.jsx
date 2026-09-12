@@ -33,9 +33,22 @@ import { P } from "../lib/palette.js";
  * against a white material with setColorAt doing the colour.
  */
 
-// The footprint, and the one height every rig on the bench agrees with.
-const BENCH_W = 2.6;
-const BENCH_D = 3.0;
+/* The footprint, and the one height every rig on the bench agrees with.
+ *
+ * Bigger than it was, because the courses that live on it read as trays. The
+ * local control cell's was 1.14 by 1.33 m -- eight body lengths of a Burger
+ * across -- and a controller with nowhere to go is a controller you cannot
+ * see doing anything.
+ *
+ * Both numbers are hard limits rather than taste. The width runs from the
+ * cell centre at x = 4.9 toward the aisle, and the guarding line is at 3.2,
+ * so 3.0 puts the near edge at 3.4 and keeps the lane the guide walks clear.
+ * The depth runs along the aisle at 7.2 m per bay, and it is what the
+ * arrival shot sees across the frame: the lens sits 4.2 m out at 50 degrees,
+ * which covers 3.9 m, so 3.8 is the most that fits inside the picture
+ * somebody is walked to. */
+const BENCH_W = 3.0;
+const BENCH_D = 3.8;
 const TOP = 0.9;
 const SLAB_T = 0.045;
 

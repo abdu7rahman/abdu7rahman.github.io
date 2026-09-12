@@ -7,7 +7,7 @@ import { Local } from "./demos/dwa.js";
 import { useSim } from "../sim/useSim.js";
 import { wheeledScene, wheelsFor, BURGER } from "../sim/models.js";
 import { FIELD_VERT, FIELD_FRAG } from "../shaders/field.js";
-import { register, isRunning } from "./console.js";
+import { register, isLive } from "./console.js";
 import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
@@ -44,9 +44,20 @@ import { WORK } from "../lib/plan.js";
    Nothing about the machines changes. The course is the test and the test is
    allowed to be the size that lets somebody see it; the superellipse below
    comes in with it so the corners stay the same corners. */
-const COURSE_X = 1.45, COURSE_Y = 1.70;
+/* The course, and it is bigger than it was.
+ *
+ * "Too confined" was the complaint and it was fair: this bay ran on a patch
+ * the size of a chopping board, and a mobile robot with nowhere to go cannot
+ * show you a controller. The bench underneath it went to 3.0 by 3.8 m --
+ * lab/Bench.jsx carries why those two numbers and not larger ones -- and the
+ * course takes what is left after a hand's width of margin.
+ */
+const COURSE_X = 2.70, COURSE_Y = 3.40;
 const TICK = 1 / 20;
-const LEAD = 0.26;           // metres between the machines at the start
+const LEAD = 0.49;           /* metres between the machines at the start,
+                                scaled with the lap so the grid still spreads
+                                them evenly round it rather than bunching four
+                                machines into one corner of a longer track. */
 
 function seeded(a) {
   return function () {
@@ -64,7 +75,11 @@ function seeded(a) {
    enough to separate a cutter from a tracker. */
 function makePath() {
   const pts = [];
-  const A = 0.52, B = 0.64, n = 3.2;
+  /* Scaled with the course by the same fraction it always occupied of it:
+     0.359 of the width and 0.376 of the depth, which keeps the straights and
+     the corner radii in proportion so the four controllers are being asked
+     the same question on a bigger floor. */
+  const A = 0.97, B = 1.28, n = 3.2;
   for (let i = 0; i < 240; i++) {
     const t = (i / 240) * Math.PI * 2;
     const c = Math.cos(t), s = Math.sin(t);
@@ -131,7 +146,16 @@ export default function RaceRig({ stop }) {
         step: (st) => purePursuit(st, path, { look: 0.34, maxV: cap.v, maxW: MAX_W }) },
       { name: "stanley", col: P.teal,
         step: (st) => stanley(st, path, { k: 2.4, lead: 0.10, maxV: cap.v, maxW: MAX_W }) },
-      { name: "sampler", col: "#c8b46a",
+      /* Named for what it is. This is demos/dwa.js -- the sampling half of
+         Fox, Burgard and Thrun's dynamic window approach, and the same
+         controller the local control bay two stops back runs -- and calling
+         it "sampler" on the board meant a reader could look at four names
+         and reasonably ask where DWA was. Its own file is explicit about
+         which half is missing: the window is the whole admissible set rather
+         than what the base can reach in one control period, because
+         turtlebot3_description states no acceleration limit to narrow it
+         with. */
+      { name: "dwa", col: "#c8b46a",
         step: (st) => {
           // The sampler needs a goal, not a path: it is a local planner. The
           // goal is the point on the plan a lookahead ahead, which is the
@@ -328,7 +352,7 @@ export default function RaceRig({ stop }) {
 
   useFrame(({ camera }, dt) => {
     surface.uEye.value.copy(camera.position);
-    if (!isRunning(stop.id)) return;
+    if (!isLive(stop, camera)) return;
     step(Math.min(0.1, dt));
   });
 
