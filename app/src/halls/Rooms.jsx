@@ -444,7 +444,7 @@ function History({ side }) {
 /* The office at the end of the run, in the aisle rather than off it.
  *
  * The office is the one room with no hand of its own, so the dolly keeps the
- * lane there and looks straight down sixty-six metres at the end wall. A desk
+ * lane there and looks straight down sixty-eight metres at the end wall. A desk
  * parked in a side bay is a desk nobody sees; a counter in front of the door,
  * with the door lit from outside behind it, is the last shot in the building
  * and the one the contact panel sits beside.

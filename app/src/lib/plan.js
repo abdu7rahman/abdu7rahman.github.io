@@ -151,4 +151,16 @@ export function place(stop) {
   return [x, 0, z];
 }
 
-export const RUN = Math.max(...STOPS.map(s => s.at)) * PITCH;
+/* How long the run of stations is: the office's own `at` times the pitch,
+   which is 9.4 by 7.2 and comes to 67.68 m.
+ *
+ * Worth knowing before you move the last stop. Nothing computed from this
+ * needs telling -- lab/Structure.jsx derives its frame count from it,
+ * nav/survey.js its grid, lab/Clutter.jsx its scatter -- but twenty-three
+ * comments in this app quote the number in prose, and prose does not
+ * recompute. It read 66 m everywhere for as long as the office sat at 9.2,
+ * and went on reading 66 m after it moved to 9.4, in files that also quote
+ * things derived from it: the fog reaching 79 per cent of its mix at the far
+ * end when it now reaches 82, and eleven frames of steel when there are
+ * twelve. Grep for the metres before you push. */
+export const RUN = Math.max(...STOPS.map(s => s.at)) * PITCH;   // 67.68

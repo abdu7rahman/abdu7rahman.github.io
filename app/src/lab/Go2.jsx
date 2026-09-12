@@ -56,7 +56,7 @@ const ORDER = ["FL", "FR", "RL", "RR"];
 
 let cached = null;
 
-export function useGo2() {
+function useGo2() {
   const [mesh, setMesh] = useState(cached);
   useEffect(() => {
     if (cached) return;

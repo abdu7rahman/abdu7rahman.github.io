@@ -60,7 +60,7 @@ export function clearance(q, obs, r, fk) {
   return d - r;
 }
 
-export function jointLength(a, b) {
+function jointLength(a, b) {
   let s = 0;
   for (let i = 0; i < 6; i++) { const d = a[i] - b[i]; s += d * d; }
   return Math.sqrt(s);

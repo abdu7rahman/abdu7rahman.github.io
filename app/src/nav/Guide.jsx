@@ -157,7 +157,7 @@ export default function Guide({ debug }) {
   );
 }
 
-/* A ring on the slab under the guide. A 1.3 m machine in a 66 m building is
+/* A ring on the slab under the guide. A 1.3 m machine in a 67.7 m building is
    findable once you know it is there and not before, and the ring is how a
    plant marks where a machine is working anyway. */
 function Marker() {

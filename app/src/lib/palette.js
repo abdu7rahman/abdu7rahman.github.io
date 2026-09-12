@@ -51,11 +51,11 @@ export const P = {
      and used to be.
      
      Both the fog and the background were `air`, so anything past the fog's
-     far plane converged on near black: the far end of a 66 m lane sits 79
+     far plane converged on near black: the far end of a 67.7 m lane sits 82
      per cent of the way through the mix and the back of the building was a
      void. Haze does not behave like that. A dusty volume lit from above
      scatters light toward the eye, so distance in a building this size reads
-     lighter than what is in it -- which is also what makes 66 m of depth
+     lighter than what is in it -- which is also what makes 67.7 m of depth
      legible as depth. `air` stays where it was, because `air` is what you
      see through the roof lights. */
   haze:     "#221f1d"

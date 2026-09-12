@@ -75,8 +75,10 @@ export function truss(span, depth, panels, yTop, z) {
  * A universal column seen from the aisle is a pair of bright flange edges
  * with a shadowed web between them, and that is the whole read -- a box
  * catches one highlight and reads as a post. Three instances instead of
- * one, eleven frames, twenty-two columns: sixty-six members, still one
- * draw call.
+ * one, twelve frames, twenty-four columns: seventy-two members, still one
+ * draw call. (Eleven and sixty-six until the run grew: lab/Structure.jsx
+ * takes FRAMES from ceil(RUN / PITCH) + 2, so a station added at the far
+ * end adds a frame and this arithmetic moves with it.)
  */
 export function column(x, z, height, d, bf, tf, tw) {
   return [

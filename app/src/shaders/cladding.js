@@ -3,7 +3,7 @@ import * as THREE from "three";
 /* Profiled sheet, as a patch on the standard material rather than as a
  * second one.
  *
- * The envelope was six planes with a flat albedo on them, and a 66 m flank
+ * The envelope was six planes with a flat albedo on them, and a 67.7 m flank
  * of one uninterrupted mid grey is the single largest surface in the
  * building. Nothing is on it, nothing crosses it, and every luminaire down
  * the run lands on it as the same value -- so the eye reads it as a
@@ -56,7 +56,7 @@ uniform vec3  uDadoC;
    what the normal wants is its slope. Analytic rather than dFdx: a
    screen-space derivative of a function this high frequency aliases into
    noise the moment the wall is seen at a grazing angle, which is the angle
-   a wall down a 66 m aisle is always seen at. */
+   a wall down a 67.7 m aisle is always seen at. */
 float dsmooth(float e0, float e1, float x) {
   float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
   return 6.0 * t * (1.0 - t) / (e1 - e0);
@@ -153,7 +153,7 @@ export function cladding(material, opt = {}) {
          so that is where the sheet stops and something that survives a
          pallet truck starts. It also puts a horizontal line the whole length
          of the building at a constant height, which is the reference the eye
-         needs to read 66 m as 66 m. */
+         needs to read 67.7 m as 67.7 m. */
       if (uDado > 0.0) {
         float clad_d = smoothstep(uDado - 0.02, uDado + 0.02, clad_h);
         diffuseColor.rgb = mix(uDadoC, diffuseColor.rgb, clad_d);
@@ -162,7 +162,7 @@ export function cladding(material, opt = {}) {
       }
 
       /* Weathering. The profile and the seams gave the wall geometry; what
-         it still had was one flat colour across 66 m of it, which is a new
+         it still had was one flat colour across 67.7 m of it, which is a new
          building on its handover day. Three analytic terms, no texture, and
          they are the difference between a shed and an elevation of a shed.
 

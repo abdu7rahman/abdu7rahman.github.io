@@ -292,7 +292,7 @@ export function wheelsFor(v, w) {
   return [(v - half) / BURGER.tyre, (v + half) / BURGER.tyre];
 }
 
-export function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
+function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
   const R = BURGER.tyre, T = BURGER.track;
   /* The chassis sits so that base_link is `axle` above the wheel centres,
      which puts the whole robot at the height its own URDF says. */
@@ -663,7 +663,7 @@ export function sortScene() {
  * the published ones, so the thing that cannot be exceeded is still the
  * thing Unitree says cannot be exceeded.
  */
-export const GO2 = {
+const GO2 = {
   stand: 0.27,                 // the menagerie keyframe's trunk height
   home: [0, 0.9, -1.8],        // and its joint angles, per leg
   trunk: [0.1881, 0.04675, 0.057]

@@ -61,7 +61,7 @@ export function indexByLink(tree) {
   return m;
 }
 
-export function ancestry(tree, i) {
+function ancestry(tree, i) {
   const out = [];
   for (let k = i; k >= 0; k = tree.links[k].parent) out.push(k);
   return out.reverse();

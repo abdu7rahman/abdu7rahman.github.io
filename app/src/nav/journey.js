@@ -19,7 +19,7 @@ import { STOPS } from "../lib/plan.js";
  * guideState.js where they belong.
  */
 
-export const DEMOS = STOPS.filter(s => s.kind === "rig").map(s => s.id);
+const DEMOS = STOPS.filter(s => s.kind === "rig").map(s => s.id);
 export const ROOMS = STOPS.filter(s => s.kind === "room").map(s => s.id);
 
 /* The phases, and there are only five, because a visit with more than five

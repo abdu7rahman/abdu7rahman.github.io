@@ -239,7 +239,7 @@ export default function Envelope() {
       <Wall x={0} z={FRONT} w={WALL * 2} h={ROOF} />
 
       {/* Two goods doors in the end wall, either side of the personnel door.
-          This is the vanishing point of a 66 m aisle and the only thing on it
+          This is the vanishing point of a 67.7 m aisle and the only thing on it
           was a lit rectangle; a shed's end wall is where the lorries back on
           to, and three openings at three sizes is what says so. */}
       <Shutter x={-6.6} z={BACK + 0.05} ry={0} w={4.6} h={4.8} open={0.34} />
@@ -256,7 +256,7 @@ export default function Envelope() {
           rectangle -- it is four or five stops over everything around it,
           and the eye reads that overload as outside. It used to be #1b2430
           with toneMapped off, which is 27 of 255: darker than the floor, so
-          the end of a sixty-six metre aisle was a hole rather than a door.
+          the end of a sixty-eight metre aisle was a hole rather than a door.
 
           Tone mapped, unlike before, and that matters more than it looks.
           toneMapped false skips the curve but not the encode, and the encode
@@ -268,7 +268,7 @@ export default function Envelope() {
           sees a genuine source. */}
       {/* 1.05 rather than 1.35, and 3.4 by 3.0 rather than 4.2 by 3.8.
       
-          Both numbers were set for the view from the entrance, sixty-six
+          Both numbers were set for the view from the entrance, sixty-eight
           metres away, where the opening is a hundred pixels of overload at
           the vanishing point and the whole job is to read as outside. The
           office stands 7.2 m from it, and there the same plane is 550 px of

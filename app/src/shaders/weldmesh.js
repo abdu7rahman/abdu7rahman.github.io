@@ -70,7 +70,7 @@ export function weldmesh(material, opt = {}) {
        * the far field the moment you looked along it -- and because uFade
        * sits above uCut, "far field" here means nothing is discarded at all
        * and the panel is a solid sheet. Standing at the front door, which is
-       * the one place in this building where you look down sixty-six metres
+       * the one place in this building where you look down sixty-eight metres
        * of aisle, both runs of guarding were grey slabs; the near one on the
        * right covered a quarter of the first frame anybody sees.
        *

@@ -81,7 +81,7 @@ export function visible(grid, ax, az, bx, bz, radius) {
    body could not have cut. Greedy from the start, which is the standard
    funnel shortcut on a grid and gives the same answer as the full funnel for
    a path this shape at a fraction of the code. */
-export function shortcut(grid, pts, radius) {
+function shortcut(grid, pts, radius) {
   if (pts.length < 3) return pts.slice();
   const out = [pts[0]];
   let i = 0;
@@ -134,7 +134,7 @@ export function route(grid, from, to, {
            length: pathLength(pts) };
 }
 
-export function pathLength(pts) {
+function pathLength(pts) {
   let d = 0;
   for (let i = 1; i < pts.length; i++) {
     d += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);

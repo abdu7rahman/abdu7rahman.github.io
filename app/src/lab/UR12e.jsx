@@ -38,7 +38,7 @@ const SLIDE = new THREE.Matrix4();
 const CYCLE = 14;
 let cached = null;
 
-export function useArm() {
+function useArm() {
   const [mesh, setMesh] = useState(cached);
   useEffect(() => {
     if (cached) return;

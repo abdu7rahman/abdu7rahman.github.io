@@ -103,7 +103,7 @@ function fits(x, z, r) {
 // A candidate seat for an item with footprint radius r, biased to the back
 // half of a bay where nothing else in the building stands. The retry loop
 // is cheap insurance: rejecting against two thin exclusion bands over a
-// 66 m run essentially never needs more than a handful of tries.
+// 67.7 m run essentially never needs more than a handful of tries.
 function pick(rand, r) {
   for (let t = 0; t < 60; t++) {
     const side = rand() < 0.5 ? -1 : 1;
@@ -165,7 +165,7 @@ const RACK_CORNERS = [[0.45, 0.22], [-0.45, 0.22], [0.45, -0.22], [-0.45, -0.22]
 const HUB_D = 0.22, DISC_T = 0.08;
 
 const SEED = 0xA53F921D;
-/* 49 items over a 66 m building was one every metre and a third of aisle,
+/* 49 items over a 67.7 m building was one every metre and a third of aisle,
    spread over two sides and two depths -- which is a tidy building, and this
    one is not meant to be tidy. Roughly doubled now that there is floor to
    put them on; they are instanced, so the whole scatter is still six draw

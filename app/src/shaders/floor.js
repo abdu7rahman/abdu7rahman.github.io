@@ -1,7 +1,7 @@
 /* The slab, and everything painted on it.
  *
  * A shader rather than a texture, for one reason that matters at this scale:
- * the aisle runs 66 m and the camera stands 1.6 m off the floor, so a lane
+ * the aisle runs 67.7 m and the camera stands 1.6 m off the floor, so a lane
  * line is four pixels wide near the eye and a fifth of a pixel at the far
  * end. A bitmap solves that with mipmaps, which is exactly the wrong answer --
  * it dissolves the line into grey haze precisely where the vanishing point is

@@ -15,7 +15,7 @@ import { WORK } from "../lib/plan.js";
  *
  * This cell used to be a machine doing a canned traverse next to a monitor
  * showing a plot of a search happening somewhere else. The plot was 1.18 m
- * wide in a building 66 m long, which is to say it was about ninety pixels
+ * wide in a building 67.7 m long, which is to say it was about ninety pixels
  * of the frame, and the thing it was a picture of is the thing the bay is
  * named after. So the search moved onto the bench: a real occupancy grid, a
  * real A* expanding a few hundred nodes a second where you can watch the

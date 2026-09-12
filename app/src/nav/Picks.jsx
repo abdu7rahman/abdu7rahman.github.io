@@ -8,7 +8,7 @@ import * as journey from "./journey.js";
 /* What there is to pick, hanging at the mouth of each cell.
  *
  * The bay volumes are clickable, which is necessary and is not enough: a
- * visitor standing at the door is looking down 66 m of aisle at eight bays
+ * visitor standing at the door is looking down 67.7 m of aisle at eight bays
  * that are mostly edge on, and nothing on screen says any of them is a
  * thing you can press. So each cell carries a tag at head height in the
  * lane, turned to face whoever is looking, with its number and its name on

@@ -83,7 +83,7 @@ export function clearance(pts, steps, obs, radius, cap) {
  * worst clearance along the path capped at `cap`. The controller above
  * cannot tell which one it is talking to, which is the point.
  */
-export function fieldClearance(pts, steps, field, radius, cap) {
+function fieldClearance(pts, steps, field, radius, cap) {
   let worst = cap;
   for (let k = 0; k <= steps; k++) {
     const d = field.clearance(pts[k * 2], pts[k * 2 + 1]) - radius;

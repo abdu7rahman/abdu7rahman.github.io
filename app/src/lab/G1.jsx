@@ -47,7 +47,7 @@ export function useG1() {
    about index 17. Built once from the bake rather than written out here: a
    list of thirty indices typed by hand is a list that goes wrong the first
    time the bake changes. */
-export function jointIndex(tree) {
+function jointIndex(tree) {
   const map = {};
   tree.links.forEach((l, i) => { if (l.joint) map[l.joint.name] = i; });
   return map;

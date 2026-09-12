@@ -6,7 +6,7 @@ import { KEY } from "../lib/palette.js";
 /* The sun, and the box it casts inside.
  *
  * A directional light's shadow camera is an orthographic box, and this one
- * was 48 m across and nailed to the origin. The building is 66 m long, so
+ * was 48 m across and nailed to the origin. The building is 67.7 m long, so
  * that arrangement got both halves of the trade wrong at once: everything
  * within 24 m of the middle was drawn into the map every frame whether or
  * not it was on screen -- measured at the front door, 90 of the frame's 460

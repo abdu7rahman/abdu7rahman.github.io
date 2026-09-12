@@ -108,7 +108,7 @@ export default function Readout() {
       </nav>
 
       {/* Where the guide is up to, in words, because a machine walking away
-          down a 66 m aisle needs to say where it is going. */}
+          down a 67.7 m aisle needs to say where it is going. */}
       {j.phase === "walking" && (
         <p className="going" aria-live="polite">
           Walking to <b>{stop ? stop.title : ""}</b>

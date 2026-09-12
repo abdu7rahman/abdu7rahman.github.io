@@ -18,7 +18,7 @@ import { EAVES } from "../lib/plan.js";
  * Hung from the truss rather than standing on legs, and that is a
  * constraint rather than a style. The bays and rooms alternate down the run
  * at roughly three quarters of a structural bay, so there is no z anywhere in
- * sixty-six metres where both sides of the lane are 3.4 m clear of a mouth --
+ * sixty-eight metres where both sides of the lane are 3.4 m clear of a mouth --
  * a walkway on posts would have to put a column in front of somebody's robot.
  * Hangers off the bottom chord land on nothing and are what a services
  * walkway is really carried on.

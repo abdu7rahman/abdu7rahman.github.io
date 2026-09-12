@@ -131,7 +131,7 @@ export function openCell(stop, b, leave) {
   openState = { b, stop, leave };
 }
 
-export function closeCell() {
+function closeCell() {
   if (!openState) return;
   const { b, leave } = openState;
   openState = null;

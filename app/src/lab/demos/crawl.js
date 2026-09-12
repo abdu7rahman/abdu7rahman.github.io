@@ -90,7 +90,7 @@ const OFFSET = { FL: 0, RR: 0.25, FR: 0.5, RL: 0.75 };
  * nearest reachable one, so a caller that asks for something impossible
  * finds out instead of getting a shrug.
  */
-export function legIK(leg, px, py, pz, out) {
+function legIK(leg, px, py, pz, out) {
   const l1 = ABD * SIDE[leg];
   const r = Math.hypot(py, pz);
   if (r < Math.abs(l1)) return null;
@@ -110,7 +110,7 @@ export function legIK(leg, px, py, pz, out) {
 
 /* And forward, for the one thing that needs it: where a foot is when the
    gait wants to know where it is lifting from. */
-export function legFK(leg, q1, q2, q3, out) {
+function legFK(leg, q1, q2, q3, out) {
   const l1 = ABD * SIDE[leg];
   const x = -THIGH * Math.sin(q2) - CALF * Math.sin(q2 + q3);
   const z = -THIGH * Math.cos(q2) - CALF * Math.cos(q2 + q3);
@@ -130,7 +130,7 @@ export function legFK(leg, q1, q2, q3, out) {
  * the foot in x except through those two, and the roll then carries whatever
  * that gives into y and z.
  */
-export function legJ(leg, q1, q2, q3, out) {
+function legJ(leg, q1, q2, q3, out) {
   const l1 = ABD * SIDE[leg];
   const s1 = Math.sin(q1), c1 = Math.cos(q1);
   const s2 = Math.sin(q2), c2 = Math.cos(q2);

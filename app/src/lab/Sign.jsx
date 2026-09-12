@@ -44,8 +44,8 @@ import { P } from "../lib/palette.js";
  * whose sign hides the guide is a guide holding a placard in front of its
  * face.
  */
-export const SIGN_W = 0.50;
-export const SIGN_H = 0.42;
+const SIGN_W = 0.50;
+const SIGN_H = 0.42;
 /* Where the hands go: a grab rail across the back, near the bottom, which is
  * how a hand-held site sign is actually held. Two pegs were tried first and
  * are wrong for this robot -- the G1's hand is a moulded casting that closes

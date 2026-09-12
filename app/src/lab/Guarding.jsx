@@ -11,7 +11,7 @@ import { AISLE, PITCH, RUN, STOPS } from "../lib/plan.js";
  * A cell that can move on its own is fenced, and the fence is painted the
  * colour a standard reserves for a hazard. So the aisle is bounded by welded
  * mesh panels in steel frames with an orange top rail and an orange kick
- * rail, and that single run of paint down both sides of a 66 m building is
+ * rail, and that single run of paint down both sides of a 67.7 m building is
  * what carries the colour through the whole shot without a single decorative
  * surface.
  *
@@ -141,7 +141,7 @@ export default function Guarding() {
         <meshStandardMaterial color={P.steel} roughness={0.75} metalness={0.42} />
       </instancedMesh>
       {/* The paint carries a little emission, and only a little: it is the
-          one run of colour down a 66 m building and it has to survive the
+          one run of colour down a 67.7 m building and it has to survive the
           fog, but a saturated orange that clips blooms into a tube. */}
       <instancedMesh ref={paintRef} args={[geo, undefined, kit.paint.length]} castShadow>
         <meshStandardMaterial color={P.hazard} roughness={0.55} metalness={0.15}

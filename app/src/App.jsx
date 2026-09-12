@@ -55,12 +55,12 @@ export default function App() {
           /* The fog is not the background, and it was.
            *
            * Both were P.air at #0b0b0c, so everything past the fog's far
-           * plane converged on near black: at 66 m the far end of the lane
-           * is 79 per cent of the way through the mix, which is to say the
+           * plane converged on near black: at 67.7 m the far end of the lane
+           * is 82 per cent of the way through the mix, which is to say the
            * back of the building was a void. Haze does not work like that.
            * A dusty volume lit from above scatters light toward you, so
            * distance in a building this size reads lighter than what is in
-           * it, not darker -- which is also what makes 66 m of depth
+           * it, not darker -- which is also what makes 67.7 m of depth
            * legible as depth.
            *
            * So the fog carries its own colour, one step up from the air, and

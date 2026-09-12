@@ -56,7 +56,7 @@ export const MAX_W = 2.84;     // BURGER_MAX_ANG_VEL, rad/s
 let cached = null;
 let warned = false;
 
-export function useTurtleBot() {
+function useTurtleBot() {
   const [mesh, setMesh] = useState(cached);
   useEffect(() => {
     if (cached) return;
