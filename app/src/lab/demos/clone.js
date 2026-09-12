@@ -23,11 +23,15 @@ export function clone() {
   if (pending) return pending;
   pending = fetch(ASSET("dwa_clone.json"))
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    /* Only what the page reads. The checkpoint also carries its
+       architecture, its training curve and a note about where it came from;
+       carrying those into a live object nobody looks at is three fields that
+       exist to be found dead later. */
     .then(j => ({
-      W: j.W, b: j.b, arch: j.arch,
+      W: j.W, b: j.b,
       bearings: j.obs.bearings, ranges: j.obs.ranges,
       vScale: j.obs.v_scale, wScale: j.obs.w_scale,
-      train: j.train, evalu: j.eval, curve: j.curve, note: j.note
+      train: j.train, evalu: j.eval
     }));
   return pending;
 }
