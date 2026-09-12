@@ -65,20 +65,29 @@
    except the machine is static, so a cell you are not looking at can keep a
    frame-old shadow and cost nothing. Turning castShadow off instead would
    change numSpotLightShadows and recompile every material in the building
-   mid-scroll, which is the one thing worse than the cost being saved.
+   mid-walk, which is the one thing worse than the cost being saved.
 
-   keyShadow is the directional's map size. Its shadow camera spans 48 m
-   (-24 to +24), so 2048 is 42.7 texels per metre and 1024 is 21.3 -- at 1024
-   a 0.42 m column edge is 9 texels across, which is still a hard edge, and it
-   is a quarter of the memory and a quarter of the fill. */
+   keyShadow is the directional's map size. Its shadow camera is 28 m across
+   -- lab/KeyLight.jsx's HALF is 14 and the box follows the visitor rather
+   than sitting on the origin -- so 2048 is 73.1 texels per metre and 1024 is
+   36.6. At 1024 a 0.42 m column edge is 15 texels across, which is still a
+   hard edge, and it is a quarter of the memory and a quarter of the fill.
+
+   This said 48 m, 42.7 and 21.3, and put the column edge at 9 texels. Those
+   were right when the box was nailed to the origin at -24 to +24; KeyLight
+   halved it and moved it, said so in its own header, and this second
+   statement of the same number stayed where it was. Quoting a constant that
+   lives in another file is how that happens, and the only defence is to
+   name the file the number comes from, which is what the first line now
+   does. */
 /* `work` is the one that is not about drawing.
  *
  * Eight cells run real algorithms every frame, and the cost of those is on
  * the CPU where none of the other four settings reach: the race bay's MPPI
  * rolls out 96 sequences of 16 steps twenty times a second, the local
  * control bay scores 147 trajectories at the same rate, the cost bay re-runs
- * four A* passes twice a second, and six of the eight are stepping a MuJoCo
- * model besides. Halving the resolution does nothing about any of it.
+ * four A* passes twice a second, and all eight are stepping a MuJoCo model
+ * besides. Halving the resolution does nothing about any of it.
  *
  * So it is a scale on sample counts, and the rigs read it and cut the
  * numbers that are sampling rather than the numbers that are the algorithm:
