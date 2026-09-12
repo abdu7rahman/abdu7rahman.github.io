@@ -627,6 +627,50 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     }
   }
 
+  console.log('\nG0. a room that has more reading says so');
+  {
+    /* The benchmarks room is five tables and 182 figures in a column that is
+       at most the window less the chrome, so it scrolls -- and measured on
+       the built page its scrollbar is 0 px wide, which means a paragraph
+       stopping mid-sentence at the border was the only thing telling anybody
+       there was more. nav/Panel.jsx fades whichever edge has content past
+       it now.
+
+       The overflow is asserted first. A room that happens to fit at this
+       viewport would pass every class check below by having nothing to
+       fade, which is a gate that agrees with anything. */
+    await goTo('measured');
+    await pg.waitForTimeout(1200);
+    const top = await pg.evaluate(() => {
+      const n = document.querySelector('.panel');
+      return n && { slack: n.scrollHeight - n.clientHeight, bar: n.offsetWidth - n.clientWidth,
+                    more: n.classList.contains('panel--more'),
+                    back: n.classList.contains('panel--back') };
+    });
+    ok('the benchmarks reading overflows its column', !!top && top.slack > 40,
+       JSON.stringify(top));
+    ok('and the bottom edge says there is more', !!top && top.more && !top.back,
+       JSON.stringify(top));
+    /* Polled rather than given a fixed wait. Setting scrollTop fires the
+       scroll event on the next task, and this page is doing enough per
+       frame that "the next task" is not reliably inside a couple of
+       hundred milliseconds. */
+    let end = null;
+    for (let i = 0; i < 20; i++) {
+      end = await pg.evaluate(() => {
+        const n = document.querySelector('.panel');
+        n.scrollTop = n.scrollHeight;
+        return { top: Math.round(n.scrollTop), slack: n.scrollHeight - n.clientHeight,
+                 more: n.classList.contains('panel--more'),
+                 back: n.classList.contains('panel--back') };
+      });
+      if (end.back && !end.more) break;
+      await pg.waitForTimeout(300);
+    }
+    ok('and at the end it says there is more above instead',
+       end.back && !end.more, JSON.stringify(end));
+  }
+
   console.log('\nG. the office holds up cards');
   {
     await pg.evaluate(() => { window.__lab.journey.reset(); window.__lab.journey.choose('about'); });

@@ -264,6 +264,25 @@ canvas { display: block; touch-action: pan-y; }
   border-top: 1px solid #2b2b31;
   font-size: 14px; line-height: 1.55; color: #d6d6da;
 }
+/* There is more below, or above. nav/Panel.jsx sets these on scroll and on
+   resize; see the note over useEdges for why it is measured rather than
+   left on.
+
+   A mask rather than a gradient laid over the text, because the plate under
+   this is translucent -- the building shows through it, which is the whole
+   point of the reading being in the room -- so a cover painted in the
+   plate's colour would be a visible opaque band over a transparent panel.
+   A mask fades to nothing and lets the building carry on behind it.
+
+   28 px is about two lines at this size, enough to read as an edge without
+   taking a whole paragraph. Compositing the two masks additively, so a
+   panel with content both ways fades at both ends. */
+.panel--more { mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.panel--back { mask-image: linear-gradient(to top, #000 calc(100% - 28px), transparent); }
+.panel--back.panel--more {
+  mask-image: linear-gradient(to bottom, transparent, #000 28px,
+                              #000 calc(100% - 28px), transparent);
+}
 .panel p { margin: 0 0 12px; }
 .panel .lede { color: var(--ink); font-size: 15px; }
 .panel h3 { margin: 0 0 4px; font: 700 14px/1.2 var(--ui);

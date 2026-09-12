@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 import { CONTENT } from "../lib/content.js";
 
 /* What is written in a room, as markup rather than as texture.
@@ -14,6 +15,49 @@ import { CONTENT } from "../lib/content.js";
  * mipmap the GPU picked. As markup they are a table. The building is the
  * room; the panel is the reading; neither has to pretend to be the other.
  */
+/* Whether there is more reading below the fold, and saying so.
+ *
+ * The panel scrolls -- it has to, because the benchmarks room is five
+ * tables and 182 figures against a column that is at most the window less
+ * the chrome -- and a scroll region with nothing at its edge is a paragraph
+ * that stops mid-sentence. Screenshotted at the benchmarks station it does
+ * exactly that: the last line is cut clean at the border and the only hint
+ * that the text continues is a scrollbar, which is a platform's decision
+ * and on more than one of them is not drawn until somebody already scrolls.
+ *
+ * So the panel says it itself, with a fade at whichever edge has content
+ * past it. Not CSS alone: a mask that is always on fades the last line of a
+ * panel the reader has already reached the end of, which is the same lie in
+ * the other direction. This measures, on scroll and on resize, and a
+ * ResizeObserver catches the case that started it -- content that arrives
+ * or reflows after the first paint, where a scroll event never fires.
+ */
+function useEdges() {
+  const el = useRef(null);
+  const mark = useCallback(() => {
+    const n = el.current;
+    if (!n) return;
+    const slack = n.scrollHeight - n.clientHeight;
+    n.classList.toggle("panel--more", slack > 2 && n.scrollTop < slack - 2);
+    n.classList.toggle("panel--back", slack > 2 && n.scrollTop > 2);
+  }, []);
+  const ref = useCallback(n => { el.current = n; mark(); }, [mark]);
+  useEffect(() => {
+    const n = el.current;
+    if (!n) return;
+    mark();
+    n.addEventListener("scroll", mark, { passive: true });
+    const ro = new ResizeObserver(mark);
+    ro.observe(n);
+    for (const c of n.children) ro.observe(c);
+    window.addEventListener("resize", mark, { passive: true });
+    return () => { n.removeEventListener("scroll", mark);
+                   window.removeEventListener("resize", mark);
+                   ro.disconnect(); };
+  }, [mark]);
+  return ref;
+}
+
 function Stat({ k, v }) {
   return (
     <div className="stat"><dt>{k}</dt><dd>{v}</dd></div>
@@ -21,9 +65,10 @@ function Stat({ k, v }) {
 }
 
 export default function Panel({ id }) {
+  const edges = useEdges();
   if (id === "about" || id === "entry") {
     return (
-      <div className="panel panel--prose">
+      <div ref={edges} className="panel panel--prose">
         {CONTENT.about.map((p, i) => <p key={i}>{p}</p>)}
       </div>
     );
@@ -31,7 +76,7 @@ export default function Panel({ id }) {
 
   if (id === "work") {
     return (
-      <div className="panel panel--wide">
+      <div ref={edges} className="panel panel--wide">
         <ol className="cards">
           {CONTENT.work.map((p, i) => (
             <li key={i} className="card">
@@ -55,7 +100,7 @@ export default function Panel({ id }) {
 
   if (id === "measured") {
     return (
-      <div className="panel panel--wide">
+      <div ref={edges} className="panel panel--wide">
         {/* No lede here. The plate above already carries it -- it is the
             stop's own note in plan.js and the section's opening line in
             written.html, which are the same sentence -- so printing both
@@ -81,7 +126,7 @@ export default function Panel({ id }) {
 
   if (id === "stack") {
     return (
-      <div className="panel">
+      <div ref={edges} className="panel">
         <dl className="stack">
           {CONTENT.stack.map((r, i) => (
             <div key={i}><dt>{r.k}</dt><dd>{r.v}</dd></div>
@@ -93,7 +138,7 @@ export default function Panel({ id }) {
 
   if (id === "path") {
     return (
-      <div className="panel panel--wide">
+      <div ref={edges} className="panel panel--wide">
         <ol className="tl">
           {CONTENT.path.map((e, i) => (
             <li key={i}>
@@ -111,7 +156,7 @@ export default function Panel({ id }) {
 
   if (id === "contact") {
     return (
-      <div className="panel">
+      <div ref={edges} className="panel">
         <ul className="rows">
           {CONTENT.contact.map((c, i) => (
             <li key={i}><a href={c.href}>{c.label}</a></li>
