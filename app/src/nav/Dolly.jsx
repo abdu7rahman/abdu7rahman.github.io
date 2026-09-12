@@ -113,13 +113,11 @@ const FOV_LANE = 52;
 const SHOT = {
   course:  { x: 1.70, y: 2.40, aim: 0.95, fov: 48 },
   machine: { x: 2.15, y: 1.85, aim: 1.12, fov: 42 },
-  /* And one for a cell whose subject is bigger than its machine. The reach
-     bay draws the arm's whole workspace, which is 2.6 m across on a bench
-     2.6 m deep; framed for the 0.6 m of arm standing in the middle of it the
-     envelope is mostly off screen. So this shot steps back to the centre
-     line instead of leaning in -- 4.1 m of throw on a 46 -- which is what
-     anybody does when the thing they are looking at got bigger. */
-  envelope: { x: 0.20, y: 1.95, aim: 1.45, fov: 46 },
+  /* There was a third here, for the reachable-set bay: its 2.6 m shell was
+     bigger than the 0.6 m machine standing in the middle of it, so the shot
+     stepped back to the centre line instead of leaning in. That bay is a
+     swerve base on a course now and nothing in the building is 2.6 m across,
+     so the course shot covers it. */
   /* Between the two: a cell whose subject is a pair of machines rather than
      one. The assembly bay stands two arms 1.04 m apart on the bench, which
      the machine shot crops and the envelope shot leaves small. */

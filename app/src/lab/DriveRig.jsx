@@ -104,6 +104,9 @@ export default function DriveRig({ stop }) {
   const _p = useMemo(() => new THREE.Vector3(), []);
   const _h = useMemo(() => new THREE.Vector3(), []);
   const cmd = useRef({ v: 0, w: 0, acc: 0 });
+  /* The cell's own clock. The goal orbit used the renderer's, which a probe
+     stepping this cell outside a frame loop does not have. */
+  const kit = useMemo(() => ({ t: 0 }), []);
   const goal = useRef(new THREE.Vector2(0.95, 1.25));
   /* Seconds since the cursor left the bench, and whether it is on it at all.
    *
@@ -239,6 +242,17 @@ export default function DriveRig({ stop }) {
         // How far the body's own up-axis has fallen away from vertical.
         sm.dir("tb0", 2, _h);
         out.tilt = +(Math.acos(Math.max(-1, Math.min(1, _h.y))) * 57.3).toFixed(1);
+        /* And how close it came to a drum, negative if it is inside one.
+           Measured off where the machine is rather than off the trajectory
+           that was chosen, because a controller that refuses every colliding
+           rollout can still graze something. */
+        let clear = Math.min(COURSE_X / 2 - Math.abs(pose.current.x),
+                             COURSE_Y / 2 - Math.abs(pose.current.y));
+        for (const o of obs.current) {
+          clear = Math.min(clear, Math.hypot(pose.current.x - o[0],
+                                             pose.current.y - o[1]) - o[2]);
+        }
+        out.clear = +(clear - BURGER.track / 2).toFixed(4);
         out.touch = (sm.touching("floor") ? 1 : 0);
       }
       return out;
@@ -253,16 +267,20 @@ export default function DriveRig({ stop }) {
         : `Nobody pointing, so it is circling a goal of its own. ${n} of ${ctrl.count} arcs clear.`;
     },
     touched: () => touched.current,
+    /* Steppable from outside, like every other cell. It was the one that
+       only ran inside its own frame callback, so a harness could watch it
+       and not drive it -- which is exactly the cell somebody had reported
+       collisions in. */
+    tick: (d) => frame(d),
+    sim: () => !!sim.current,
     hint: "Hover to move the goal. Click the pad to drop an obstacle, click one to lift it."
   }), [stop.id, ctrl]);
 
-  useFrame(({ clock, camera: cam }, dt) => {
-    const d = Math.min(0.1, dt);
-    /* The eye position goes to the bench shader either way: a paused cell or
-       one the reader has walked away from still gets drawn, and a grazing
-       term that is not updated is a floor that shears as the camera moves. */
-    mat.uEye.value.copy(cam.position);
-    if (!isLive(stop, cam)) return;
+  /* One frame of the cell, out of useFrame so a harness can drive it. The
+     clock is the cell's own rather than the renderer's, because a probe
+     stepping this at a thousand ticks a second has no frame clock and the
+     goal orbit is a function of time either way. */
+  function frame(d) {
     const q = pose.current;
 
     /* Back to an orbit when nobody is pointing at the bench. Slow, and wide
@@ -271,7 +289,7 @@ export default function DriveRig({ stop }) {
        that never shows it working. */
     if (!over.current) held.current += d; else held.current = 0;
     if (held.current > 1.2) {
-      const a = clock.elapsedTime * 0.42;
+      const a = (kit.t += d) * 0.42;
       goal.current.set(Math.cos(a) * 0.95, Math.sin(a) * 1.25);
     }
 
@@ -347,7 +365,16 @@ export default function DriveRig({ stop }) {
     }
 
     if (flag.current) flag.current.position.set(goal.current.x, goal.current.y, 0.02);
+  }
+
+  useFrame(({ camera: cam }, dt) => {
+    /* The eye position goes to the bench shader either way: a paused cell
+       or one the reader has walked away from still gets drawn, and a
+       grazing term that is not updated is a floor that shears as the
+       camera moves. */
     mat.uEye.value.copy(cam.position);
+    if (!isLive(stop, cam)) return;
+    frame(Math.min(0.1, dt));
   });
 
   function paintFan(pickIdx) {

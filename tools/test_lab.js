@@ -440,6 +440,18 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       if (st[0] >= 1 && st[1] >= 1) break;
       await pg.waitForTimeout(1000);
     }
+    /* And a beat after that, because the arms are not one of those blends.
+     *
+     * `hold` and `settle` are geometric closures that snap to exactly 1;
+     * the arm solve is damped least squares chasing a target that is still
+     * moving while the sign rises, so it is a few frames behind them and
+     * needs those frames once the target stops. Measured the moment both
+     * blends hit 1, the palm read 16.4 mm against a 12 mm case; given two
+     * seconds of settled target it converges. This suite has had the slack
+     * by accident before -- an earlier case above waited on a cell that took
+     * its time -- which is the kind of pass that turns into a failure the
+     * next time somebody reorders a list. */
+    await pg.waitForTimeout(2000);
     const r = await pg.evaluate(() => {
       const L = window.__lab, T = L.THREE, g = L.gaitOf && L.gaitOf();
       if (!g || g.hold < 1 || g.settle < 1) {

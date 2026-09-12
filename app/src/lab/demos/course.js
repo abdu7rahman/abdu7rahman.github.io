@@ -82,9 +82,20 @@ export function layout(rand, wall, nx, ny) {
  * cell centre is 0.05 m off it and the machine is 0.089 m to its own edge,
  * so the robot ends up 39 mm inside the wall. The plot looked fine, because
  * a plot of a point path is fine. One cell of dilation puts the nearest wall
- * face 0.15 m from any cell the planner may use, which leaves 61 mm of
- * clearance on a Burger and is the smallest honest number here -- two cells
- * would close every gap this course generates.
+ * face 0.15 m from any cell the planner may use, and one cell is the
+ * smallest honest number here -- two would close every gap this course
+ * generates.
+ *
+ * What that leaves is 46 mm, not the 61 this used to claim: 61 is against
+ * the base plate's half-width and the number that matters is the swept
+ * radius, which lab/TurtleBot.jsx measures off the vendor's own mesh at
+ * 0.104 m. Measured in the page over 500 simulated seconds of the search
+ * cell driving its own plans, the worst the machine came to a wall was
+ * 46 mm and it was never inside one -- which is the design's own prediction
+ * to the millimetre, and is the answer to a report that this cell collides.
+ * It does not. It passes close, because one cell of collar on a 0.10 m grid
+ * is as close as a 0.104 m robot can be planned for without closing the
+ * course.
  */
 export function inflate(wall, out, nx, ny) {
   out.set(wall);

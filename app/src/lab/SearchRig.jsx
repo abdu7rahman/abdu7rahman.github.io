@@ -56,8 +56,8 @@ import { WORK } from "../lib/plan.js";
  */
 const COURSE_X = 2.70, COURSE_Y = 3.40;
 const CELL = 0.10;
-const NX = Math.round(COURSE_X / CELL);   // 23
-const NY = Math.round(COURSE_Y / CELL);   // 27
+const NX = Math.round(COURSE_X / CELL);   // 27
+const NY = Math.round(COURSE_Y / CELL);   // 34
 
 /* How many nodes come off the open list per second. Fast enough that a run
    finishes while somebody is standing there, slow enough that the frontier
@@ -236,6 +236,12 @@ export default function SearchRig({ stop }) {
         out.wr = +sm.jointAt("tb0_wr").toFixed(2);
         sm.dir("tb0", 2, _h);
         out.tilt = +(Math.acos(Math.max(-1, Math.min(1, _h.y))) * 57.3).toFixed(1);
+        /* How close the body came to a wall, in metres, negative inside one.
+           The map is cells, so this is the distance to the nearest occupied
+           cell's face less the machine's own half-width -- the same question
+           the inflation collar answers for the planner, asked of where the
+           robot actually is. */
+        out.clear = +clearanceAt(q.x, q.y).toFixed(4);
         out.sim = 1;
       } else out.sim = 0;
       return out;
@@ -317,6 +323,35 @@ export default function SearchRig({ stop }) {
 
   // The inflated layer, from whatever the map is now.
   function remap() { inflate(kit.wall, kit.free, NX, NY); paintWalls(); }
+
+  /* How close the machine is to a wall, in metres, negative if it is inside
+   * one.
+   *
+   * Walls here are axis-aligned cells, so the distance to one is the
+   * distance to its box, and the nearest over the map is the answer. Taken
+   * off the machine's real position rather than off the path it was given,
+   * because "the search cell has collisions" is a claim about the robot and
+   * not about the plan, and the only way to answer it is to measure the
+   * robot. Linear in the occupied cells, which on a 27 by 34 grid is
+   * nothing, and asked by the probe rather than by the controller. */
+  function clearanceAt(px, py) {
+    let best = Math.min(COURSE_X / 2 - Math.abs(px), COURSE_Y / 2 - Math.abs(py));
+    const h = CELL / 2;
+    for (let j = 0; j < NY; j++) {
+      for (let i = 0; i < NX; i++) {
+        if (!kit.wall[j * NX + i]) continue;
+        const cx = (i + 0.5) * CELL - COURSE_X / 2;
+        const cy = (j + 0.5) * CELL - COURSE_Y / 2;
+        const dx = Math.max(0, Math.abs(px - cx) - h);
+        const dy = Math.max(0, Math.abs(py - cy) - h);
+        const d = (dx === 0 && dy === 0)
+          ? -Math.min(h - Math.abs(px - cx), h - Math.abs(py - cy))
+          : Math.hypot(dx, dy);
+        if (d < best) best = d;
+      }
+    }
+    return best - BURGER.track / 2;
+  }
 
   /* The texture, from the search's own state array. A copy rather than a
      second piece of bookkeeping: the algorithm's open and closed sets are

@@ -1,4 +1,4 @@
-import { PITCH, AISLE, BAY_D } from "../lib/plan.js";
+import { PITCH, WORK } from "../lib/plan.js";
 
 /* The control surface for whichever cell you are standing at.
  *
@@ -72,8 +72,11 @@ const RANGE = 9.5;
 export function isLive(stop, camera) {
   if (running.get(stop.id) === false) return false;
   if (!camera || stop.at === undefined) return true;
+  /* The work, not the middle of the bay. plan.js has both -- place() is
+     where a bay is and WORK is where the bench inside it stands, 2.1 m
+     apart -- and it is the bench the reader walks up to. */
   const z = -stop.at * PITCH;
-  const x = stop.side * (AISLE / 2 + BAY_D / 2);
+  const x = stop.side * WORK;
   const dx = camera.position.x - x, dz = camera.position.z - z;
   return dx * dx + dz * dz < RANGE * RANGE;
 }
