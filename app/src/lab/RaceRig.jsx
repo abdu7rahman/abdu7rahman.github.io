@@ -54,10 +54,22 @@ import { WORK } from "../lib/plan.js";
  */
 const COURSE_X = 2.70, COURSE_Y = 3.40;
 const TICK = 1 / 20;
-const LEAD = 0.49;           /* metres between the machines at the start,
-                                scaled with the lap so the grid still spreads
-                                them evenly round it rather than bunching four
-                                machines into one corner of a longer track. */
+/* Where the four start, as a fraction of the lap rather than as a distance.
+ *
+ * This was 0.26 m and then 0.49, scaled with the track, and both were a
+ * distance somebody picked. On a 7 m lap 0.49 m puts all four inside a fifth
+ * of it -- looked at in the page, four machines bunched in one corner while
+ * the comment beside them said "spaced evenly round it". A quarter of the
+ * lap each is what evenly means, and it is the only spacing on a closed loop
+ * that has no front. lapLength() measures the plan rather than assuming a
+ * superellipse's perimeter, so changing the track changes the grid. */
+function lapLength(p) {
+  let d = 0;
+  for (let i = 0; i < p.length - 1; i++) {
+    d += Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
+  }
+  return d;
+}
 
 function seeded(a) {
   return function () {
@@ -180,8 +192,9 @@ export default function RaceRig({ stop }) {
        there is no front: the four are a lap apart from nobody. The heading
        is the plan's own tangent where each one stands. */
     const p = kit.path;
+    const lead = lapLength(p) / 4;
     let acc = 0, k = 0;
-    while (k < p.length - 2 && acc < i * LEAD) {
+    while (k < p.length - 2 && acc < i * lead) {
       acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
     }
     const psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
@@ -235,11 +248,23 @@ export default function RaceRig({ stop }) {
     };
   }, []);
 
+  /* The plan, as a tube rather than as a line.
+   *
+   * WebGL ignores linewidth, so a LineBasicMaterial is one device pixel
+   * wide however near the camera is, and the thing all four machines are
+   * following was one pixel of grey on a lit bench four metres away --
+   * looked at in the page, the loop is barely there and the bay reads as
+   * four robots wandering rather than as four robots tracking. The replan
+   * cell's own plan hit this and solved it the same way: real geometry takes
+   * the cell's light and reads as something being followed. Built once, from
+   * a closed 240-point loop, which is 2,880 triangles and no per-frame
+   * cost. */
   const planGeo = useMemo(() => {
     const pts = kit.path.map(([a, b]) => new THREE.Vector3(a, b, 0.004));
-    const g = new THREE.BufferGeometry().setFromPoints(pts);
-    return g;
+    const curve = new THREE.CatmullRomCurve3(pts, true);
+    return new THREE.TubeGeometry(curve, pts.length, 0.006, 6, true);
   }, [kit]);
+  useEffect(() => () => planGeo.dispose(), [planGeo]);
 
   /* Distance travelled, per machine, which is the only comparison that
      means anything: every one of them is on the same plan with the same
@@ -307,7 +332,8 @@ export default function RaceRig({ stop }) {
     const p = makePath();
     const starts = [0, 1, 2, 3].map(i => {
       let acc = 0, k = 0;
-      while (k < p.length - 2 && acc < i * LEAD) {
+      const lead = lapLength(p) / 4;
+      while (k < p.length - 2 && acc < i * lead) {
         acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
       }
       return [p[k][0], p[k][1],
@@ -331,7 +357,8 @@ export default function RaceRig({ stop }) {
     const sm = sim.current;
     poses.current.forEach((q, i) => {
       let acc = 0, k = 0;
-      while (k < p.length - 2 && acc < i * LEAD) {
+      const lead = lapLength(p) / 4;
+      while (k < p.length - 2 && acc < i * lead) {
         acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
       }
       q.x = p[k][0]; q.y = p[k][1];
@@ -453,9 +480,9 @@ export default function RaceRig({ stop }) {
       </mesh>
 
       {/* The plan itself, once, in ink: it belongs to none of them. */}
-      <line geometry={planGeo} frustumCulled={false}>
-        <lineBasicMaterial color={"#8d8d94"} transparent opacity={0.75} />
-      </line>
+      <mesh geometry={planGeo} frustumCulled={false}>
+        <meshStandardMaterial color={"#8d8d94"} roughness={0.6} metalness={0.1} />
+      </mesh>
 
       {kit.runners.map((r, i) => (
         <line key={"t" + r.name} geometry={trails[i].geo} frustumCulled={false}>

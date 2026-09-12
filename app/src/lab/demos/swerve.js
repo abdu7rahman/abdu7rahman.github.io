@@ -33,6 +33,43 @@
  * it was asked for; the second does not spend half a second scrubbing a
  * wheel sideways across the floor. Also a switch, because the difference is
  * the clearest thing about it.
+ *
+ * And one thing that is not here, having been tried and measured out.
+ *
+ * The usual second half of that optimisation is cosine scaling: a module
+ * that has been told to turn has not turned yet, so a wheel driven at full
+ * speed while its steer is still swinging pushes the base in a direction
+ * nobody asked for. WPILib's SwerveModuleState carries it, and scaling the
+ * wheel by the cosine of the remaining steer error takes it to zero at
+ * ninety degrees out and leaves it alone once the module has arrived.
+ *
+ * Over 150 simulated seconds of this bay driving its own goals, comparing
+ * the twist asked for against the twist the four contacts actually produce:
+ *
+ *                          translation mean   worst    yaw, holding 1.6 rad/s
+ *   without cosine scaling   0.021, 0.015    0.99, 0.76      0.021 rad/s
+ *   with it                         0.014          0.61      0.306
+ *
+ * The goals are random, so the translation column is two runs of the same
+ * thing and the difference between 0.014 and the pair of them is inside
+ * that spread -- it may be doing what it is for and this cannot say so. The
+ * yaw column is not: 0.021 against 0.306 is fifteen times, in one direction,
+ * on a number that is a steady state rather than a sample. It costs a fifth
+ * of the yaw rate, every second, while the base holds a spin.
+ *
+ * The reason is the assumption underneath it. Cosine scaling treats the
+ * steer error as a transient: something that decays to zero once the module
+ * arrives, so the scaling decays to one. On a base holding a continuous
+ * spin the module angles never stop moving -- near the point where
+ * translation and rotation cancel they swing faster than the body does --
+ * so the error is a steady state rather than a transient, and a compensation
+ * for a transient becomes a permanent speed reduction. Asked for 1.6 rad/s
+ * the base held 1.294.
+ *
+ * Driving one way while facing another is the whole of this bay, so a
+ * refinement that costs a fifth of the facing is a regression here whatever
+ * it is worth on a base that only translates. It is written down rather than
+ * quietly absent.
  */
 
 /* The robot, from swerve_drive_robot_description. The modules sit at the
