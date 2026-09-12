@@ -357,6 +357,36 @@ canvas { display: block; touch-action: pan-y; }
 .console__pick:hover { color: #c3c3c9; }
 .console__pick.on { color: var(--ink); border-bottom-color: var(--hazard); }
 
+/* A continuous control: label, track, value. The track is restyled all the
+   way down because a default range input is the operating system's widget
+   and every other control on this panel is the building's. */
+.console__slide {
+  display: flex; align-items: center; gap: 10px; margin: 8px 0 0;
+  color: #7d7e86; letter-spacing: .08em; text-transform: uppercase;
+}
+.console__slide-k { flex: none; }
+.console__slide-v {
+  flex: none; min-width: 4.5em; text-align: right;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.console__slide input {
+  flex: 1 1 auto; min-width: 0; height: 18px; margin: 0;
+  appearance: none; background: none; cursor: pointer;
+}
+.console__slide input::-webkit-slider-runnable-track {
+  height: 2px; background: #34343a;
+}
+.console__slide input::-moz-range-track { height: 2px; background: #34343a; }
+.console__slide input::-webkit-slider-thumb {
+  appearance: none; width: 12px; height: 12px; margin-top: -5px;
+  border: 0; border-radius: 50%; background: var(--hazard);
+}
+.console__slide input::-moz-range-thumb {
+  width: 12px; height: 12px; border: 0; border-radius: 50%;
+  background: var(--hazard);
+}
+.console__slide input:focus-visible { outline: 2px solid var(--hazard); outline-offset: 4px; }
+
 /* The readout. Tabular numerals because these change while you look at
    them, and a column that reflows every time a digit changes is unreadable
    at any refresh rate. */
@@ -386,6 +416,27 @@ canvas { display: block; touch-action: pan-y; }
 .console__hint {
   margin: 9px 0 0; color: #7d7e86; text-transform: none;
   letter-spacing: 0; font-weight: 400; line-height: 1.5;
+}
+/* Until the reader has touched the bench, the hint is the ask and is lit
+   like one: the cell's own accent, a size up, and a dot that pulses at
+   walking pace rather than at anything that reads as an alarm. It goes quiet
+   the moment a pointer reaches the bench, because an instruction that is
+   still shouting after you have followed it is noise. */
+.console__hint--ask {
+  color: var(--ink); font-size: 13px;
+  border-left: 2px solid var(--hazard); padding-left: 9px;
+}
+.console__ask {
+  display: inline-block; width: 6px; height: 6px; margin-right: 7px;
+  border-radius: 50%; background: var(--hazard); vertical-align: 1px;
+  animation: console-ask 1.8s ease-in-out infinite;
+}
+@keyframes console-ask {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .console__ask { animation: none; }
 }
 .console__btn:focus-visible, .console__pick:focus-visible {
   outline: 2px solid var(--hazard); outline-offset: 2px;

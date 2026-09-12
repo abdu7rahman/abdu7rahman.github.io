@@ -186,6 +186,12 @@ export default function SearchRig({ stop }) {
      of expansion while paused, which is how anybody actually reads a search
      -- watching it at four hundred nodes a second tells you the shape and
      nothing about the order. */
+  /* Has anybody actually reached into this cell yet. The console shows the
+     hint as a lit call to action until the first pointer event lands on the
+     bench and as a quiet footnote after, because an instruction that is still
+     shouting once it has been followed is noise. */
+  const touched = useRef(false);
+
   useEffect(() => register(stop.id, {
     title: "A* over a costmap",
     actions: [
@@ -239,6 +245,7 @@ export default function SearchRig({ stop }) {
         return `Driving the path it found. ${pose.current.travel.toFixed(2)} m so far.`;
       return "Arrived. A new map in a moment.";
     },
+    touched: () => touched.current,
     hint: "Drag on the grid to build walls, drag from a wall to knock them down. It re-searches on every edit, and the faint collar is the inflation the planner keeps off them."
   }), [stop.id, kit]);
 
@@ -528,6 +535,7 @@ export default function SearchRig({ stop }) {
         name={"pad-" + stop.id}
         position={[0, 0, 0.003]}
         onPointerDown={(e) => {
+          touched.current = true;
           e.stopPropagation();
           const c = cellAt(e);
           if (!c) return;

@@ -168,6 +168,12 @@ export default function DriveRig({ stop }) {
      committing to ground it has not reached. Everything else about the fan
      is a consequence of it, which is why this cell offers that and not a
      row of sliders. */
+  /* Has anybody actually reached into this cell yet. The console shows the
+     hint as a lit call to action until the first pointer event lands on the
+     bench and as a quiet footnote after, because an instruction that is still
+     shouting once it has been followed is noise. */
+  const touched = useRef(false);
+
   useEffect(() => register(stop.id, {
     title: "Velocity-space sampling",
     actions: [
@@ -232,6 +238,7 @@ export default function DriveRig({ stop }) {
         ? `Following your cursor. ${n} of ${ctrl.count} arcs are clear; it is driving the cheapest.`
         : `Nobody pointing, so it is circling a goal of its own. ${n} of ${ctrl.count} arcs clear.`;
     },
+    touched: () => touched.current,
     hint: "Hover to move the goal. Click the pad to drop an obstacle, click one to lift it."
   }), [stop.id, ctrl]);
 
@@ -387,6 +394,7 @@ export default function DriveRig({ stop }) {
         name={"pad-" + stop.id}
         position={[0, 0, 0.002]}
         onPointerMove={(e) => {
+          touched.current = true;
           e.stopPropagation();
           const p = e.object.worldToLocal(e.point.clone());
           goal.current.set(p.x, p.y);

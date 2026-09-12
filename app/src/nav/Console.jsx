@@ -91,6 +91,22 @@ export default function Console({ id, kind }) {
         </div>
       )}
 
+      {/* A continuous control, when the cell has one. A choice covers "which
+          of these", and some of what a reader wants to change is a number --
+          how high off the bench, how steep the ground. Rendered as a range
+          rather than a text field because the point is to sweep it and watch
+          the cell answer, not to type a value and commit. */}
+      {c.slider && (
+        <label className="console__slide">
+          <span className="console__slide-k">{c.slider.label}</span>
+          <input type="range"
+                 min={c.slider.min} max={c.slider.max} step={c.slider.step}
+                 defaultValue={c.slider.get()}
+                 onInput={(e) => { c.slider.set(+e.target.value); bump(n => n + 1); }} />
+          <span className="console__slide-v">{c.slider.fmt(c.slider.get())}</span>
+        </label>
+      )}
+
       {!!rows.length && (
         <dl className="console__out">
           {rows.map(([k, v]) => (
@@ -99,7 +115,21 @@ export default function Console({ id, kind }) {
         </dl>
       )}
 
-      {c.hint && <p className="console__hint">{c.hint}</p>}
+      {/* The ask, and it is only an ask until it has been answered.
+       *
+       * Every cell here has a cursor control and the reader was left to
+       * discover that from the last line of a panel, in the smallest type on
+       * the page, phrased as a footnote. A cell that wants to be touched
+       * should say so where somebody will see it and then stop saying it --
+       * so a rig that publishes touched() gets the call-to-action treatment
+       * until the first time a pointer reaches its bench, and the quiet
+       * footnote afterwards. A cell with nothing to touch never asks. */}
+      {c.hint && (
+        <p className={"console__hint" + (c.touched && !c.touched() ? " console__hint--ask" : "")}>
+          {c.touched && !c.touched() && <span className="console__ask" aria-hidden="true" />}
+          {c.hint}
+        </p>
+      )}
     </section>
   );
 }
