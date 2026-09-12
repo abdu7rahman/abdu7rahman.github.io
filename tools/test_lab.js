@@ -256,17 +256,7 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       { id: 'space', how: 'drag',  what: 'the search grid takes walls' },
       { id: 'drive', how: 'hover', what: 'the drive goal follows the cursor' },
       { id: 'race',  how: 'wait',  what: 'the race runs' },
-      /* The one cell that can finish. The reach rig sweeps a fixed 70,000
-         samples and then stops, so once it is full its readout never changes
-         again and "did anything move" can only fail -- which is the suite
-         asking the wrong question of a demo that has done its work. Whether
-         it filled while this watched or had filled already, a full envelope
-         is the thing this case is about. */
-      { id: 'reach', how: 'wait',  what: 'the envelope fills',
-        done: rows => {
-          const num = r => (String(r).match(/[\d,]+/) || [''])[0].replace(/,/g, '');
-          return rows.length > 1 && num(rows[0]) !== '' && num(rows[0]) === num(rows[1]);
-        } },
+      { id: 'swerve', how: 'hover', what: 'the swerve base takes a goal' },
       { id: 'foresee', how: 'hover', what: 'the replanner sees your hand' },
       { id: 'terrain', how: 'click', what: 'the quadruped takes a goal' },
       { id: 'assemble', how: 'wait', what: 'the sorting cell is running' }

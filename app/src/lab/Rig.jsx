@@ -6,7 +6,7 @@ import { WORK } from "../lib/plan.js";
 import Fixtures from "./Fixtures.jsx";
 import SearchRig from "./SearchRig.jsx";
 import DriveRig from "./DriveRig.jsx";
-import ReachRig from "./ReachRig.jsx";
+import SwerveRig from "./SwerveRig.jsx";
 import ForeseeRig from "./ForeseeRig.jsx";
 import RaceRig from "./RaceRig.jsx";
 import TerrainRig from "./TerrainRig.jsx";
@@ -37,7 +37,7 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2",
    occupancy grid on the bench top, expands a real A* across it, and drives
    the real Burger down the path that comes out. Anything named here owns its
    whole cell -- the machine included -- so this file steps out of the way. */
-const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
+const RUNS = { space: SearchRig, drive: DriveRig, swerve: SwerveRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
                assemble: SortRig, policy: PolicyRig };
 

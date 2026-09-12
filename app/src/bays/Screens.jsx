@@ -66,16 +66,11 @@ function monitorAt(stop) {
      screen is 62 degrees off and the same distance out, so the two are
      eleven degrees apart in frame and the machine is silhouetted against the
      brightest thing in its cell instead of hidden by it. */
-  /* One exception, and it is the reach cell. That bay draws the arm's whole
-     reachable set -- a 2.6 m shell centred on a 0.6 m machine -- and a
-     monitor 1.05 m to the far side of the bench stands inside it. From the
-     aisle the envelope is then a cloud of points with a lit rectangle
-     hanging in the middle of it, which is what "the point cloud is behind a
-     screen" means. The shell reaches about 1.3 m along the lane, so 2.15 m
-     puts the screen clear of it and still square to the same camera. */
-  const along = stop.frame === "envelope" ? 2.15 : 0.9;
-  const out = stop.frame === "envelope" ? 0.55 : 1.05;
-  return { pos: [s * WORK + s * out, 1.62, along - stop.at * PITCH], ry: -s * 0.62 };
+  /* There used to be an exception here for the reachable-set bay, whose 2.6 m
+     shell swallowed a monitor standing 1.05 m to the far side of the bench.
+     That bay is a swerve base now and there is nothing 2.6 m across in the
+     building, so every screen stands in the same place again. */
+  return { pos: [s * WORK + s * 1.05, 1.62, 0.9 - stop.at * PITCH], ry: -s * 0.62 };
 }
 
 /* What the seven monitors and the one policy share. Passing it as props would

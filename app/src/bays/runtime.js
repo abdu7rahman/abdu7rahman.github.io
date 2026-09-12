@@ -82,7 +82,6 @@ export const BUNDLES = {
       space:   { section: "plan",    canvas: "map",             run: "run" },
       drive:   { section: "drive",   canvas: "chase",           run: null },
       race:    { section: "race",    canvas: "race-canvas",     run: "race-run" },
-      reach:   { section: "reach",   canvas: "arm",             run: null },
       foresee: { section: "foresee", canvas: "foresee-canvas",  run: null }
     }
   },

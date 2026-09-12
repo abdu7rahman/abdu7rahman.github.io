@@ -93,9 +93,17 @@ export const STOPS = [
   { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
     sub: "DWA, MPPI, pure pursuit, Stanley",
     note: "The same plan, the same clock and the same base, four ways of following it." },
-  { id: "reach",    kind: "rig",  side:  1, at: 3,   title: "Reach", frame: "envelope",
-    sub: "UR12e workspace",
-    note: "The arm's reachable set, solved rather than drawn." },
+  /* A swerve base where the reachable set used to be.
+   *
+   * The envelope bay showed a UR12e's workspace, which is a number on a data
+   * sheet, and the most it could ever be was a well-drawn restatement of one.
+   * What stands here now is four steerable modules and the arithmetic that
+   * turns one body twist into eight commands -- from this account's own
+   * swerve_drive_robot_pkg and swerve_ros -- and it does the one thing no
+   * other machine in this building can: go one way while facing another. */
+  { id: "swerve",   kind: "rig",  side:  1, at: 3,   title: "Swerve", frame: "course",
+    sub: "four steerable modules",
+    note: "Drive it where you point while it spins. Where it goes and where it faces are separate commands." },
   { id: "foresee",  kind: "rig",  side: -1, at: 3.6, title: "Replan", frame: "machine",
     sub: "UR12e, continuous",
     note: "Block the arm mid-motion and watch it cancel and replan around your hand." },

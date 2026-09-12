@@ -395,6 +395,89 @@ export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [],
   </mujoco>`;
 }
 
+/* A swerve base, as four steer-and-drive modules on a deck.
+ *
+ * Every dimension is swerve_drive_robot_description's: the deck is
+ * 0.15 by 0.09 by 0.015 m, the modules mount at (+/-0.06, +/-0.06), the
+ * wheels are 10 mm radius and 10 mm wide. It is a small robot and it is
+ * drawn at the size it is, like everything else in this building.
+ *
+ * Each module is a body on a hinge about z carrying a body on a hinge about
+ * its own y: steer is a position servo, drive is a velocity servo, which is
+ * what the URDF's two transmissions are. The steer joint has no range, and
+ * that is the point of the module optimisation in demos/swerve.js -- a
+ * module that can turn either way forever is one that never has to unwind.
+ *
+ * The deck sits on the wheels and nothing else, so the base is statically
+ * determinate on four contacts and will tip if the mass is put anywhere
+ * silly. The URDF's own 0.5 kg deck over a 0.12 m square is stable; the
+ * mass is kept at deck height rather than lowered, because a swerve base
+ * that only stands up because its centre of mass was moved is not the robot
+ * the description describes.
+ */
+export const SWERVE_MODULES = [["fl", 1, 1], ["fr", 1, -1], ["rr", -1, -1], ["rl", -1, 1]];
+
+export function swerve(name, { pos = [0, 0], yaw = 0, half = 0.06,
+                               wheelR = 0.01, wheelW = 0.01,
+                               deck = [0.15, 0.09, 0.015] } = {}) {
+  const z = wheelR + 0.005;         // the URDF's steering link sits 5 mm up
+  let body = `<body name="${name}" pos="${f(pos[0])} ${f(pos[1])} ${f(z)}"
+      euler="0 0 ${f(yaw)}">
+      <freejoint name="${name}_free"/>
+      <geom ${WORLD} type="box" size="${f(deck[0] / 2)} ${f(deck[1] / 2)} ${f(deck[2] / 2)}"
+            pos="0 0 ${f(deck[2] / 2 + 0.004)}" mass="0.5" rgba="0.4 0.42 0.45 0"/>`;
+  for (const [id, sx, sy] of SWERVE_MODULES) {
+    body += `
+      <body name="${name}_${id}" pos="${f(sx * half)} ${f(sy * half)} 0">
+        <joint name="${name}_${id}_s" type="hinge" axis="0 0 1"
+               armature="0.0004" damping="0.004"/>
+        <geom ${WORLD} type="cylinder" size="0.015 0.0015" pos="0 0 0.0015"
+              mass="0.01" rgba="0.3 0.32 0.36 0"/>
+        <body name="${name}_${id}_w" pos="0 0 ${f(-0.005)}">
+          <!-- Armature for the same reason the Burger's wheels have it: a
+               velocity servo on a wheel with only the tyre's inertia gets
+               its correction as a step and spends every tick recovering
+               from the last one. -->
+          <joint name="${name}_${id}_w" type="hinge" axis="0 1 0"
+                 armature="0.0002" damping="0.0008"/>
+          <geom ${WORLD} type="cylinder" size="${f(wheelR)} ${f(wheelW / 2)}"
+                euler="1.5708 0 0" mass="0.05"
+                friction="1.6 0.02 0.002" rgba="0.2 0.2 0.22 0"/>
+        </body>
+      </body>`;
+  }
+  body += "</body>";
+  let act = "";
+  for (const [id] of SWERVE_MODULES) {
+    /* Steer is a position servo and drive is a velocity servo, which is the
+       pair of transmissions the URDF declares. The steer gain is what holds
+       a module against the scrub of a wheel that is being driven while it
+       turns; the force ceilings are the URDF's own effort limits. */
+    act += `<position name="${name}_${id}_s" joint="${name}_${id}_s" kp="8"
+              dampratio="1" forcerange="-10 10"/>`;
+    act += `<velocity name="${name}_${id}_w" joint="${name}_${id}_w" kv="0.06"
+              forcerange="-0.5 0.5"/>`;
+  }
+  return { body, act };
+}
+
+/* The swerve bay: one base on a floor, with cones to drive between. */
+export function swerveScene({ start = [0, 0, 0], cones = [] } = {}) {
+  const s = swerve("sw", { pos: [start[0], start[1]], yaw: start[2] || 0 });
+  const obs = cones.map((c, i) => `
+    <body name="cone${i}" mocap="true" pos="${f(c[0])} ${f(c[1])} 0.06">
+      <geom ${WORLD} type="cylinder" size="${f(c[2] || 0.06)} 0.06" rgba="0.5 0.3 0.1 0"/>
+    </body>`).join("");
+  return `${head({ timestep: 0.002 })}
+    <worldbody>
+      <geom name="floor" ${WORLD} type="plane" size="4 4 0.1"
+            friction="1.2 0.02 0.002" rgba="0.3 0.3 0.32 0"/>
+      ${s.body}${obs}
+    </worldbody>
+    <actuator>${s.act}</actuator>
+  </mujoco>`;
+}
+
 /* The replan cell: one arm on a bench, a part in front of it, and a movable
  * obstacle the reader pushes into its way.
  *

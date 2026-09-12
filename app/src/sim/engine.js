@@ -288,6 +288,11 @@ export class Sim {
    * every call and these are read every frame for every joint. */
   jointAt(name) { return this.data.qpos[this.jointAdr(name).q]; }
 
+  /* And how fast it is going. A velocity servo's whole job is a joint rate,
+     so a cell that commands one and cannot read one back is a cell taking
+     its own word for what happened. */
+  jointVel(name) { return this.data.qvel[this.jointAdr(name).d]; }
+
   /* Where a joint lives, as the pair of addresses everything needs: q into
      qpos and d into qvel. Two different numbers for a free joint -- seven
      qpos and six qvel -- and using one for the other is the mis-addressing
