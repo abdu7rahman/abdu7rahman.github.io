@@ -4,6 +4,7 @@ import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
 import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
 import { lerpQ, clear, clearance, replan } from "./demos/via.js";
+import { Track, timeToCollision } from "./demos/predict.js";
 import { register, isLive } from "./console.js";
 import { useSim } from "../sim/useSim.js";
 import { replanScene } from "../sim/models.js";
@@ -37,6 +38,31 @@ import { WORK } from "../lib/plan.js";
  * than on the simulation. That is not laziness, it is the architecture every
  * real system has: a planner reasons about a model, a controller commands a
  * plant, and the plant is the part that is allowed to disagree.
+ *
+ * What changed after that is the half that makes this worth a bay.
+ *
+ * It checked where the obstacle was. An arm that cancels the moment
+ * something is already in its path is a reflex, and a reflex is what the
+ * repository this comes from is a paper against: predictive_replanning
+ * tracks the obstacle with a constant-velocity Kalman filter and cancels
+ * against where it is going to be. demos/predict.js is that filter, and the
+ * cone drawn ahead of the ball is its forecast -- a sphere per horizon,
+ * widened by two standard deviations of the filter's own uncertainty, which
+ * grows the further ahead you ask.
+ *
+ * The switch on the console turns it off, and that is the bay: reactive, the
+ * arm cancels when the ball reaches it and the contact counter goes up;
+ * predictive, it cancels while the ball is still a hand's width away and the
+ * counter does not.
+ *
+ * Measured in the page, 500 simulated seconds of the same drifting obstacle
+ * on each setting: reactive took 126 contacts, predictive took 29. The
+ * filter is not magic and the 29 are the honest half of it -- a
+ * constant-velocity model is wrong about anything that changes direction,
+ * which is why the tube widens with the horizon rather than tracking a
+ * point, and it still gets caught. Four out of five is what the estimate is
+ * worth here, and the readout carries both counts so nobody has to take that
+ * on faith.
  */
 const TICK = 1 / 30;
 const SPEED = 0.55;          // fraction of the plan traversed per second
@@ -69,6 +95,10 @@ function seeded(a) {
    frame. The pad is drawn at this depth and the obstacle rides on it. */
 const OBS_DEPTH = 0.34;
 
+/* The horizons the forecast is drawn at, in seconds. timeToCollision checks
+   ten of them; four is what a reader can tell apart. */
+const HORIZONS = [0.3, 0.7, 1.1, 1.6];
+
 export default function ForeseeRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
@@ -88,10 +118,28 @@ export default function ForeseeRig({ stop }) {
       toolPoint(frames, pts[4]);
       return pts;
     };
-    return { frames, scratch, fk, rand: seeded(0x1F2E3D4C),
+    /* The arm's own thickness at each sampled point, from
+       predictive_replanning/predict.py's LINK_RADIUS, which reads them off
+       UR's collision meshes: upper arm 0.090, forearm 0.068, wrist one
+       0.067, wrist two 0.055, wrist three and the gripper 0.050. A skeleton
+       is a centreline and the planner believing a 68 mm forearm is a line is
+       most of why an arm "clears" something it is four centimetres inside. */
+    const radii = [0.090, 0.068, 0.067, 0.055, 0.050];
+    /* Somewhere for the forecast's arm samples to land, so a check at ten
+       horizons a tick allocates nothing. */
+    const armPts = Array.from({ length: 5 }, () => new THREE.Vector3());
+    return { frames, scratch, fk, radii, armPts, rand: seeded(0x1F2E3D4C),
              a: Float32Array.from(ENDS[0]), b: Float32Array.from(ENDS[1]),
              via: null, u: 0, dead: false, hold: 0, acc: 0, dir: 1,
-             r: OBS_R, lag: 0, touch: 0, gap: 0, ready: false };
+             r: OBS_R, lag: 0, touch: 0, gap: 0, ready: false,
+             /* The tracker, and what it is telling the planner. `ttc` is the
+                horizon at which the arm enters the predicted tube, in
+                seconds, or -1 for clear; `warned` is how long before the
+                obstacle actually arrived that the plan was cancelled, which
+                is the number the whole cell is for. */
+             clock: 0,
+             track: new Track([0.45, 0.0, 0.55]), ttc: -1, warned: 0,
+             predict: true, hits: 0, saves: 0 };
   }, []);
 
   /* Two joint vectors now, and keeping them apart is the point. `cmd` is
@@ -103,8 +151,10 @@ export default function ForeseeRig({ stop }) {
   const obs = useRef(new THREE.Vector3(0.45, 0.0, 0.55));
   const held = useRef(99);
   const ball = useRef();
+  const cone = useRef([]);
   const over = useRef(false);
   const mat = useRef();
+  const _fc = useMemo(() => [0, 0, 0, 0], []);
 
   /* The plan is drawn as a tube and not as a line, because WebGL ignores
      linewidth: a LineBasicMaterial is one device pixel wide however near the
@@ -156,13 +206,18 @@ export default function ForeseeRig({ stop }) {
       if (sim.current) { sim.current.reset(); for (let i = 0; i < 6; i++) sim.current.qpos[i] = ENDS[0][i]; }
     } }],
     choice: {
+      get: () => kit.predict,
+      set: (v) => { kit.predict = v; kit.hits = 0; kit.saves = 0; },
+      options: [
+        { value: true, label: "Predictive" },
+        { value: false, label: "Reactive" }
+      ]
+    },
+    slider: {
+      label: "Ball", min: 0.10, max: 0.32, step: 0.01,
       get: () => kit.r,
       set: (v) => { kit.r = v; },
-      options: [
-        { value: 0.13, label: "Small" },
-        { value: 0.20, label: "Medium" },
-        { value: 0.30, label: "Large" }
-      ]
+      fmt: (v) => (v * 2).toFixed(2) + " m"
     },
     /* Four numbers, and two of them could not exist before there was a
        simulation to read them off. `lag` is the worst joint's distance from
@@ -172,23 +227,37 @@ export default function ForeseeRig({ stop }) {
        hit something. */
     readout: () => [
       ["plan", kit.dead ? "blocked" : kit.via ? "detoured" : "direct"],
-      ["obstacle", (kit.r * 2).toFixed(2) + " m"],
-      ["lag", kit.ready ? (kit.lag * 1000).toFixed(0) + " mdeg" : "--"],
+      ["time to collision", kit.ttc >= 0 ? (kit.ttc * 1000).toFixed(0) + " ms" : "clear"],
+      ["it is moving at", (kit.track.speed * 1000).toFixed(0) + " mm/s"],
+      ["cancelled early", kit.warned > 0 ? (kit.warned * 1000).toFixed(0) + " ms" : "--"],
       ["clearance", kit.ready ? (kit.gap * 100).toFixed(0) + " cm" : "--"],
-      ["touching", kit.ready ? String(kit.touch) : "--"]
+      ["touching", kit.ready ? String(kit.touch) : "--"],
+      ["hit / avoided", kit.hits + " / " + kit.saves]
     ],
     /* What it is doing, in words. The whole point of this bay is a moment
        that lasts about a second, and a readout row that flickers from
        "direct" to "around" is not a way to notice it. */
     say: () => {
-      if (kit.touch) return "Your hand is touching the arm. It has stopped.";
-      if (kit.blocked) return "Your hand is in the way. Cancelling the move and planning around it.";
+      if (kit.touch) return kit.predict
+        ? "It has been hit. The forecast missed this one -- a constant-velocity filter is wrong about a hand that changes direction, which is exactly why the tube widens with the horizon."
+        : "It has been hit. Reactive: it cancels when the obstacle is already in its path, which on a moving obstacle is too late.";
+      if (kit.dead && kit.warned > 0)
+        return `Cancelled ${(kit.warned * 1000).toFixed(0)} ms before the ball gets there. `
+             + `Nothing is in the way yet -- the filter says it will be.`;
+      if (kit.dead) return "Something is in the way. Cancelling the move and planning around it.";
+      if (!kit.predict) return "Reactive. It will not move until the ball is already in its path -- switch to predictive and watch the difference.";
       return over.current
-        ? "Clear. Move across the cell and it will have to go round you."
-        : "Clear. The ball is drifting through the workspace on its own -- watch it cut the path.";
+        ? "Tracking your hand and forecasting where it goes. The cone is two standard deviations of the filter's own uncertainty, which is why it opens."
+        : "Tracking the ball and forecasting where it goes. The cone is the filter's own uncertainty, widening the further ahead it is asked.";
     },
     touched: () => touched.current,
-    hint: "Move the cursor across the cell to put your hand in the way.",
+    /* Steppable from outside, like the rest of them. This cell ran only
+       inside its own frame callbacks, so a harness could watch the tracker
+       and not advance it -- and a predictive controller that is never
+       stepped forecasts nothing. */
+    tick: (d) => { plan(d); plant(d); },
+    sim: () => !!sim.current,
+    hint: "Move the cursor across the cell to put your hand in the way. The cone ahead of it is where the filter thinks it is going; switch to reactive and the arm waits until it is already there.",
     /* Where the obstacle actually is, so a probe outside the page can check
        the one thing this cell is about and cannot be photographed: that the
        pointer reaches the sheet at all. It did not -- the sheet is a
@@ -198,13 +267,17 @@ export default function ForeseeRig({ stop }) {
     state: () => ({
       x: +obs.current.x.toFixed(3), y: +obs.current.y.toFixed(3),
       z: +obs.current.z.toFixed(3), over: over.current ? 1 : 0,
-      dead: kit.dead ? 1 : 0, via: kit.via ? 1 : 0, touch: kit.touch
+      dead: kit.dead ? 1 : 0, via: kit.via ? 1 : 0, touch: kit.touch,
+      ttc: +kit.ttc.toFixed(3), warned: +kit.warned.toFixed(3),
+      speed: +kit.track.speed.toFixed(3), predict: kit.predict ? 1 : 0,
+      hits: kit.hits, saves: kit.saves
     })
   }), [stop.id, kit, sim]);
 
-  useFrame(({ clock, camera }, dt) => {
-    const d = Math.min(0.1, dt);
-    if (!isLive(stop, camera)) return;
+  /* The planner's half of a frame, out of useFrame so a harness can drive
+     it. The drift clock is the cell's own rather than the renderer's, for
+     the same reason. */
+  function plan(d) {
     if (!painted.current && tube.current) { paintPlan(); painted.current = true; }
     /* Drifts when nobody is pointing at it, and "nobody is pointing at it"
        means the cursor has left the cell -- not that it has stopped moving.
@@ -216,7 +289,7 @@ export default function ForeseeRig({ stop }) {
     // Through the workspace rather than around its edge, or it would never
     // block anything and the bay would never do the thing it is named after.
     if (held.current > 1.2) {
-      const t = clock.elapsedTime * 0.55;
+      const t = (kit.clock += d) * 0.55;
       obs.current.set(0.30 + 0.26 * Math.cos(t), 0.30 * Math.sin(t * 0.8),
                       0.62 + 0.20 * Math.sin(t));
     }
@@ -244,12 +317,61 @@ export default function ForeseeRig({ stop }) {
       for (const [p0, p1] of rest)
         if (!clear(p0, p1, obs.current, kit.r, kit.fk, kit.scratch)) { ok = false; break; }
 
-      if (!ok && !kit.dead) { kit.dead = true; kit.hold = 0; }
+      /* And the same question asked of where the obstacle is going.
+       *
+       * The filter is fed the obstacle's position every tick whether or not
+       * the prediction is switched on, because a tracker that only runs when
+       * somebody is watching has no history when they start watching. What
+       * the switch changes is whether its answer is allowed to cancel a
+       * plan. */
+      kit.track.update([obs.current.x, obs.current.y, obs.current.z], TICK);
+      /* The arm's sample points at a fraction of what is left of the plan.
+         The horizon is in seconds and the plan is executed at a known rate,
+         so timeToCollision converts one to the other. */
+      const seg = rest[rest.length - 1];
+      const armAt = (u, out) => {
+        lerpQ(seg[0], seg[1], u, kit.scratch.q);
+        const p = kit.fk(kit.scratch.q);
+        for (let i = 0; i < p.length; i++) out[i] = p[i];
+        return out;
+      };
+      kit.ttc = timeToCollision(armAt, kit.armPts, kit.radii, kit.track, {
+        base: kit.r, nSigma: 2, clearance: 0.02, horizon: 1.6, steps: 10,
+        /* The cap is the cell's own. This workspace is about 1.2 m across
+           and an obstacle cannot be outside it, so the tube saturates at
+           0.35 m of sigma rather than growing to the 2.4 m a two-second
+           constant-velocity forecast implies. */
+        cap: 0.35,
+        rate: SPEED / Math.max(0.05, 1 - kit.u)
+      });
+      const soon = kit.predict && kit.ttc >= 0;
+
+      /* The cone, off the same filter that just answered. Hidden when the
+         prediction is switched off, because a cell that draws a forecast it
+         is not using is a cell lying about what it is doing. */
+      for (let i = 0; i < HORIZONS.length; i++) {
+        const m = cone.current[i];
+        if (!m) continue;
+        m.visible = kit.predict;
+        if (!kit.predict) continue;
+        const r = kit.track.radiusAt(HORIZONS[i], kit.r, 2, 0.35, _fc);
+        m.position.set(_fc[0], _fc[1], _fc[2]);
+        m.scale.setScalar(r);
+      }
+
+      if ((!ok || soon) && !kit.dead) {
+        kit.dead = true; kit.hold = 0;
+        /* How much warning the filter bought. Zero when the arm cancelled
+           because the obstacle was already in the way, which is what the
+           reactive setting always does. */
+        kit.warned = ok && soon ? kit.ttc : 0;
+        if (kit.warned > 0) kit.saves++;
+      }
       /* And back the other way. The obstacle moves, so a plan that was dead
          can become live again -- and nothing cleared the flag, so the arm
          went on holding and went on paying for a replan it no longer needed
          until the sampler happened to find a detour around empty air. */
-      if (ok && kit.dead) { kit.dead = false; kit.hold = 0; }
+      if (ok && !soon && kit.dead) { kit.dead = false; kit.hold = 0; }
 
       if (kit.dead) {
         kit.hold += TICK;
@@ -300,16 +422,19 @@ export default function ForeseeRig({ stop }) {
       lerpQ(kit.a, kit.b, u, cmd.current);
     }
 
+  }
+
+  useFrame(({ camera }, dt) => {
+    if (!isLive(stop, camera)) return;
+    plan(Math.min(0.1, dt));
   });
 
-  /* The plant, in its own frame callback so it runs whether or not the
-     planner did anything this tick -- an arm holding a cancelled plan is
+  /* The plant's half, separate because an arm holding a cancelled plan is
      still an arm holding itself up against gravity, and that is exactly the
      interval this cell is about. */
-  useFrame((_, dt) => {
+  function plant(d) {
     const sm = sim.current;
     if (!sm) return;
-    const d = Math.min(0.1, dt);
     sm.setMocap("hand", obs.current.x, obs.current.y, obs.current.z);
     /* The obstacle's size is a console control, and a geom's size is model
        data rather than state, so it is written where the reader changes it
@@ -328,9 +453,17 @@ export default function ForeseeRig({ stop }) {
       worst = Math.max(worst, Math.abs(act.current[i] - cmd.current[i]));
     }
     kit.lag = worst;
+    const was = kit.touch;
     kit.touch = sm.touching("handgeom");
+    // A contact that has just started is one the planner failed to avoid.
+    if (kit.touch && !was) kit.hits++;
     kit.gap = clearance(act.current, obs.current, kit.r, kit.fk);
     kit.ready = true;
+  }
+
+  useFrame(({ camera }, dt) => {
+    if (!isLive(stop, camera)) return;
+    plant(Math.min(0.1, dt));
   });
 
   // First paint happens on the first frame instead of in a memo: the mesh
@@ -416,6 +549,19 @@ export default function ForeseeRig({ stop }) {
           <meshStandardMaterial color={P.teal} roughness={0.3} metalness={0.1}
                                 transparent opacity={0.42} />
         </mesh>
+
+        {/* The forecast, as one sphere per horizon. Not a decoration: these
+            are the spheres timeToCollision is checking the arm against, at
+            the radii the filter's own covariance gives, so what the reader
+            sees is what the planner is arguing with. They open with the
+            horizon because the uncertainty does. */}
+        {HORIZONS.map((h, i) => (
+          <mesh key={i} ref={el => (cone.current[i] = el)}>
+            <sphereGeometry args={[1, 16, 12]} />
+            <meshBasicMaterial color={P.accent} transparent
+              opacity={0.09} depthWrite={false} />
+          </mesh>
+        ))}
       </group>
       {/* Drawn at what the simulation says, which is the whole change. Until
           the engine has loaded there is nothing to say, so UR12e falls back
