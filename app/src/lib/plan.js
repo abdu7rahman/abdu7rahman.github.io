@@ -68,12 +68,22 @@ export const STOPS = [
    *
    * Sides still alternate along the aisle, so the walk zig-zags rather than
    * running down one wall. */
+  /* One planner and one controller, not five and five.
+   *
+   * These two subtitles listed the five planners and the five controllers the
+   * written site benchmarks, which is a claim about a page somewhere else
+   * made on a bench that runs one of each. The search bay expands A* over a
+   * map you draw; the local control bay samples velocity space. Both are the
+   * real thing and neither is five of them, and a label that promises four
+   * more is the one kind of wrong this building cannot afford -- everything
+   * here is checkable by standing in front of it. The race bay two stops on
+   * does compare four controllers, and says four. */
   { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search", frame: "course",
-    sub: "A*, Theta*, RRT, SMAC, hybrid",
-    note: "Draw a map and search it. Five planners over one costmap." },
+    sub: "A*, eight-connected, octile",
+    note: "Draw walls on the bench and watch A* expand across them. The Burger drives whatever path comes out." },
   { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control", frame: "course",
-    sub: "DWA, MPPI, TEB, Pure Pursuit, Stanley",
-    note: "Drive a TurtleBot with the cursor using any of five controllers." },
+    sub: "a velocity-space sampler",
+    note: "Put obstacles in a TurtleBot's way with the cursor. Every arc it draws is a trajectory that was scored." },
   /* Four, not the written section's five. lab/demos/controllers.js
      implements pure pursuit, Stanley, a velocity-space sampler and MPPI --
      four published controllers, each the thing it is named after. TEB is a
@@ -100,20 +110,30 @@ export const STOPS = [
     sub: "bimanual, simulated",
     note: "Two arms sorting a bench of tools. Every tool is a free body and every grasp can fail." },
 
+  /* The only learned thing in the building, and it was not in the building.
+     assets/dwa_clone.json is a real checkpoint -- 29,813 samples of this
+     project's own DWA over 157 maps, then four rounds of DAgger -- and it
+     was running on the document site and nowhere else. A portfolio whose
+     subject is physical AI had no bay where a trained policy drives
+     anything. */
+  { id: "policy",   kind: "rig",  side:  1, at: 5.7, title: "Cloned", frame: "course",
+    sub: "a trained policy, driving",
+    note: "A network cloned from the controller beside it, with the eleven beams that are its whole input." },
+
   /* And the reading. Named for what is in them rather than for the part of a
      factory they would be: "Metrology" is the trade word for measurement and
      told a visitor nothing, "Archive" reads as the place work goes to be
      forgotten when it is the ten systems worth showing, and "Service
      history" is what a garage keeps on a van. */
-  { id: "stack",    kind: "room", side:  1, at: 5.8, title: "Toolkit",
+  { id: "stack",    kind: "room", side:  1, at: 6.5, title: "Toolkit",
     lede: "Things I have shipped something with, not things I have read about." },
-  { id: "path",     kind: "room", side: -1, at: 6.6, title: "Background",
+  { id: "path",     kind: "room", side: -1, at: 7.2, title: "Background",
     lede: "Five ABU Robocon seasons, then grad school." },
-  { id: "work",     kind: "room", side:  1, at: 7.4, title: "Projects",
+  { id: "work",     kind: "room", side:  1, at: 7.9, title: "Projects",
     lede: "Ten systems worth showing. Everything else lives on GitHub." },
-  { id: "measured", kind: "room", side: -1, at: 8.2, title: "Benchmarks",
+  { id: "measured", kind: "room", side: -1, at: 8.6, title: "Benchmarks",
     lede: "Claims I could check, checked — including the ones that came out badly." },
-  { id: "contact",  kind: "room", side:  0, at: 9,   title: "Office",
+  { id: "contact",  kind: "room", side:  0, at: 9.4, title: "Office",
     lede: "Happy to talk about any of the above, including the parts that did not work." }
 ];
 

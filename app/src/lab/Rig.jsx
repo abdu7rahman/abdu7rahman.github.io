@@ -11,6 +11,7 @@ import ForeseeRig from "./ForeseeRig.jsx";
 import RaceRig from "./RaceRig.jsx";
 import TerrainRig from "./TerrainRig.jsx";
 import SortRig from "./SortRig.jsx";
+import PolicyRig from "./PolicyRig.jsx";
 
 /* What stands in a cell: a screen on a stand and the machine it is driving.
  *
@@ -28,7 +29,8 @@ import SortRig from "./SortRig.jsx";
 
 /* Which machine each rig is running, keyed by the stop ids in lib/plan.js.
    Anything not named here is an arm, which is the majority and the default. */
-const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
+const MACHINE = { drive: "burger", race: "burger", terrain: "go2",
+                  policy: "burger" };
 
 /* Cells that run their own work on the bench rather than standing a machine
    next to a picture of it. lab/SearchRig.jsx is the first: it lays an
@@ -37,7 +39,7 @@ const MACHINE = { drive: "burger", race: "burger", terrain: "go2" };
    whole cell -- the machine included -- so this file steps out of the way. */
 const RUNS = { space: SearchRig, drive: DriveRig, reach: ReachRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
-               assemble: SortRig };
+               assemble: SortRig, policy: PolicyRig };
 
 /* The bench is 2.6 by 3.0 m and the 3.0 m side runs parallel to the aisle.
    That is the axis a mobile base gets to drive along, so it is the one
