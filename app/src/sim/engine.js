@@ -17,8 +17,8 @@ import * as THREE from "three";
  * the engine a portfolio's claims rest on is the least this could do.
  *
  * The cost is 10.2 MB of wasm, 2.5 MB over the wire compressed, and it is why
- * nothing here loads until something asks. A reader who scrolls past the
- * machines never fetches it; a reader who stops at one waits about as long as
+ * nothing here loads until something asks. A reader who never walks up to a
+ * machine never fetches it; a reader who stops at one waits about as long as
  * the arm's own mesh already takes. Measured in this project's own headless
  * harness, on a software rasteriser: 174 ms from request to a stepping model,
  * and 15.8 microseconds a step for a two-link arm against a floor.
@@ -33,10 +33,6 @@ import * as THREE from "three";
    second cell to ask gets the first cell's download rather than a second
    copy of a ten megabyte file. */
 let pending = null;
-let failed = null;
-
-export function engineReady() { return pending !== null; }
-export function engineFailed() { return failed; }
 
 export function engine() {
   if (pending) return pending;
@@ -45,8 +41,7 @@ export function engine() {
      path the glue uses to find its own wasm, and the whole point of this file
      is that neither arrives unless somebody wants a robot to move. */
   pending = import(/* @vite-ignore */ "/vendor/mujoco/mujoco.js")
-    .then(m => (m.default || m)())
-    .catch(e => { failed = e; throw e; });
+    .then(m => (m.default || m)());
   return pending;
 }
 

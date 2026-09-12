@@ -8,14 +8,14 @@ import * as journey from "./journey.js";
 /* What there is to pick, hanging at the mouth of each cell.
  *
  * The bay volumes are clickable, which is necessary and is not enough: a
- * visitor standing at the door is looking down 66 m of aisle at seven bays
+ * visitor standing at the door is looking down 66 m of aisle at eight bays
  * that are mostly edge on, and nothing on screen says any of them is a
  * thing you can press. So each cell carries a tag at head height in the
  * lane, turned to face whoever is looking, with its number and its name on
  * it -- the same signage the building would have anyway.
  *
  * Only while there is a choice to make. Once the guide is walking or
- * standing at a station these fade out, because seven labels floating over a
+ * standing at a station these fade out, because eight labels floating over a
  * shot of a robot holding up a sign is the site shouting over itself.
  */
 const TAG_W = 1.9, TAG_H = 0.44;

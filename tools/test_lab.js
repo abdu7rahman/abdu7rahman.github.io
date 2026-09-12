@@ -259,7 +259,12 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       { id: 'swerve', how: 'hover', what: 'the swerve base takes a goal' },
       { id: 'foresee', how: 'hover', what: 'the replanner sees your hand' },
       { id: 'terrain', how: 'click', what: 'the quadruped takes a goal' },
-      { id: 'assemble', how: 'wait', what: 'the sorting cell is running' }
+      { id: 'assemble', how: 'wait', what: 'the sorting cell is running' },
+      /* The eighth cell, which this list did not have: it was added with the
+         rest of the suite already green, so nothing failed and nothing said
+         a cell was untested. A case per rig is the point of this section --
+         a list that covers seven of eight passes by not looking. */
+      { id: 'policy', how: 'hover', what: 'the cloned controller takes a goal' }
     ];
     for (const c of cases) {
       await goTo(c.id);
@@ -401,6 +406,33 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                  + r.drove + ' m on the last'));
   }
 
+  console.log('\nF1c. and the cost cell plans four paths and walks one');
+  {
+    /* Section F asks whether a cell responds. This asks whether this one
+       works, and the two came apart while chasing something else: at the
+       entrance the cost cell's tick costs nothing and its quadruped never
+       moves, because solve() runs inside the frame callback behind the
+       liveness gate and so the four paths are still empty. Standing at the
+       cell it plans and walks. Both are correct -- but nothing here could
+       tell that state from a cell that plans nothing at all, and a bay whose
+       whole subject is four planners disagreeing has exactly one failure
+       that looks like a bay nobody has walked up to.
+
+       So: four non-empty answers, and a trunk that has moved. state().plans
+       exists for this. */
+    await goTo('terrain');
+    let st = null;
+    for (let i = 0; i < 24; i++) {
+      await pg.waitForTimeout(1500);
+      st = await pg.evaluate(() => window.__lab.controls('terrain').state());
+      if (st.plans.every(n => n > 1) && st.travel > 0.02) break;
+    }
+    ok('all four costs return a path', !!st && st.plans.every(n => n > 1),
+       JSON.stringify(st && st.plans));
+    ok('and the quadruped walks one of them', !!st && st.travel > 0.02,
+       st ? st.travel + ' m' : '(no state)');
+  }
+
   console.log('\nF2. and it holds the sign in its hands');
   {
     /* Four things, and all of them were wrong at some point.
@@ -440,19 +472,26 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       if (st[0] >= 1 && st[1] >= 1) break;
       await pg.waitForTimeout(1000);
     }
-    /* And a beat after that, because the arms are not one of those blends.
+    /* And then the arms, which are not one of those blends.
      *
-     * `hold` and `settle` are geometric closures that snap to exactly 1;
-     * the arm solve is damped least squares chasing a target that is still
+     * `hold` and `settle` are geometric closures that snap to exactly 1; the
+     * arm solve is damped least squares chasing a target that is still
      * moving while the sign rises, so it is a few frames behind them and
      * needs those frames once the target stops. Measured the moment both
-     * blends hit 1, the palm read 16.4 mm against a 12 mm case; given two
-     * seconds of settled target it converges. This suite has had the slack
-     * by accident before -- an earlier case above waited on a cell that took
-     * its time -- which is the kind of pass that turns into a failure the
-     * next time somebody reorders a list. */
-    await pg.waitForTimeout(2000);
-    const r = await pg.evaluate(() => {
+     * blends hit 1, the palm read 16.4 mm against a 12 mm case.
+     *
+     * This was a two second wait, and two seconds of wall clock is about two
+     * frames under the software rasteriser. It passed while the case above
+     * it happened to leave slack in front of it and failed at 16.5 mm the
+     * moment two more cases were added above -- the suite measuring its own
+     * ordering, which is what the note it replaced had predicted would
+     * happen the next time somebody reordered a list. A wait long enough
+     * today is a wait somebody else's change will shorten.
+     *
+     * So the measurement is asked for until the arms stop closing, to a
+     * ceiling. A solve that is genuinely wrong still fails, at whatever it
+     * converged to, rather than passing on slack. */
+    const measure = () => pg.evaluate(() => {
       const L = window.__lab, T = L.THREE, g = L.gaitOf && L.gaitOf();
       if (!g || g.hold < 1 || g.settle < 1) {
         return { err: 'not still (hold ' + (g ? g.hold.toFixed(3) : 'no gait') +
@@ -496,6 +535,16 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       }
       return out;
     });
+    let r = await measure();
+    for (let i = 0, stuck = 0; i < 30 && !r.err && r.palm >= 0.012; i++) {
+      await pg.waitForTimeout(1200);
+      const next = await measure();
+      if (next.err) break;
+      // Three samples with no improvement is settled, not still moving.
+      stuck = next.palm < r.palm - 1e-5 ? 0 : stuck + 1;
+      r = next;
+      if (stuck >= 3) break;
+    }
     if (r.err) {
       ok('both hands are on the rail', false, r.err);
       ok('and no arm passes through the body', false, r.err);
@@ -524,7 +573,31 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        String((await J()).card));
   }
 
-  console.log('\nH. the way out is a link');
+  console.log('\nH. every rig stop has a rig');
+  {
+    /* Read off the source, not the page: a stop with no component in
+       lab/Rig.jsx throws inside React's render and the bay comes back empty,
+       which every other check here would report as some other fault.
+       lab/Rig.jsx used to carry a generic arm for exactly this case; it was
+       unreachable for months and had rotted, so this is what replaced it.
+
+       Both counts are asserted non-zero. A regex that stops matching finds
+       nothing and agrees with nothing, and a gate that passes because it
+       read no rigs is worse than no gate. */
+    const rd = f => fs.readFileSync(path.join(ROOT, 'app/src', f), 'utf8');
+    const stops = [...rd('lib/plan.js')
+      .matchAll(/\{\s*id:\s*"(\w+)",\s*kind:\s*"rig"/g)].map(m => m[1]);
+    const runs = rd('lab/Rig.jsx').match(/const RUNS = \{[^}]*\}/s);
+    const named = runs ? [...runs[0].matchAll(/(\w+):\s*\w+Rig/g)].map(m => m[1]) : [];
+    ok('plan.js names some rig stops', stops.length > 0, String(stops.length));
+    ok('Rig.jsx names some rigs', named.length > 0, String(named.length));
+    const gap = stops.filter(id => !named.includes(id));
+    ok('every rig stop has a rig component', gap.length === 0, gap.join(', '));
+    const spare = named.filter(id => !stops.includes(id));
+    ok('and no rig component is stranded', spare.length === 0, spare.join(', '));
+  }
+
+  console.log('\nI. the way out is a link');
   {
     const href = await pg.getAttribute('.edge a', 'href');
     ok('the corner block links to the document', href === '/written.html', String(href));

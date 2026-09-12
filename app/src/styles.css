@@ -536,7 +536,7 @@ canvas { display: block; touch-action: pan-y; }
 .after .ask { position: static; left: auto; bottom: auto; }
 .ask--go { border-left-color: var(--accent); }
 
-/* Somewhere already visited reads as visited, so a route through seven cells
+/* Somewhere already visited reads as visited, so a route through eight cells
    is something you can keep track of without counting. */
 .index li.seen .t { color: #6f7076; }
 .index li.seen.on .t { color: var(--ink); }

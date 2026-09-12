@@ -234,12 +234,4 @@ export function tcp(q, out) {
   return toolPoint(_frames, out || new THREE.Vector3());
 }
 
-/* And which way it is pointing, for anything that needs to know whether the
-   gripper is actually facing the work. */
-export function tcpAxis(q, out) {
-  linkFrames(q, _frames);
-  const m = _frames[5].elements;
-  return (out || new THREE.Vector3()).set(m[8], m[9], m[10]);
-}
-
 export { TCP_Z };

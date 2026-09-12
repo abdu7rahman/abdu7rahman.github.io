@@ -2,8 +2,8 @@ import { PITCH, WORK } from "../lib/plan.js";
 
 /* The control surface for whichever cell you are standing at.
  *
- * The rigs ran and could not be operated: seven live algorithms with no way
- * to stop one, restart it, or change the thing it is about. A demo you can
+ * The rigs ran and could not be operated: eight live algorithms with no way
+ * to stop one, restart it, or change the thing they are about. A demo you can
  * only watch is a video with extra steps, and the whole claim of this
  * building is that the work is running rather than recorded -- which is only
  * checkable if somebody can reach in and change it.
@@ -51,18 +51,30 @@ export function isRunning(id) { return running.get(id) !== false; }
  * Every bay is mounted the whole time, which is what makes the building one
  * scene rather than eight loading screens -- and it meant all eight were
  * integrating MuJoCo sixty times a second whatever the reader was looking
- * at. Measured in the page, CPU per frame for the five cells that publish a
- * tick: search 0.30 ms, race 1.37, cost 2.86, sorting 0.93, cloned 0.13 --
- * 5.59 ms before the three that run inside their own frame callbacks and
- * before anything is drawn, against a 16.7 ms budget. That is the lag, and
- * none of it was buying anything: a quadruped crawling a hill forty metres
- * behind you is not on screen.
+ * at. Measured in the page, one frame of each cell's own work, timed by
+ * calling the tick it publishes while standing at it -- which is the only
+ * place the measurement means anything, because half of what a cell does is
+ * behind the gate this file is about:
  *
- * So a cell runs when the lens is within RANGE of it. The pitch between bays
- * is 7.2 m, so this is the bay you are standing in and the one either side
- * -- three live instead of eight, and the neighbours matter because you can
- * see down the aisle from where you stand and a frozen machine in the next
- * bay reads as broken rather than as thrifty.
+ *   race 1.43 ms   cost 1.60   sorting 0.96   search 0.38   replan 0.34
+ *   swerve 0.27    local control 0.22          cloned 0.12
+ *
+ * 5.32 ms of CPU before anything is drawn, against a 16.7 ms budget. That
+ * was the lag, and none of it was buying anything: a quadruped crawling a
+ * hill forty metres behind you is not on screen.
+ *
+ * So a cell runs when the lens is within RANGE of it. Measured by standing
+ * at each of the eight stations in turn, that is two, three, four, three,
+ * four, four, three, two walking in -- never eight, two at either end where
+ * a bay has a neighbour on one side only -- and none at all at the entrance,
+ * which is 11 m from the nearest bench and where no single machine is the
+ * subject anyway. The worst any station costs is 3.64 ms, standing at
+ * replan with race, swerve and cost also inside the radius. The entrance
+ * costs nothing.
+ *
+ * The neighbours are in deliberately. You can see down the aisle from where
+ * you stand, and a frozen machine in the next bay reads as broken rather
+ * than as thrifty.
  *
  * Nothing here pauses: a cell out of range keeps its state, its physics and
  * its console, and picks up where it was when you come back. What stops is

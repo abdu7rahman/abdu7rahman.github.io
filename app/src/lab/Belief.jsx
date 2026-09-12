@@ -16,8 +16,9 @@ import { STOPS, PITCH, WORK, RUN, AISLE } from "../lib/plan.js";
  * interaction nobody can find is not an interaction, and the honest fix is
  * not a bigger hint, it is to make the thing respond everywhere the floor is.
  *
- * It costs less as well: seven planes and seven materials became one, which
- * is six draw calls back out of a frame that was spending 670 of them.
+ * It costs less as well: a plane and a material per cell became one, which
+ * was six draw calls back out of a frame that was spending 670 of them when
+ * there were seven cells, and is seven back now that there are eight.
  *
  * The obstacles are every cell's, in one array, addressed by which cell the
  * lamp is nearest -- so the map under your cursor is the map belonging to the

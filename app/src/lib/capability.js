@@ -1,40 +1,52 @@
 /* What the machine in front of us can actually draw, asked rather than assumed.
  *
- * This building was written on a desktop GPU and it shows. Measured in a
- * headless Chromium at 1440x900 with the camera at the entry, one frame is
- * 685 draw calls and 314,568 triangles, and 320 of those calls and 156,565 of
- * those triangles are shadow maps -- 47% of the calls and 50% of the geometry
- * in a frame exists only to be rendered from a light's point of view. On top
- * of that the canvas asked for dpr up to 2, which on a phone is four times the
- * fragments of dpr 1 for a panel nobody holds close enough to resolve.
+ * This building was written on a desktop GPU and it shows. Every number here
+ * was taken by loading a live page and reading gl.info.render back through
+ * window.__lab, at 1440 by 900 in a headless Chromium with the post chain
+ * off (?post=0) -- with it on, three resets info at the top of every
+ * render() and the grade makes four of them, so what comes back is the last
+ * pass's full-screen quad and nothing else.
  *
- * The numbers below were taken by loading a live page at each tier and
- * reading gl.info.render back through window.__lab, not by counting the
- * source, because the source undercounts: instanced meshes are one call and
- * many triangles, a shadow-casting light re-draws every caster once more, and
- * frustum culling removes things the source has no idea about.
+ * Read rather than counted off the source, because the source undercounts in
+ * both directions: an instanced mesh is one call and many triangles, a
+ * shadow-casting light re-draws every caster once more, and frustum culling
+ * removes things no reading of the source knows about.
  *
- * What one frame cost before any of this existed, everything on:
+ * What a frame at the entrance costs with nothing stale -- every shadow map
+ * forced, so this is the ceiling and not the schedule:
  *
- *   whole frame, camera at the entry     685 calls   314,568 tris
- *   the seven cell spotlights' shadows  -229 calls  -102,383 tris
- *   the key's 2048 shadow map            -91 calls   -54,182 tris
- *   the seven machines                   -49 calls  -101,441 tris
+ *   whole frame, camera at the entry    1,128 calls   883,258 tris
+ *   the eight cell spotlights' shadows   -438 calls  -455,163 tris
+ *   the key's 2048 shadow map             -93 calls  -116,161 tris
+ *   the eight rigs                       -442 calls  -506,634 tris
  *
- * And what the three tiers cost now, same camera, measured the same way.
- * Read gl.info.render with the post chain off (?post=0) or the number you
- * get is the grade's own full-screen quad -- three resets info at the top
- * of every render() and the pass makes four of them, so the last one wins:
+ * Those rows overlap and are meant to: a rig's triangles are drawn once for
+ * the camera and again into every shadow map that can see them, so hiding
+ * the rigs takes them out of all of it. Shadow work alone is 531 of the
+ * 1,128 calls and 571,324 of the 883,258 triangles -- 47 per cent of the
+ * calls and 65 per cent of the geometry in a fully drawn frame exists to be
+ * rendered from a light's point of view.
  *
- *   high    561 calls   250,669 tris   dpr 2.0   shadow map on
- *   medium  548 calls   234,575 tris   dpr 1.5   shadow map on
- *   low     401 calls   158,759 tris   dpr 1.0   shadow map off
+ * And what the three tiers cost, same camera, median of twenty-four real
+ * frames so the cell shadow schedule is running rather than forced:
  *
- * High is 124 calls under the old whole-frame figure with nothing removed
- * from the scene, which is the cell shadow schedule: five of the seven maps
- * are a frame or two old on any given frame and cost nothing to keep.
- * Fragment cost is dpr squared on top of all of it, so the three tiers are
- * 4.00, 2.25 and 1.00 times each other before a single triangle is counted.
+ *   high    808 calls   561,924 tris   dpr up to 2.0   shadow map on
+ *   medium  756 calls   494,251 tris   dpr up to 1.5   shadow map on
+ *   low     596 calls   311,932 tris   dpr 1.0         shadow map off
+ *
+ * High is 320 calls under the forced frame with nothing taken out of the
+ * scene, which is the cell shadow schedule: six of the eight maps are a
+ * frame or more old on any given frame and cost nothing to keep. The gap
+ * from high to medium is 52 calls, which is one cell shadow map -- priced
+ * individually the eight run 34 to 105 and average exactly 52 -- and that is
+ * the whole of what dropping a slot buys.
+ *
+ * The dpr column is a ceiling rather than a measurement. App.jsx asks for
+ * dpr={[1, quality.dpr]} and R3F clamps that to the device's own ratio, and
+ * a headless page is dpr 1, so every tier above rendered at 1 and none of
+ * these numbers include the fragment cost the column names. On a phone at
+ * dpr 2 that cost is four times dpr 1 and lands on top of all of it, which
+ * is why resolution sits second in the ladder and not last.
  *
  * So the tiers are built in that order: shadows first, resolution second,
  * post third, geometry last. Dropping the machines would be dropping the
@@ -45,7 +57,7 @@
    the fragments of one CSS pixel. That is the whole justification for the
    ladder: there is no other single number in a WebGL page with that leverage.
 
-   cellShadows is how many of the seven test-cell spotlights re-render their
+   cellShadows is how many of the eight test-cell spotlights re-render their
    shadow map on a given frame, not how many cast at all. The distinction
    matters and it is why this is a number rather than a boolean: three lets a
    light keep the shadow map it last drew (shadow.autoUpdate = false,
@@ -61,13 +73,12 @@
    is a quarter of the memory and a quarter of the fill. */
 /* `work` is the one that is not about drawing.
  *
- * Seven cells run real algorithms every frame, and the cost of those is on
- * the CPU where none of the other four settings reach: the reach bay puts
- * nine thousand joint tuples a second through forward kinematics, the race
- * bay's MPPI rolls out 96 sequences of 16 steps twenty times a second, the
- * local control bay scores 147 trajectories at the same rate, and the cost
- * bay re-runs four A* passes twice a second. Halving the resolution does
- * nothing about any of it.
+ * Eight cells run real algorithms every frame, and the cost of those is on
+ * the CPU where none of the other four settings reach: the race bay's MPPI
+ * rolls out 96 sequences of 16 steps twenty times a second, the local
+ * control bay scores 147 trajectories at the same rate, the cost bay re-runs
+ * four A* passes twice a second, and six of the eight are stepping a MuJoCo
+ * model besides. Halving the resolution does nothing about any of it.
  *
  * So it is a scale on sample counts, and the rigs read it and cut the
  * numbers that are sampling rather than the numbers that are the algorithm:
@@ -76,21 +87,31 @@
  * just estimated from less. That distinction is the whole reason this is a
  * scale and not a set of feature switches.
  *
- * Measured at 1440 by 900 with the post chain off and the camera settled,
- * because gl.info with the post chain on reports its own final quad and
- * nothing else. High tier: the entrance is 565 draw calls and 347,887
- * triangles, the heaviest frame in the building by a factor of three over
- * any cell, because from there you can see all of it; the cells run 206 to
- * 286 calls and 160,000 to 246,000 triangles.
+ * Measured the same way as everything above, with the camera parked at each
+ * station by the building's own navigation rather than by a second copy of
+ * the shot numbers. All eight cells, high against low:
  *
- * The same five cells at low:
+ *                high             low
+ *   search       396 / 431,926    110 /  99,477
+ *   local ctl    412 / 412,511    113 /  94,748
+ *   race         494 / 519,906    124 / 143,525
+ *   swerve       514 / 475,962    125 /  80,572
+ *   replan       570 / 537,900    143 / 107,427
+ *   cost         561 / 519,610    144 / 123,221
+ *   sorting      592 / 510,669    190 / 125,495
+ *   cloned       518 / 435,141    125 /  94,644
+ *   entrance     808 / 561,924    596 / 311,932
  *
- *              high              low
- *   search     231 / 182,913     37 /  20,402
- *   local ctl  282 / 214,572     41 /  18,212
- *   race       270 / 245,973     50 /  64,720
- *   reach      218 / 203,712     60 /  23,194
- *   cost       258 / 204,074     66 /  44,387
+ * The entrance is still the heaviest frame in the building, because from
+ * there you can see all of it -- but only by 1.36 times the heaviest cell on
+ * calls now, not the factor of three it was when the cells were a machine
+ * standing beside a picture of its demo. The cells caught up by becoming the
+ * demo.
+ *
+ * Low is 3.8 times fewer calls across the eight, and almost all of that is
+ * the shadow maps: the entrance drops far less because what it is drawing is
+ * the building rather than any cell's work. Sorting is the most expensive
+ * cell at either tier, which is the one that stands two arms instead of one.
  *
  * Frame rate is deliberately not in that table. Every headless render of
  * this building runs under SwiftShader on a contended machine, where the

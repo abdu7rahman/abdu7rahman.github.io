@@ -45,11 +45,30 @@ function value(x, y, seed) {
    and the four answers were nearly the same line: a field that gentle has
    no ledge for the step cost to refuse and no hillside for the slope cost to
    contour across, so the bay showed four colours lying on top of each other.
-   0.16 over 2.3 m is a seven per cent grade in the large and considerably
-   steeper across the third octave, which is ground a legged base has to
-   think about and still not ground it would fall off -- a Go2 stands about
-   0.32 m at the hip. */
+   0.16 over the course's 2.85 m is a five and a half per cent grade in the
+   large and considerably steeper across the third octave, which is ground a
+   legged base has to think about and still not ground it would fall off --
+   a Go2 stands about 0.32 m at the hip. It read seven per cent here until
+   the bench grew and the course with it; the relief did not move, so the
+   grade did. */
 export const RELIEF = 0.16;
+
+/* The ground's own grid, here rather than in the rig that draws it.
+ *
+ * It was in lab/TerrainRig.jsx and copied into tools/test_crawl.mjs, and the
+ * copies drifted: the cell went from 0.075 m to 0.092 when the benches grew,
+ * the harness kept 0.075, and it went on walking a 2.33 by 2.70 m course
+ * while the site shipped 2.85 by 3.31. The harness's own comment says what
+ * that is -- "a harness whose defaults drift from the rig is a harness that
+ * tests a robot the site does not ship" -- and the only way to mean it is
+ * one definition.
+ *
+ * Same cell count either side of the resize, because the search over it and
+ * the height field MuJoCo integrates both cost what the count says and
+ * nothing about the extent. */
+export const NX = 31, NY = 36, CELL = 0.092;
+export const COURSE_X = NX * CELL;   // 2.852
+export const COURSE_Y = NY * CELL;   // 3.312
 
 export function heights(nx, ny, seed = 1337) {
   const h = new Float32Array(nx * ny);

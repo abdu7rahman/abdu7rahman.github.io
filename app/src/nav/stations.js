@@ -1,4 +1,4 @@
-import { STOPS, PITCH, AISLE, BAY_D, WORK } from "../lib/plan.js";
+import { PITCH, AISLE, BAY_D, WORK } from "../lib/plan.js";
 import { visible } from "./route.js";
 
 /* Where the guide stands to show you something, which way it faces when it
@@ -164,14 +164,7 @@ export function standFor(grid, stop, radius = 0.50) {
   return { id: stop.id, x, z, clear, faceYaw, eye, look, fov };
 }
 
-export function allStands(grid, radius) {
-  const out = {};
-  for (const s of STOPS) out[s.id] = standFor(grid, s, radius);
-  return out;
-}
-
 /* Where a visitor comes in. Inside the front wall, on the lane centre, far
    enough in that the camera meeting the guide is inside the building too. */
 export const DOOR = [0, 2.6];
 
-export { STOPS };

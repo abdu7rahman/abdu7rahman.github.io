@@ -100,7 +100,9 @@ export default function App() {
               <Rig stop={s} />
             </Bay>
           ))}
-          {/* The seven demos, running on the monitor in each cell. */}
+          {/* The document site's demos, running on the monitors. Six of the eight
+              cells mirror one; the other two have no counterpart there and
+              their monitors carry their own readout. */}
           <Screens />
           <Budget />
           <Follow />

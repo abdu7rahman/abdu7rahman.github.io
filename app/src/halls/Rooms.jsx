@@ -143,9 +143,9 @@ function Shell({ side, deep, centre }) {
       {/* Fittings, and then the light out of them.
        *
        * Every room in this building was measurably darker than every cell in
-       * it, and not by a little: screenshotting all thirteen stations and
-       * taking the mean luminance of the render, the six rooms came in at
-       * 30.6 to 59.5 and the seven cells at 70.8 to 87.3 -- two clean bands
+       * it, and not by a little: screenshotting the thirteen stations there were
+       * then and taking the mean luminance of the render, the six rooms came
+       * in at 30.6 to 59.5 and the seven cells at 70.8 to 87.3 -- two bands
        * with nothing between them. Metrology and service history were 77 per
        * cent pixels below 24 of 255. A room you are walked into to read
        * something should not be the dimmest thing in the place.

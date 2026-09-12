@@ -10,14 +10,23 @@
  *   node tools/test_crawl.mjs [seconds]
  */
 import { pathToFileURL } from "node:url";
-import { heights, COSTS, RELIEF } from "../app/src/lab/demos/terrain.js";
+import { heights, COSTS, RELIEF, NX, NY, CELL, COURSE_X, COURSE_Y }
+  from "../app/src/lab/demos/terrain.js";
 import { Search } from "../app/src/lab/demos/astar.js";
 import { Crawl, LEGS, HOME, STAND } from "../app/src/lab/demos/crawl.js";
 import { terrainScene } from "../app/src/sim/models.js";
 
-const NX = 31, NY = 36, CELL = 0.075;
-const COURSE_X = NX * CELL, COURSE_Y = NY * CELL;
-const SECS = Number(process.argv[2] || 40);
+/* Ninety seconds, which is lab/TerrainRig.jsx's own DRIVE_MAX and therefore
+   the longest the shipped cell will let a crossing take.
+ 
+   It was 40, and 40 is shorter than two of the four paths need: measured on
+   the same ground, distance crosses in 34.6 s and low ground in 34.2, but
+   flat ground takes 64.1 and no ledges 62.3 -- they detour, which is the
+   whole point of having four costs. So every run reported two of four at
+   15 per cent of their path and 4 of 4 upright, which reads as a gait
+   failure and is a stopwatch failure. A harness that cries wolf twice a run
+   is one nobody reads. */
+const SECS = Number(process.argv[2] || 90);
 /* The bay's own numbers, overridable so the tables quoted in
    lab/TerrainRig.jsx and lab/demos/crawl.js can be reproduced. A harness
    whose defaults drift from the rig is a harness that tests a robot the site

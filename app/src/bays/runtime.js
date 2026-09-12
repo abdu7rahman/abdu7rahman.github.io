@@ -1,4 +1,4 @@
-/* The seven demos, running, inside the building.
+/* The document site's demos, running, inside the building.
  *
  * demo.js and lab.js are the document site's -- 3,547 and 1,174 lines of
  * vanilla canvas-2D that download real Python from two of the author's repos
@@ -228,7 +228,7 @@ class Bundle {
 
     /* Sections this bundle does not serve. lab.js guards every one of its
        three demos with `if (!cv) return { init: noop }`, so dropping #space
-       (the action-space reference, which is not one of the seven) is safe by
+       (the action-space reference, which is not one of them) is safe by
        its own contract. demo.js does not guard -- its five are all kept. */
     const keep = new Set(Object.values(this.spec.cells).map(c => c.section));
     d.querySelectorAll("main.runner > [id]").forEach(el => {

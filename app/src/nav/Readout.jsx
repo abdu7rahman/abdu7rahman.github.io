@@ -78,7 +78,7 @@ export default function Readout() {
           <div className="meet__pick">
             <button className="meet__btn" onClick={() => journey.choose("demos")}>
               <span className="meet__t">The floor</span>
-              <span className="meet__s">Seven cells you can operate. Pick one and I will walk you to it.</span>
+              <span className="meet__s">Eight cells you can operate. Pick one and I will walk you to it.</span>
             </button>
             <button className="meet__btn" onClick={() => journey.choose("about")}>
               <span className="meet__t">About me</span>

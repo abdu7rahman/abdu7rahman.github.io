@@ -3,7 +3,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import Go2 from "./Go2.jsx";
 import { Search } from "./demos/astar.js";
-import { heights, COSTS, RELIEF } from "./demos/terrain.js";
+import { heights, COSTS, RELIEF, NX, NY, CELL, COURSE_X, COURSE_Y }
+  from "./demos/terrain.js";
 import { Crawl, HOME, STAND } from "./demos/crawl.js";
 import { useSim } from "../sim/useSim.js";
 import { terrainScene } from "../sim/models.js";
@@ -78,17 +79,10 @@ import { WORK } from "../lib/plan.js";
  * the paths could sink into ground the planner thought was under them. The
  * course size is derived from the cell now instead of the other way round,
  * so the two cannot disagree. */
-/* The ground, and it is bigger than it was.
- *
- * Same cell count, larger cells: the search over it costs what it cost, the
- * height field MuJoCo integrates has the same number of samples, and what
- * grows is the ground the dog walks. 0.092 puts the course at 2.85 by 3.31,
- * which is what the bench holds -- see lab/Bench.jsx for why the bench is
- * the size it is. */
-const NX = 31, NY = 36;
-const CELL = 0.092;
-const COURSE_X = NX * CELL;   // 2.852
-const COURSE_Y = NY * CELL;   // 3.312
+/* The ground's grid lives in demos/terrain.js with the height field and the
+   four costs, because it is a property of the ground rather than of the rig
+   that draws it -- and because a second copy of it in the harness drifted
+   the moment this one changed. */
 const TUBE_R = 0.009;
 /* What the gait is asked for, and what it holds. Both measured in
    tools/test_crawl.mjs on this bay's own terrain: at 0.30 m/s commanded it
@@ -434,6 +428,12 @@ export default function TerrainRig({ stop }) {
         travel: +w.travel.toFixed(3),
         frac: w.path && w.path.length > 1
           ? +(w.at / (w.path.length - 1)).toFixed(3) : 0,
+        /* How long each of the four answers is, in cells. This bay is four
+           planners disagreeing, so four empty answers is the one failure it
+           can have that looks exactly like a bay nobody has walked up to --
+           the dog stands still either way. Nothing could see the difference
+           until this was here. */
+        plans: kit.paths.map(pa => pa.length),
         sim: sm ? 1 : 0
       };
       if (sm) {

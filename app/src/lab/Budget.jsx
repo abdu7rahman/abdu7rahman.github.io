@@ -9,10 +9,10 @@ import { setSlots, tick } from "./shadowBudget.js";
  *
  * Reduced motion here means something narrower than "stop", which would be a
  * blank building. Autonomous, looping motion stops: the camera's breathing,
- * the seven machine cycles, the screen flicker. Motion the reader is causing
- * does not -- scrolling still walks the aisle, hovering a cell floor still
- * opens the costmap -- because a control that stops responding is not an
- * accessibility feature.
+ * the eight machine cycles, the screen flicker. Motion the reader is causing
+ * does not -- asking for a station still walks you there, hovering a cell
+ * floor still opens the costmap -- because a control that stops responding
+ * is not an accessibility feature.
  *
  * The split falls out of which clock a thing reads. Anything on a cycle is
  * written against clock.elapsedTime; anything on an easing is written

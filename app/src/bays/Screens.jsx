@@ -9,10 +9,10 @@ import { controls, isRunning } from "../lab/console.js";
 
 /* The demos, on the monitors, seen from the aisle.
  *
- * One component for all seven, because the thing that has to be decided --
+ * One component for all of them, because the thing that has to be decided --
  * which runtimes are standing and which demo inside each one is spending time
- * -- is a property of where the reader is and not of any one cell. Seven
- * components would have been seven copies of the same question and seven
+ * -- is a property of where the reader is and not of any one cell. Eight
+ * components would have been a copy of the same question per cell and as many
  * chances to answer it differently.
  *
  * The monitor belongs to lab/Rig.jsx, which is another agent's file while
@@ -29,8 +29,8 @@ import { controls, isRunning } from "../lab/console.js";
 const RIGS = STOPS.filter(s => s.kind === "rig");
 
 /* The bezel's opening, from Rig.jsx's planeGeometry. The picture is
-   letterboxed into it rather than stretched onto it: the seven canvases are
-   authored at seven aspects -- 960 x 640 for the map against 1204 x 616 for
+   letterboxed into it rather than stretched onto it: the canvases are
+   authored at their own aspects -- 960 x 640 for the map against 1204 x 616 for
    the chase -- and squeezing the map into the chase's hole would put the
    robot's footprint out as an ellipse on the one demo whose entire subject is
    a circle of clearance. */
@@ -53,8 +53,8 @@ const FRAME_W = 1120, FRAME_H = 720;
 
 /* Where a cell's monitor stands, in world metres. lab/Bay.jsx puts its group
    at -at * PITCH and Rig.jsx offsets the monitor inside that; this is the
-   sum, so these seven planes can be mounted once at the top of the scene
-   instead of seven times inside seven bays. */
+   sum, so these planes can be mounted once at the top of the scene
+   instead of once inside each bay. */
 function monitorAt(stop) {
   const s = stop.side;
   /* Behind the machine, not in front of it, and that is a framing decision
@@ -73,7 +73,7 @@ function monitorAt(stop) {
   return { pos: [s * WORK + s * 1.05, 1.62, 0.9 - stop.at * PITCH], ry: -s * 0.62 };
 }
 
-/* What the seven monitors and the one policy share. Passing it as props would
+/* What the monitors and the one policy share. Passing it as props would
    have meant re-rendering the tree every frame to say one thing. */
 const view = { entered: null };
 
@@ -113,9 +113,10 @@ export default function Screens() {
   useFrame(() => {
     const cz = camera.position.z;
 
-    /* Distance to each bay measured from the camera the way nav/Dolly.jsx
-       measures it, so the cell whose screen this file wakes is the cell the
-       dolly is turning its head into. */
+    /* Distance to each bay measured from the camera along the aisle, the
+       same axis lab/console.js's isLive uses to decide which cells are
+       integrating -- so the cell whose screen this file wakes is one of the
+       cells that is actually running. */
     let near = null, nearD = Infinity;
     const closest = {};
     for (const s of RIGS) {
@@ -190,7 +191,7 @@ const SCREEN_GAIN = new THREE.Color().setRGB(1.5, 1.5, 1.5, THREE.LinearSRGBColo
  * the first thing a visitor sees at every cell is a blank grey rectangle, for
  * as long as that takes, and forever if any of those ten requests does not
  * come back. Measured in this sandbox, where the CDN is unreachable: all
- * seven monitors blank, indefinitely, with the cell running perfectly on the
+ * every monitor blank, indefinitely, with the cell running perfectly on the
  * bench in front of them.
  *
  * So a monitor paints its own cell's readout instead, locally, with no
@@ -246,8 +247,8 @@ function Monitor({ stop }) {
   const [fit, setFit] = useState(null);
   const last = useRef(0);
   const { pos, ry } = useMemo(() => monitorAt(stop), [stop]);
-  /* The local card, made once and reused. A canvas per monitor is seven
-     canvases for the building, which is nothing beside the seven iframes. */
+  /* The local card, made once and reused. A canvas per monitor is one per
+     cell, which is nothing beside the iframes the document demos run in. */
   const card = useMemo(() => {
     if (typeof document === "undefined") return null;
     const cv = document.createElement("canvas");

@@ -193,7 +193,9 @@ export default function Envelope() {
 
   const frag = useMemo(() => poolFrag(mouths.length), [mouths]);
 
-  /* The proxy box for the beams, built once and shared by all seven.
+  /* The proxy box for the beams, built once and shared by all of them --
+     one per bay mouth, which is every stop off the centre line and is a
+     number this derives rather than states.
   
      Translated down half its height, which it was not, and that was cutting
      every beam in half. The shader works in object space with the aperture
@@ -202,7 +204,7 @@ export default function Envelope() {
      half of it in the sky above the roof and none of it over the lower half
      of the beam. Since the material is BackSide and the chord is analytic,
      the box does not bound the light, it only decides which pixels get to
-     ask for it: below mid height nothing asked, and seven beams sheared
+     ask for it: below mid height nothing asked, and a dozen beams sheared
      along the sun and truncated at the same height read as a staircase of
      bright rectangles.
   

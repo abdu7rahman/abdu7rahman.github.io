@@ -24,7 +24,7 @@ export const BAY_D = 7.6;          // how far a bay runs back from the aisle
    machine near enough to read and still inside its own fence. */
 export const WORK = AISLE / 2 + 1.7;
 
-/* Seven rigs and six rooms, in the order you meet them walking in.
+/* Eight rigs and six rooms, in the order you meet them walking in.
  *
  * `side` is which hand of the aisle it stands on, `at` is its station along
  * the aisle in structural bays. The demos are the reason the building exists,
@@ -35,16 +35,14 @@ export const WORK = AISLE / 2 + 1.7;
  * `kind: rig` is a test cell with a machine in it and a live demo on its
  * screen. `kind: room` is somewhere you go to read.
  *
- * `frame` is what the shot is of, and nav/Dolly.jsx is its only reader. A
- * course rig runs its work on the bench surface -- an occupancy grid, a cost
- * field, a lap -- so the camera has to get above it and take in the whole
- * 2.7 m of it, or the map is a band of colour seen edge on. A machine rig's
- * subject is the 0.6 m of arm standing on the bench, which wants the
- * opposite: in close, near eye height, on a longer lens. An envelope rig's
- * subject is bigger than its machine -- the reach bay draws a 2.6 m
- * workspace around a 0.6 m arm -- so it steps back rather than leaning in.
- * One shot cannot be all three, and guessing from the machine would be
- * guessing.
+ * There used to be a third field, `frame`, naming which of three canned
+ * shots a cell wanted -- course, machine, or the pair the assembly bay
+ * needs. nav/Dolly.jsx was its only reader and Dolly was the camera when the
+ * building was a scrollbar. The camera is nav/Follow.jsx now and it composes
+ * from the survey instead: nav/stations.js sweeps the floor for a spot with
+ * a clear ray to the work at a distance that fills the frame, which answers
+ * the same question from the geometry that is actually there rather than
+ * from a word written down beside it. So the field went with its reader.
  */
 export const STOPS = [
   /* "About", not "High bay". A high bay is the trade name for a building
@@ -61,7 +59,7 @@ export const STOPS = [
    * The reading rooms used to be interleaved with the machines -- a room at
    * 3.0, another at 5.2, two more at the far end -- on the idea that a walk
    * wants pauses in it. What a visitor actually got was two demos, then a
-   * wall of prose, then two more demos. The seven bays are the only thing
+   * wall of prose, then two more demos. The eight bays are the only thing
    * here nobody else's site has; they are what somebody came to see and they
    * now run one after another. The rooms are what you read once the machines
    * have made you want to, so they come after.
@@ -78,10 +76,10 @@ export const STOPS = [
    * more is the one kind of wrong this building cannot afford -- everything
    * here is checkable by standing in front of it. The race bay two stops on
    * does compare four controllers, and says four. */
-  { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search", frame: "course",
+  { id: "space",    kind: "rig",  side: -1, at: 1,   title: "Search",
     sub: "A*, eight-connected, octile",
     note: "Draw walls on the bench and watch A* expand across them. The Burger drives whatever path comes out." },
-  { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control", frame: "course",
+  { id: "drive",    kind: "rig",  side:  1, at: 1.6, title: "Local control",
     sub: "a velocity-space sampler",
     note: "Put obstacles in a TurtleBot's way with the cursor. Every arc it draws is a trajectory that was scored." },
   /* Four, not the written section's five. lab/demos/controllers.js and
@@ -90,7 +88,7 @@ export const STOPS = [
      nonlinear optimisation over a timed elastic band and is not something
      this building runs; the written section benchmarks all five and this
      bay says four because four is what is on the bench. */
-  { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race", frame: "course",
+  { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race",
     sub: "DWA, MPPI, pure pursuit, Stanley",
     note: "The same plan, the same clock and the same base, four ways of following it." },
   /* A swerve base where the reachable set used to be.
@@ -101,20 +99,20 @@ export const STOPS = [
    * turns one body twist into eight commands -- from this account's own
    * swerve_drive_robot_pkg and swerve_ros -- and it does the one thing no
    * other machine in this building can: go one way while facing another. */
-  { id: "swerve",   kind: "rig",  side:  1, at: 3,   title: "Swerve", frame: "course",
+  { id: "swerve",   kind: "rig",  side:  1, at: 3,   title: "Swerve",
     sub: "four steerable modules",
     note: "Drive it where you point while it spins. Where it goes and where it faces are separate commands." },
-  { id: "foresee",  kind: "rig",  side: -1, at: 3.6, title: "Replan", frame: "machine",
+  { id: "foresee",  kind: "rig",  side: -1, at: 3.6, title: "Replan",
     sub: "UR12e, continuous",
     note: "Block the arm mid-motion and watch it cancel and replan around your hand." },
-  { id: "terrain",  kind: "rig",  side:  1, at: 4.3, title: "Cost", frame: "course",
+  { id: "terrain",  kind: "rig",  side:  1, at: 4.3, title: "Cost",
     sub: "Go2, four cost functions",
     note: "Click a point on a course and watch four cost functions drive to it." },
   /* The task the recordings in this project are actually of. It was a
      handover of one block through eight solved poses; it is six tools, two
      bins and two arms that each take whatever is nearest them, simulated
      rather than played back. */
-  { id: "assemble", kind: "rig",  side: -1, at: 5,   title: "Sorting", frame: "pair",
+  { id: "assemble", kind: "rig",  side: -1, at: 5,   title: "Sorting",
     sub: "bimanual, simulated",
     note: "Two arms sorting a bench of tools. Every tool is a free body and every grasp can fail." },
 
@@ -124,7 +122,7 @@ export const STOPS = [
      was running on the document site and nowhere else. A portfolio whose
      subject is physical AI had no bay where a trained policy drives
      anything. */
-  { id: "policy",   kind: "rig",  side:  1, at: 5.7, title: "Cloned", frame: "course",
+  { id: "policy",   kind: "rig",  side:  1, at: 5.7, title: "Cloned",
     sub: "a trained policy, driving",
     note: "A network cloned from the controller beside it, with the eleven beams that are its whole input." },
 

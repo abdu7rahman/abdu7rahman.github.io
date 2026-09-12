@@ -1,8 +1,3 @@
-import { P } from "../lib/palette.js";
-import UR12e from "./UR12e.jsx";
-import TurtleBot from "./TurtleBot.jsx";
-import Go2 from "./Go2.jsx";
-import { WORK } from "../lib/plan.js";
 import Fixtures from "./Fixtures.jsx";
 import SearchRig from "./SearchRig.jsx";
 import DriveRig from "./DriveRig.jsx";
@@ -13,83 +8,43 @@ import TerrainRig from "./TerrainRig.jsx";
 import SortRig from "./SortRig.jsx";
 import PolicyRig from "./PolicyRig.jsx";
 
-/* What stands in a cell: a screen on a stand and the machine it is driving.
+/* What stands in a cell, which is now always the cell's own rig.
  *
- * The screen is emissive and unlit rather than a material with a light on it,
- * because a monitor is a source. It is the brightest thing in its bay by a
- * wide margin, which is correct -- in a dark building the running plot is
- * what your eye goes to, and that is exactly where the work is.
+ * This file used to be the cell: a screen on a stand, and next to it one of
+ * three vendor meshes going through a canned cycle while the demo it was
+ * about ran on the monitor as a picture. Cell by cell each of those was
+ * replaced by a rig that does the work on the bench -- a real occupancy grid
+ * with a real A* over it, a real MPPI, a real checkpoint driving a real
+ * Burger -- and with lab/PolicyRig.jsx the eighth and last one went.
  *
- * Each cell shows the machine its demo is actually about. Three of them are
- * not arms: drive and race are a TurtleBot3 Burger and cost is a Go2, and for
- * a while all seven bays stood a UR12e because those two meshes were not in
- * this repository. They are now, so this is no longer the place where that
- * gets apologised for.
+ * So the fallback is gone rather than left in reach. It had drifted into
+ * something untrue on its way out: its comment claimed the building would
+ * otherwise be "seven machines moving in unison", and it offset each cell's
+ * phase by stop.at to avoid that, for cells that had not read either number
+ * in months. A branch that cannot run is a branch nobody re-reads, and this
+ * one had been describing a building that no longer existed.
+ *
+ * tools/test_lab.js checks that every rig stop in lib/plan.js is named here,
+ * so adding a stop without a rig fails a test run rather than rendering an
+ * arm with nothing to do.
  */
-
-/* Which machine each rig is running, keyed by the stop ids in lib/plan.js.
-   Anything not named here is an arm, which is the majority and the default. */
-const MACHINE = { drive: "burger", race: "burger", terrain: "go2",
-                  policy: "burger" };
-
-/* Cells that run their own work on the bench rather than standing a machine
-   next to a picture of it. lab/SearchRig.jsx is the first: it lays an
-   occupancy grid on the bench top, expands a real A* across it, and drives
-   the real Burger down the path that comes out. Anything named here owns its
-   whole cell -- the machine included -- so this file steps out of the way. */
 const RUNS = { space: SearchRig, drive: DriveRig, swerve: SwerveRig,
                foresee: ForeseeRig, race: RaceRig, terrain: TerrainRig,
                assemble: SortRig, policy: PolicyRig };
 
-/* The bench is 3.0 by 3.8 m and the 3.8 m side runs parallel to the aisle.
-   That is the axis a mobile base gets to drive along, so it is the one
-   passed down; TurtleBot.jsx takes its own swept radius off the geometry and
-   works out the rest. lab/Bench.jsx owns the number as BENCH_D and does not
-   export it, which is deliberate -- it is a dimension of a piece of
-   furniture, not an interface -- so this is a second statement of it rather
-   than a second definition. */
-const BENCH_RUN = 3.8;
 export default function Rig({ stop }) {
-  const s = stop.side;
-  const x = s * WORK;
   const Own = RUNS[stop.id];
-  if (Own) return <><Fixtures stop={stop} /><Own stop={stop} /></>;
-  return (
-    <group>
-      {/* The monitor itself belongs to bays/Screens.jsx, which owns the
-          running demo and the texture it is drawn on. This file drew one too,
-          at exactly the same transform, and the two z-fought -- the opaque
-          placeholder won, so every cell showed two coloured bars while a real
-          demo rendered into a texture nobody could see. One screen, and the
-          file that has something to put on it draws it. The post stays here,
-          because a post is furniture and not a display. */}
-      <Fixtures stop={stop} />
+  /* Fixtures is still this file's, because it is the furniture every cell
+     has whatever is running in it -- the stand, the post, the guarding --
+     and a rig should not have to redraw a bench to own its bench top.
 
-      {/* The machine. The vendor's own triangles in all three cases, moved by
-          the vendor's own kinematics: the arm by the measured module the
-          document site's reachable-set formation also solves against, the
-          Burger by the wheel radius and track its URDF states, the Go2 by the
-          link lengths and joint limits in its. Each cell is offset in its
-          cycle so the building is not seven machines moving in unison, which
-          reads as an animation rather than as seven rigs running.
-
-          A mobile base sits at the middle of its bench rather than at the
-          arm's offset, because it needs the length of it to drive down and
-          the arm needed the near corner to reach over. */}
-      {MACHINE[stop.id] === "burger" ? (
-        <group position={[x, 0.9, 0]}>
-          <TurtleBot phase={(stop.at * 0.37) % 1} bench={BENCH_RUN} />
-        </group>
-      ) : MACHINE[stop.id] === "go2" ? (
-        <group position={[x, 0.9, 0]}>
-          <Go2 phase={(stop.at * 0.37) % 1} />
-        </group>
-      ) : (
-        <group position={[x - s * 0.5, 0.9, -0.2]}>
-          <UR12e phase={(stop.at * 0.37) % 2} />
-        </group>
-      )}
-
-    </group>
-  );
+     The rig gets a name so what a cell costs can be asked of the built
+     scene rather than counted off the source. lib/capability.js's cost
+     table is taken that way, by hiding these and rendering again, and the
+     tier ladder is decided by what comes back. It costs eight more
+     Object3Ds and eight more matrix multiplies a frame -- three walks the
+     whole graph in updateMatrixWorld whether a local matrix is identity or
+     not -- against the 693 draw calls the same frame spends, which is a
+     price worth paying for a number that is measured. */
+  return <><Fixtures stop={stop} /><group name={"rig:" + stop.id}><Own stop={stop} /></group></>;
 }
