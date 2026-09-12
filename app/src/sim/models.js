@@ -450,10 +450,29 @@ export function swerve(name, { pos = [0, 0], yaw = 0, half = 0.06,
   let act = "";
   for (const [id] of SWERVE_MODULES) {
     /* Steer is a position servo and drive is a velocity servo, which is the
-       pair of transmissions the URDF declares. The steer gain is what holds
-       a module against the scrub of a wheel that is being driven while it
-       turns; the force ceilings are the URDF's own effort limits. */
-    act += `<position name="${name}_${id}_s" joint="${name}_${id}_s" kp="8"
+       pair of transmissions the URDF declares, and the force ceilings are
+       its own effort limits: 10 N m on the steering joint and a wheel joint
+       the description gives 0.001.
+    
+       The steer gain is not the URDF's, because a URDF does not carry one.
+       It was 8, and 8 is soft enough that the modules never arrive: read off
+       the cell, all four commanded to 16 degrees while the base was asked
+       for (-0.20, -0.06) m/s, the wheels' own forward kinematics came back
+       (-0.03, -0.17) -- a base going ninety degrees away from where it was
+       sent, because the steer servos were still on their way there. A
+       position servo's standing error is its load over its gain and the load
+       here is a 0.05 kg wheel scrubbing, so the gain is what decides whether
+       the module is pointing where the controller said.
+    
+       At 220 the base does what it is told. Measured over 150 simulated
+       seconds of it driving its own goals: the twist asked for and the twist
+       the four contacts actually produce agree to 0.021 m/s in translation,
+       and to 0.021 rad/s on a 1.6 rad/s spin -- one part in eighty. The
+       worst single reading is 0.99 m/s and it is a module flipping through
+       180 degrees, where for a few ticks the wheel is still turning the way
+       it was and the steer has not arrived. That is a real transient of a
+       real optimisation and not an error to tune away. */
+    act += `<position name="${name}_${id}_s" joint="${name}_${id}_s" kp="220"
               dampratio="1" forcerange="-10 10"/>`;
     act += `<velocity name="${name}_${id}_w" joint="${name}_${id}_w" kv="0.06"
               forcerange="-0.5 0.5"/>`;

@@ -356,7 +356,10 @@ export default function ForeseeRig({ stop }) {
         if (!kit.predict) continue;
         const r = kit.track.radiusAt(HORIZONS[i], kit.r, 2, 0.35, _fc);
         m.position.set(_fc[0], _fc[1], _fc[2]);
-        m.scale.setScalar(r);
+        /* The ring's own tube stays the thickness it was authored at while
+           its radius scales, or a far horizon comes out as a fat doughnut
+           rather than as a wider circle. */
+        m.scale.set(r, r, 1);
       }
 
       if ((!ok || soon) && !kit.dead) {
@@ -550,16 +553,24 @@ export default function ForeseeRig({ stop }) {
                                 transparent opacity={0.42} />
         </mesh>
 
-        {/* The forecast, as one sphere per horizon. Not a decoration: these
-            are the spheres timeToCollision is checking the arm against, at
-            the radii the filter's own covariance gives, so what the reader
-            sees is what the planner is arguing with. They open with the
-            horizon because the uncertainty does. */}
+        {/* The forecast, as one ring per horizon: the tube's own section at
+            the plane through each predicted centre, at the radii the
+            filter's covariance gives. Not a decoration -- these are the
+            spheres timeToCollision is checking the arm against, so what the
+            reader sees is what the planner is arguing with, and they open
+            with the horizon because the uncertainty does.
+        
+            Drawn as sections and not as the spheres themselves, which was
+            the first version and is what a screenshot settled: at the cap
+            the tube is 1.10 m of radius on a 3 m bench, so four translucent
+            domes stacked over the whole cell and the arm inside them was
+            gone. A section carries the same number and leaves the machine
+            visible, which is the only reason the number is worth drawing. */}
         {HORIZONS.map((h, i) => (
-          <mesh key={i} ref={el => (cone.current[i] = el)}>
-            <sphereGeometry args={[1, 16, 12]} />
+          <mesh key={i} ref={el => (cone.current[i] = el)} rotation-x={0}>
+            <torusGeometry args={[1, 0.012, 6, 48]} />
             <meshBasicMaterial color={P.accent} transparent
-              opacity={0.09} depthWrite={false} />
+              opacity={0.55} depthWrite={false} />
           </mesh>
         ))}
       </group>

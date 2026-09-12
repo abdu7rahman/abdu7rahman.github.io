@@ -42,9 +42,15 @@ export const SWERVE = {
   wheelR: 0.01,
   wheelW: 0.01,
   deck: [0.15, 0.09, 0.015],
-  maxV: 0.55,          // m/s at the contact, what the wheel joints can hold
-  maxW: 3.2            // rad/s of the body, before the modules saturate
+  maxV: 0.55           // m/s at the contact, what the wheel joints can hold
 };
+
+/* What a pure spin costs a module, which is what the bay's spin control has
+   to be scaled against. A module sits hypot(0.06, 0.06) = 0.0849 m off the
+   centre, so spinning at w puts 0.0849 w on every wheel: the modules
+   saturate at 0.55 / 0.0849 = 6.5 rad/s of body yaw with nothing left for
+   going anywhere. */
+export const SPIN_R = Math.hypot(SWERVE.half, SWERVE.half);
 
 /* Module order and where each one sits, front-left first and then clockwise,
    so the readout reads round the robot rather than in whatever order a
