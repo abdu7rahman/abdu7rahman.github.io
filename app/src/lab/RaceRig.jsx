@@ -93,11 +93,44 @@ export default function RaceRig({ stop }) {
                             nv: odd(5 * w), nw: odd(15 * w) });
     const mppi = new MPPI({ maxV: MAX_V, maxW: MAX_W,
                             K: Math.max(24, Math.round(96 * w)) });
+    /* The one thing the reader gets to change, and it is the one that
+     * decides the answer.
+     *
+     * Four controllers on one plan at one speed is a single data point
+     * presented as a comparison. The interesting fact about this set is that
+     * the ranking is a function of speed: below about 0.1 m/s all four hold
+     * the line to within a centimetre and the bay says nothing, and at the
+     * Burger's own ceiling they are a hand's width apart. A ceiling the
+     * reader can sweep is the difference between watching a result and
+     * running the experiment that produced it.
+     *
+     * It is a ceiling and not a speed: every controller still chooses its
+     * own v below it, which is most of what separates them in a corner. And
+     * it stops at MAX_V, which is turtlebot3_teleop's own stated limit for
+     * this base -- the slider narrows the admissible set, it never widens
+     * it past what the URDF's own teleop allows.
+     *
+     * Measured in the page, 45 s from the grid, worst cross-track in mm:
+     *
+     *              0.08 m/s   0.22 m/s
+     *   mppi            54         95
+     *   stanley         57         48
+     *   pure pursuit    67         76
+     *   sampler        117        131
+     *
+     * Which is the reason for the control rather than a decoration on it:
+     * MPPI is first at the low ceiling and third at the high one, and any
+     * single-speed version of this bay would have published one of those two
+     * orders as the answer. The copy claims the order changes and does not
+     * claim these numbers, because one 45 s run of four stochastic
+     * controllers is a sample and not a benchmark -- the written site is
+     * where the benchmark lives. */
+    const cap = { v: MAX_V };
     const runners = [
       { name: "pure pursuit", col: P.hazard,
-        step: (st) => purePursuit(st, path, { look: 0.34, maxV: MAX_V, maxW: MAX_W }) },
+        step: (st) => purePursuit(st, path, { look: 0.34, maxV: cap.v, maxW: MAX_W }) },
       { name: "stanley", col: P.teal,
-        step: (st) => stanley(st, path, { k: 2.4, lead: 0.10, maxV: MAX_V, maxW: MAX_W }) },
+        step: (st) => stanley(st, path, { k: 2.4, lead: 0.10, maxV: cap.v, maxW: MAX_W }) },
       { name: "sampler", col: "#c8b46a",
         step: (st) => {
           // The sampler needs a goal, not a path: it is a local planner. The
@@ -115,7 +148,7 @@ export default function RaceRig({ stop }) {
         step: (st) => mppi.step(st, path, rand),
         reset: () => mppi.reset() }
     ];
-    return { path, runners, rand };
+    return { path, runners, rand, cap, dwa, mppi };
   }, []);
 
   const poses = useRef(kit.runners.map((_, i) => {
@@ -192,6 +225,18 @@ export default function RaceRig({ stop }) {
   useEffect(() => register(stop.id, {
     title: "Four controllers, one plan",
     actions: [{ label: "Restart", on: () => reset() }],
+    slider: {
+      label: "Ceiling", min: 0.06, max: MAX_V, step: 0.005,
+      get: () => kit.cap.v,
+      set: (v) => {
+        kit.cap.v = v;
+        // The two that hold a window rather than reading one per call.
+        kit.dwa.maxV = v;
+        kit.mppi.maxV = v;
+        reset();
+      },
+      fmt: (v) => v.toFixed(2) + " m/s"
+    },
     readout: () => {
       /* Ranked on the worst each has been off the line, best first, because
          that is the number beside it and a board sorted on something it does
@@ -209,14 +254,27 @@ export default function RaceRig({ stop }) {
     say: () => {
       const b = kit.runners.map((r, i) => ({ n: r.name, w: poses.current[i].worst || 0 }))
         .sort((a, c) => a.w - c.w);
-      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan.";
-      return `Same plan, same clock, same robot. ${b[0].n} is holding the line best `
-           + `at ${(b[0].w * 1000).toFixed(0)} mm off; ${b[b.length - 1].n} is worst `
-           + `at ${(b[b.length - 1].w * 1000).toFixed(0)} mm.`;
+      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan. Move the ceiling and the order changes.";
+      const spread = (b[b.length - 1].w - b[0].w) * 1000;
+      return `Same plan, same clock, same robot, capped at ${kit.cap.v.toFixed(2)} m/s. `
+           + `${b[0].n} is holding the line best at ${(b[0].w * 1000).toFixed(0)} mm off; `
+           + `${b[b.length - 1].n} is worst at ${(b[b.length - 1].w * 1000).toFixed(0)}, `
+           + `${spread.toFixed(0)} mm behind it. Change the ceiling and that order is not the same order.`;
     },
     tick: step,
     sim: () => !!sim.current,
-    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. They all go the same distance; they do not all stay on the line."
+    /* The four machines' own numbers, so a harness can check that a ceiling
+       change actually changed the answer rather than only the label. */
+    state: () => ({
+      cap: +kit.cap.v.toFixed(3),
+      runners: kit.runners.map((r, i) => {
+        const q = poses.current[i];
+        return { name: r.name, off: +(q.off || 0).toFixed(4),
+                 worst: +(q.worst || 0).toFixed(4), lap: q.lap || 0,
+                 travel: +q.travel.toFixed(3) };
+      })
+    }),
+    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. Drag the ceiling: which controller holds the line best depends on how fast you let them go, and that is the whole result."
   }), [stop.id, kit]);
 
   /* The starts, spaced along the path the same way reset() spaces them, so
