@@ -336,11 +336,29 @@ export default function ForeseeRig({ stop }) {
         return out;
       };
       kit.ttc = timeToCollision(armAt, kit.armPts, kit.radii, kit.track, {
+        /* Two sigmas and a 0.35 m cap, where predictive_replanning/run.py
+           defaults to one and 0.10. The filter itself does not diverge --
+           accel_std 1.2 and meas_std 0.02 are the module's own, and a
+           constant-velocity forecast at that process noise reaches 1.5 m of
+           sigma by 1.6 s, so the cap is doing real work either way.
+           What differs is how much of that uncertainty the arm is made to
+           respect.
+
+           Measured, because the wider tube is the more expensive one and a
+           preference is not a reason. tools/test_replan.js, 300 s of the
+           same drift at each setting: two sigmas and 0.35 gives 16 contacts
+           against 86 reactive; one sigma and 0.10 gives 35 against 82. The
+           reference implementation's own defaults are twice the contacts
+           here, which is not a close call, and this bay is the one place in
+           the building where the honest answer is the more cautious one --
+           a cell about seeing the collision coming that walks into half of
+           them is not making its point.
+
+           The earlier note here said the cap was "the cell's own" because
+           the workspace is 1.2 m across. That was not a reason, it was an
+           arithmetic error: two sigmas of 0.35 is a 1.58 m tube, wider than
+           the workspace it claimed to be bounded by. */
         base: kit.r, nSigma: 2, clearance: 0.02, horizon: 1.6, steps: 10,
-        /* The cap is the cell's own. This workspace is about 1.2 m across
-           and an obstacle cannot be outside it, so the tube saturates at
-           0.35 m of sigma rather than growing to the 2.4 m a two-second
-           constant-velocity forecast implies. */
         cap: 0.35,
         rate: SPEED / Math.max(0.05, 1 - kit.u)
       });

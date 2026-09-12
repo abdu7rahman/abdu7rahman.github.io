@@ -26,36 +26,49 @@ import { WORK } from "../lib/plan.js";
  * machine in this building can do, and which is the whole reason anybody
  * builds one of these.
  */
-/* The course, and it is smaller than the others on purpose.
+/* The course, the same 2.70 by 3.40 m every other bench runs.
  *
- * Every other bench in this building runs a 2.70 by 3.40 m course because
- * that is what a TurtleBot wants -- 0.14 m of robot across twenty of its own
- * widths. This robot is the same footprint and a fifth of the height: a
- * 15 mm deck, which from a lens twenty degrees above it is a sliver. Looked
- * at in the page at the full size it was a white speck at the edge of an
- * empty slab and the cell read as switched off.
+ * It was half that for a while, and the reasoning was wrong in a way worth
+ * writing down. This robot is a TurtleBot's footprint at a fifth of its
+ * height -- a 15 mm deck, from a lens twenty degrees above it -- and in the
+ * page it read as a speck on an empty slab. The course was halved to make
+ * the base a larger fraction of it.
  *
- * So the course is sized to the machine rather than to the bench. Half the
- * others puts the base at about the same fraction of the frame a Burger
- * occupies in the local control bay, which is the ratio that was already
- * known to read, and leaves the rest of the bench as what it is: bench. */
-const COURSE_X = 1.35, COURSE_Y = 1.70;
+ * That cannot work, and a screenshot says so. nav/stations.js frames the
+ * bench, not the course: it picks a distance that fills the frame with the
+ * 3.8 m bench and opens the lens to 50 degrees to cover it. How large the
+ * base reads is set by its own size and that distance and by nothing else,
+ * so halving the course left the machine exactly as small and doubled the
+ * empty bench around it. The cell read worse than before.
+ *
+ * The deck is 0.15 by 0.09 by 0.015 m because swerve_drive_robot_description
+ * says so, and that is not a number this site gets to change. What the cell
+ * has instead is everything that is not the robot -- the cones, the trail,
+ * the heading ticks, the four module lines -- and those want room to spread
+ * out over, which is the course the others run. */
+const COURSE_X = 2.70, COURSE_Y = 3.40;
 const TICK = 1 / 50;
 /* How hard it chases the goal. A swerve base has no heading constraint on
    its translation, so this is two independent proportional terms and not a
    pursuit controller -- there is no arc to follow. */
 const KP = 1.6;
 const ARRIVE = 0.10;
-const CONES = [[-0.28, 0.31, 0.05], [0.29, 0.11, 0.05],
-               [-0.09, -0.35, 0.05], [0.36, -0.52, 0.05]];
-const START = [-0.45, -0.65, 0.5];
+/* Scattered over the whole course rather than over the middle of it, so
+   the base has somewhere to drive to at every corner and the trail crosses
+   the bench instead of circling in one quarter of it. */
+const CONES = [[-0.56, 0.62, 0.05], [0.58, 0.22, 0.05],
+               [-0.18, -0.70, 0.05], [0.72, -1.04, 0.05],
+               [-0.82, -0.18, 0.05], [0.22, 1.12, 0.05]];
+const START = [-0.90, -1.30, 0.5];
 
 /* The three ways to run it, and two of them are deliberately wrong. */
 const MODE = { GOOD: 0, NOFLIP: 1, THREE: 2 };
-/* Points of trail, and how far apart they are laid. 0.04 m is about a
-   quarter of the deck, so the heading ticks read as a comb rather than as a
-   smear, and 220 of them is nine metres of course -- long enough to hold a
-   whole run and short enough to fade before it becomes wallpaper. */
+/* Points of trail, and how far apart they are laid. 0.025 m is a sixth of
+   the 0.15 m deck, so the heading ticks read as a comb rather than as a
+   smear, and 220 of them is 5.5 m of course -- longer than the 3.4 m the
+   bench runs, so a whole crossing stays on screen, and short enough that it
+   fades before it becomes wallpaper. (It said 0.04 m and nine metres, which
+   was neither number this line has ever held.) */
 const TRAIL = 220, TRAIL_STEP = 0.025, TICK_LEN = 0.045;
 
 /* How far the spin control goes, and it is derived rather than picked. A pure

@@ -97,9 +97,51 @@ const SHOTS = new Map();
    a 58 degree frame rather than merely out of its centre. */
 const CAM_R = 0.55;
 let map = null;
+let scene = null;
+
+/* How high to aim at a cell, taken from what the cell has in it.
+ *
+ * nav/stations.js picks the standing spot and the lens from the survey, and
+ * aims at a fixed 0.92 m -- a little under the 0.9 m bench top, which spends
+ * the headroom on the sign the guide is holding. That is right for a cell
+ * whose work happens on the bench and wrong for one whose work happens over
+ * it, and the building has both. Measured at the arrival shot: the replan
+ * cell's contents run from 0.82 m to 2.37 m, and the frame at that aim tops
+ * out around 2.11 -- so the outermost forecast ring, the thing the whole bay
+ * is about, was cut off by the top edge. The sorting cell, 0.90 to 1.99, sat
+ * comfortably inside the same frame. One number could not be right for both.
+ *
+ * So it is not one number. lab/Rig.jsx names every cell's subtree `rig:<id>`
+ * and this boxes it: aim at the middle of what is actually there, clamped so
+ * a cell that fits keeps the low aim it was composed with. Derived from the
+ * geometry rather than written down beside it, which is the same rule the
+ * standing spot already follows -- and it means a bay that grows something
+ * tall reframes itself instead of quietly running off the top.
+ *
+ * Bounded below at the composed 0.92 because lifting the aim on a cell that
+ * did not need it would push the guide's sign toward the bottom edge for
+ * nothing, and above at 1.35 because past that the bench front leaves the
+ * frame and the cell stops reading as standing on anything.
+ */
+const AIM_LO = 0.92, AIM_HI = 1.35;
+const _box = new THREE.Box3();
+function aimY(id, shot) {
+  const g = scene && scene.getObjectByName("rig:" + id);
+  if (!g) return shot.look[1];
+  _box.makeEmpty();
+  _box.setFromObject(g);
+  if (!isFinite(_box.max.y) || _box.isEmpty()) return shot.look[1];
+  /* The middle of the cell, pulled back toward the composed aim: the top of
+     a cell is often one faint thing and centring on it would waste the
+     frame on air. Two thirds of the way down from the top is where the
+     machine is in every one of them. */
+  const mid = _box.max.y - (_box.max.y - _box.min.y) * 0.62;
+  return Math.min(AIM_HI, Math.max(AIM_LO, mid));
+}
 
 export default function Follow() {
-  const { camera } = useThree();
+  const { camera, scene: sc } = useThree();
+  scene = sc;
   useEffect(() => onMap(grid => {
     map = grid;
     SHOTS.clear();
@@ -228,6 +270,7 @@ export default function Follow() {
       if (shot) {
         _eye.set(shot.eye[0], shot.eye[1], shot.eye[2]);
         _look.set(shot.look[0], shot.look[1], shot.look[2]);
+        _look.y = aimY(j.at || j.target, shot);
         wantFov = shot.fov;
       } else {
         _eye.set(gx + _fwd.x * 2.35, 1.52, gz + _fwd.z * 2.35);

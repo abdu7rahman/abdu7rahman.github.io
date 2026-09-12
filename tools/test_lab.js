@@ -261,6 +261,7 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
        r.worst.toFixed(4) + ' vs ' + r.radius);
   }
 
+  const framed = [];
   console.log('\nF. every cell answers the cursor');
   {
     /* Each rig, exercised the way somebody standing at it would, and asked
@@ -281,8 +282,34 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
          a list that covers seven of eight passes by not looking. */
       { id: 'policy', how: 'hover', what: 'the cloned controller takes a goal' }
     ];
+    /* Does the cell fit the shot it is given. Folded into this loop because
+       the walk is the expensive part and this is already standing there.
+
+       nav/Follow.jsx aims at what the cell contains rather than at a fixed
+       height, and this is the check that keeps it honest: before that, the
+       replan cell ran from 0.82 m to 2.37 m against a frame topping out
+       around 2.11, so the outermost forecast ring -- the thing the bay is
+       about -- was cut off by the top edge, and the only way anybody found
+       out was by looking at a screenshot. */
     for (const c of cases) {
       await goTo(c.id);
+      framed.push(await pg.evaluate((id) => {
+        const L = window.__lab, T = L.THREE;
+        const g = L.scene.getObjectByName('rig:' + id);
+        if (!g) return { id, err: 'no rig group' };
+        L.scene.updateMatrixWorld(true);
+        const b = new T.Box3().setFromObject(g);
+        if (b.isEmpty()) return { id, err: 'empty box' };
+        let top = 1, bot = 0;
+        for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y])
+          for (const z of [b.min.z, b.max.z]) {
+            const v = new T.Vector3(x, y, z).project(L.camera);
+            const sy = -v.y * 0.5 + 0.5;
+            if (sy < top) top = sy;
+            if (sy > bot) bot = sy;
+          }
+        return { id, top: +top.toFixed(3), bot: +bot.toFixed(3) };
+      }, c.id));
       const before = await rows();
       /* Aimed at the cell's own surface rather than at a pixel somebody
          guessed. Every rig names the thing its pointer handlers are on, so
@@ -342,6 +369,15 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       ok(c.what, moved, (before[0] || '(no readout)') + '  ->  ' + (after[0] || '(none)') +
          (moved ? '' : '   [phase ' + j2.phase + ', at ' + j2.at + ', target ' + j2.target + ']'));
     }
+  }
+
+  console.log('\nF0. and every cell fits the shot it arrives at');
+  {
+    const bad = framed.filter(f => f.err || f.top < 0.01 || f.bot > 0.99);
+    ok('all eight rigs read their whole height', bad.length === 0,
+       bad.map(f => f.id + ' ' + (f.err || f.top + '..' + f.bot)).join(', '));
+    ok('and the measurement found all of them', framed.length === 8,
+       String(framed.length));
   }
 
   console.log('\nF1. and the sorting cell actually sorts');
