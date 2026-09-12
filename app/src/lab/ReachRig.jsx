@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import UR12e from "./UR12e.jsx";
-import { linkFrames, toolPoint, TCP_Z } from "../../../world/kinematics.js";
+import { linkFrames, toolPoint, REST } from "../../../world/kinematics.js";
+import { solve } from "../sim/ik.js";
 import { register, isRunning } from "./console.js";
 import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
@@ -212,6 +213,16 @@ function surface(kit, geo, radius, tint) {
 /* The shoulder height, module scope because `surface` needs it too. */
 const SHOULDER = 0.1807;
 
+/* The two tool directions the probe can be asked for, in the arm's own base
+   frame. Down is a UR facing its work on a bench; out is the tool horizontal,
+   which is what a machine-tending cell wants and reaches a different set. */
+const DOWN_V = new THREE.Vector3(0, 0, -1);
+
+/* How fast the drawn arm walks to a solution, rad/s per joint. A solve is
+   instant and an arm is not, and snapping between two configurations reads
+   as a picture changing rather than as a machine moving to a point. */
+const RATE = 2.2;
+
 export default function ReachRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
@@ -281,41 +292,151 @@ export default function ReachRig({ stop }) {
 
   const tint = useMemo(() => new THREE.Color(), []);
 
-  /* Rebuild is the control that matters: the cloud is a Monte Carlo estimate
-     of a set, and being able to throw it away and watch it re-form is how
-     anybody checks that the shape is the arm's and not the sampler's. The
-     joint choice is the same question asked more sharply -- lock the base
-     and the envelope collapses to the plane the other five can reach, which
-     is a different and more legible fact about the machine. */
+  /* A point the reader puts somewhere, and the arm's own answer about it.
+   *
+   * The shell was the whole cell and the complaint about it was fair: the
+   * UR12e's reach is on its data sheet, a shape that builds itself and then
+   * sits there is a loading animation, and a visitor could not ask it
+   * anything. The number nobody has is the one this now answers -- not "how
+   * far does it reach" but "can it put the tool *here*, pointing *that* way,
+   * in the configuration a cell would actually be commissioned in".
+   *
+   * Those are different sets and the gap between them is the point. The
+   * shell above is swept over five joints across their full turns: it is
+   * every place the tool centre can be. sim/ik.js solves inside one
+   * configuration branch -- shoulder down, elbow one way -- because an arm
+   * that flips branch between two waypoints is an arm no servo can follow,
+   * and it solves direction as well as position. So the solver reaches less
+   * than the shell, always, and the readout says which number is which
+   * rather than pretending they are one fact.
+   */
+  const target = useRef(new THREE.Vector3(0.62, 0.10, 0.55));
+  const probe = useRef({ err: 9, ok: false, shell: 0, depth: 0.62, down: true,
+                         reach: 0 });
+  const cmd = useRef(Float32Array.from(REST));
+  const shown = useRef(Float32Array.from(REST));
+  const marker = useRef();
+  const markMat = useRef();
+  const _dir = useMemo(() => new THREE.Vector3(), []);
+  const OUT = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+
+  /* What the sampled shell says the arm can reach in the direction of a
+     point -- the same bins the surface is drawn from, read back. This is the
+     Monte Carlo estimate answering the same question the solver just
+     answered, and two independent methods on one question is the only way
+     anybody standing here can tell either of them is working. */
+  function shellAt(p) {
+    const dx = p.x, dy = p.y, dz = p.z - SHOULDER;
+    const r = Math.hypot(dx, dy, dz);
+    if (r < 1e-4) return 0;
+    let u = Math.floor((Math.atan2(dy, dx) / (Math.PI * 2) + 0.5) * RES_U);
+    let v = Math.floor((dz / r * 0.5 + 0.5) * RES_V);
+    u = Math.max(0, Math.min(RES_U - 1, u));
+    v = Math.max(0, Math.min(RES_V - 1, v));
+    const b = v * RES_U + u;
+    return kit.hit[b] >= MIN_HITS ? kit.smooth[b] || kit.far[b] : 0;
+  }
+
+  /* Solve, and keep the seed. The solver is local: seeding it from the last
+     answer is what makes a dragged target trace a continuous arm motion
+     instead of teleporting between branches as the cursor moves. */
+  function ask() {
+    const t = target.current;
+    _dir.copy(probe.current.down ? DOWN_V : OUT).normalize();
+    const e1 = solve(cmd.current, t, cmd.current, 40, _dir);
+    let err = e1;
+    if (err > 2e-3) {
+      // A second solve from rest, because a local method that has wandered
+      // into a corner reports the corner rather than the arm.
+      const alt = Float32Array.from(REST);
+      const e2 = solve(alt, t, alt, 60, _dir);
+      if (e2 < err) { cmd.current.set(alt); err = e2; }
+    }
+    const p = probe.current;
+    p.err = err;
+    p.ok = err < 2e-3;
+    p.shell = shellAt(t);
+    p.reach = t.clone().sub(new THREE.Vector3(0, 0, SHOULDER)).length();
+  }
+
+  useEffect(() => { ask(); }, []);
+
+  /* Rebuild is the control that matters for the shell: it is a Monte Carlo
+     estimate of a set, and being able to throw it away and watch it re-form
+     is how anybody checks that the shape is the arm's and not the sampler's.
+     The tool direction is the control that matters for the probe -- ask for
+     the tool pointing down and a third of the shell stops being reachable,
+     which is the single most useful thing this bay can tell somebody who
+     already knows the data sheet. */
+  /* Has anybody actually reached into this cell yet. The console shows the
+     hint as a lit call to action until the first pointer event lands on the
+     bench and as a quiet footnote after, because an instruction that is still
+     shouting once it has been followed is noise. */
+  const touched = useRef(false);
+
   useEffect(() => register(stop.id, {
-    title: "Reachable set, sampled",
-    actions: [{ label: "Rebuild", on: () => kit.reset() }],
+    title: "Can it reach this",
+    actions: [{ label: "Rebuild shell", on: () => kit.reset() }],
     choice: {
-      get: () => kit.lockBase,
-      set: (v) => { kit.lockBase = v; kit.reset(); },
+      get: () => probe.current.down,
+      set: (v) => { probe.current.down = v; ask(); },
       options: [
-        { value: false, label: "All six" },
-        { value: true, label: "Base locked" }
+        { value: true, label: "Tool down" },
+        { value: false, label: "Tool out" }
       ]
     },
-    readout: () => [
-      ["samples", kit.n.toLocaleString("en")],
-      ["of", n.toLocaleString("en")],
-      ["joints swept", kit.lockBase ? "4" : "5"]
-    ],
-    /* What it is doing, in words, including how far through it is -- the
-       shell takes a few seconds to fill and an unfinished one looks broken
-       rather than unfinished. */
-    say: () => {
-      const n = kit.n || 0;
-      const total = Math.round(N * cap);
-      if (n >= total) return "Done. That shell is every place the tool centre reached.";
-      return `Solving the arm's forward kinematics at random joint angles -- `
-           + `${(100 * n / Math.max(1, total)).toFixed(0)} per cent of the way through. `
-           + `The shell is the furthest each direction got.`;
+    slider: {
+      label: "Out", min: -0.30, max: 1.45, step: 0.01,
+      get: () => probe.current.depth,
+      set: (v) => {
+        probe.current.depth = v;
+        target.current.x = v;
+        ask();
+      },
+      fmt: (v) => v.toFixed(2) + " m"
     },
-    hint: "The shell is the furthest the tool centre got in each direction, from the arm's own forward kinematics."
-  }), [stop.id, kit]);
+    readout: () => {
+      const p = probe.current;
+      return [
+        ["target", target.current.x.toFixed(2) + ", " + target.current.y.toFixed(2)
+                 + ", " + target.current.z.toFixed(2) + " m"],
+        ["from the shoulder", (p.reach || 0).toFixed(2) + " m"],
+        ["solver", p.ok ? "reached, " + (p.err * 1000).toFixed(1) + " mm"
+                        : "short by " + (p.err * 1000).toFixed(0) + " mm"],
+        ["shell reaches here", p.shell ? p.shell.toFixed(2) + " m" : "not sampled yet"],
+        ["samples", kit.n.toLocaleString("en") + " of " + n.toLocaleString("en")]
+      ];
+    },
+    /* What it is doing, in words, and it changes with the answer rather
+       than describing the cell in general. */
+    say: () => {
+      const p = probe.current, total = Math.round(N * cap);
+      if (kit.n < total && kit.n < total * 0.35) {
+        return `Solving the arm's forward kinematics at random joint angles -- `
+             + `${(100 * kit.n / Math.max(1, total)).toFixed(0)} per cent through. `
+             + `The shell is the furthest each direction got.`;
+      }
+      if (p.ok) {
+        return `It can put the tool there, ${p.down ? "pointing down" : "pointing out"}, `
+             + `${(p.reach || 0).toFixed(2)} m from the shoulder. Move the target and watch it follow.`;
+      }
+      const short = p.err * 1000;
+      if (p.shell && p.reach <= p.shell + 0.01) {
+        return `The tool centre can get there -- the shell says ${p.shell.toFixed(2)} m in that `
+             + `direction -- but not ${p.down ? "pointing down" : "pointing out"} and not in one `
+             + `configuration branch. Try the other tool direction.`;
+      }
+      return `Out of reach by ${short.toFixed(0)} mm. That is the arm's answer, not a lookup: `
+           + `the solver ran and stopped that far short.`;
+    },
+    touched: () => touched.current,
+    hint: "Move your cursor across the cell to put the target somewhere, and the slider to push it further out. The arm solves for it every time you move.",
+    state: () => {
+      const p = probe.current;
+      return { ok: p.ok ? 1 : 0, err: +p.err.toFixed(5), shell: +(p.shell || 0).toFixed(3),
+               reach: +(p.reach || 0).toFixed(3), samples: kit.n };
+    }
+  }), [stop.id, kit, n]);
 
   useFrame((_, dt) => {
     if (!isRunning(stop.id)) return;
@@ -353,12 +474,44 @@ export default function ReachRig({ stop }) {
     surface(kit, kit.geoOut, kit.smooth, tint);
   });
 
+  /* The arm walking to whatever was last solved, in its own callback so it
+     keeps moving after the shell has finished filling and the sampler above
+     has returned. Rate limited per joint rather than eased as a fraction, so
+     a big change takes longer than a small one the way a machine does. */
+  useFrame((_, dt) => {
+    if (!isRunning(stop.id)) return;
+    const d = Math.min(0.1, dt);
+    const a = shown.current, b = cmd.current;
+    for (let i = 0; i < 6; i++) {
+      const e = b[i] - a[i], step = RATE * d;
+      a[i] += Math.abs(e) < step ? e : Math.sign(e) * step;
+    }
+    if (marker.current) marker.current.position.copy(target.current);
+    if (markMat.current) {
+      const p = probe.current;
+      markMat.current.color.set(p.ok ? P.teal : P.hazard);
+      markMat.current.emissive.set(p.ok ? P.teal : P.hazard);
+    }
+  });
+
   return (
-    /* Turned to face the aisle, by the same rule as the other arm cells:
-       every rig placed itself with x = side * WORK and no rotation, so all
-       seven pointed the same absolute way and which side of the lane a cell
-       stood on decided whether a visitor met its front or its back. */
-    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
+    /* Which way the cell faces, and the rule is the opposite of the one that
+       was here.
+    
+       Every rig used to place itself at x = side * WORK with no rotation, so
+       all of them pointed the same absolute way and which side of the lane a
+       cell stood on decided whether a visitor met its front or its back. The
+       first fix turned the cells on side -1, which is backwards: the reader
+       stands in the aisle at x = -0.95 for a cell whose origin is at -4.9, so
+       the direction from cell to reader is +x, and a cell whose work happens
+       on its own +x wants no rotation there and half a turn on the other
+       side. Measured, because this is the kind of sign that argues either
+       way: the replan cell's cursor sheet sits 0.34 m along the cell's own
+       +x, and under the old rule it came out at world x = -5.24 against a
+       camera at -0.95 -- a third of a metre further off than the arm's own
+       base, with the machine standing between the reader and the thing they
+       are meant to reach into. */
+    <group position={[x, 0.9, 0]} rotation-y={s > 0 ? Math.PI : 0}>
       {/* The cloud is in the arm's own frame, so it is rotated by the same
           UPRIGHT the arm is rather than being placed to look right. */}
       <group rotation-x={-Math.PI / 2}>
@@ -371,8 +524,43 @@ export default function ReachRig({ stop }) {
                                 roughness={0.55} metalness={0.0}
                                 side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
+
+        {/* What the cursor talks to: an invisible sheet standing across the
+            cell at the depth the slider sets, so a pointer moving over the
+            bay names a point in the arm's own frame with no picking
+            arithmetic here. Double sided, because three.js will not raycast
+            the back of a single-sided plane and a cell can be stood at from
+            either side of its own sheet. */}
+        <mesh
+          name={"pad-" + stop.id}
+          visible={false}
+          position={[0.62, 0, 0.62]}
+          rotation-x={Math.PI / 2}
+          onPointerMove={(e) => {
+            touched.current = true;
+            e.stopPropagation();
+            const p = e.object.worldToLocal(e.point.clone());
+            target.current.set(probe.current.depth, p.x, 0.62 - p.y);
+            ask();
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <planeGeometry args={[2.0, 1.8]} />
+          <meshBasicMaterial side={THREE.DoubleSide} />
+        </mesh>
+
+        {/* The point being asked about. Teal when the solver got there,
+            hazard when it did not, which is the whole answer at a glance
+            before anybody reads a number. */}
+        <mesh ref={marker}>
+          <sphereGeometry args={[0.035, 18, 12]} />
+          <meshStandardMaterial ref={markMat} color={P.teal} emissive={P.teal}
+            emissiveIntensity={0.55} roughness={0.4} />
+        </mesh>
       </group>
-      <UR12e phase={(stop.at * 0.37) % 2} />
+      {/* Drawn at the solution rather than at a baked cycle, which is the
+          change: this arm is answering a question instead of idling. */}
+      <UR12e q={shown} />
     </group>
   );
 }
