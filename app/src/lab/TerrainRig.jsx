@@ -155,7 +155,8 @@ export default function TerrainRig({ stop }) {
     const h = heights(NX, NY);
     const wall = new Uint8Array(NX * NY);   // no walls here: cost is the map
     const fields = COSTS.map(c => c.build(h, NX, NY));
-    return { h, wall, fields, searches: fields.map(f => new Search(NX, NY, wall, f)),
+    return { h, wall, fields, lastGoal: -1,
+             searches: fields.map(f => new Search(NX, NY, wall, f)),
              paths: COSTS.map(() => []), lastSolve: -1 };
   }, []);
 
@@ -239,7 +240,12 @@ export default function TerrainRig({ stop }) {
      into the old one: measured in a browser, 29 falls in 120 seconds and it
      never got past 26 per cent of anything. The four drawn paths still update
      live; the one the machine is on is the one it was given when it set off,
-     and it takes the next one when it arrives. */
+     and it takes the next one when it arrives.
+  
+     The one thing that does replace it mid-stride is retarget(), and that is
+     safe for the reason the naive version was not: it searches from the
+     dog's own cell, so the new path starts under the machine and the node
+     index starts at zero because there is nowhere else it could start. */
   const walk = useRef({ which: 0, at: 0, t: 0, fell: 0, done: 0, travel: 0,
                         path: null, px: 0, py: 0 });
   const start = useMemo(() => [2, 2], []);
@@ -294,6 +300,48 @@ export default function TerrainRig({ stop }) {
     });
   }
 
+  /* Replan the path the dog is walking, from where the dog is.
+   *
+   * Moving the goal used to redraw four tubes and nothing else. The machine
+   * kept walking the snapshot it set off with and took the new one only when
+   * it arrived, so the cursor -- the cell's one control -- had no visible
+   * effect for however long the current run had left. That is the whole of
+   * "this bay is not interactive", and it is fair.
+   *
+   * Handing over a new array mid-stride is what the snapshot exists to
+   * prevent, and for a real reason: the node index pointed into the old path
+   * and the dog was suddenly several nodes ahead of or behind itself, which
+   * measured 29 falls in 120 seconds. Searching from the dog's own cell
+   * instead of from the bay's start makes that impossible rather than
+   * unlikely -- the new path begins under the machine, so the index begins
+   * at zero and is correct by construction.
+   *
+   * Only the path being walked is re-searched here. The other three are
+   * redrawn by solve() from the bay's start, because the comparison this bay
+   * is for is four costs over one route and not four costs from wherever a
+   * dog happens to be standing.
+   */
+  function retarget() {
+    const sm = sim.current, w = walk.current;
+    if (!sm) return;
+    const a = sm.jointAdr("dog_free"), q = sm.qpos;
+    const si = Math.max(1, Math.min(NX - 2,
+      Math.round((q[a.q] + COURSE_X / 2) / CELL - 0.5)));
+    const sj = Math.max(1, Math.min(NY - 2,
+      Math.round((q[a.q + 1] + COURSE_Y / 2) / CELL - 0.5)));
+    const gi = Math.max(1, Math.min(NX - 2,
+      Math.round((goal.current.x + COURSE_X / 2) / CELL - 0.5)));
+    const gj = Math.max(1, Math.min(NY - 2,
+      Math.round((goal.current.y + COURSE_Y / 2) / CELL - 0.5)));
+    if (si === gi && sj === gj) return;
+    const se = kit.searches[w.which];
+    se.start(si, sj, gi, gj);
+    se.step(NX * NY * 4);
+    if (!se.found || se.path.length < 2) return;
+    w.path = se.path.map(([i, j]) => [gx(i), gy(j)]);
+    w.at = 0; w.t = 0; w.done = 0;
+  }
+
   const solved = useRef(false);
 
   /* The terrain, written into the model once it exists. MJCF cannot carry
@@ -328,6 +376,12 @@ export default function TerrainRig({ stop }) {
      the difference between watching four lines and asking a question about
      one of them. New ground rebuilds the field from a fresh seed, because a
      cost function that only ever gets one terrain has not been tested. */
+  /* Has anybody actually reached into this cell yet. The console shows the
+     hint as a lit call to action until the first pointer event lands on the
+     bench and as a quiet footnote after, because an instruction that is still
+     shouting once it has been followed is noise. */
+  const touched = useRef(false);
+
   useEffect(() => register(stop.id, {
     title: "Four costs, one ground",
     actions: [{ label: "New ground", on: () => reseed() }],
@@ -398,7 +452,8 @@ export default function TerrainRig({ stop }) {
       return `Walking the ${label} path -- one leg up at a time, feet on the ground the `
            + `planners read. ${w.travel.toFixed(2)} m so far.`;
     },
-    hint: "Hover the ground to move the goal. Climb is what each path costs to walk, and the dog walks the one you pick."
+    touched: () => touched.current,
+    hint: "Hover the ground to move the goal -- the dog replans from where it is standing and goes there. The four lines are the four costs answering from the bay's start, and climb is what each one costs to walk."
   }), [stop.id, kit]);
 
   function reseed() {
@@ -609,12 +664,21 @@ export default function TerrainRig({ stop }) {
         geometry={ground}
         receiveShadow
         onPointerMove={(e) => {
+          touched.current = true;
           e.stopPropagation();
           const p = e.object.worldToLocal(e.point.clone());
           goal.current.set(p.x, p.y);
           over.current = true;
           held.current = 0;
-          solve();
+          /* Both, and they are not the same question. solve() redraws the
+             four answers from the bay's start, which is the comparison.
+             retarget() sends the machine at the new goal from where it
+             stands, which is the thing the reader just asked for. Only when
+             the goal has actually changed cell: a dragged cursor fires this
+             every frame and a search per frame is four hundred a second. */
+          const cell = Math.round((p.x + COURSE_X / 2) / CELL) * 1000
+                     + Math.round((p.y + COURSE_Y / 2) / CELL);
+          if (cell !== kit.lastGoal) { kit.lastGoal = cell; solve(); retarget(); }
         }}
         /* A click on the course is a click on the course.
            
