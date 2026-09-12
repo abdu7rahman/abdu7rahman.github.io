@@ -14,7 +14,7 @@ import * as THREE from "three";
  * It is the cheapest depth cue in the building and it was the one missing.
  *
  * Done as onBeforeCompile on a MeshStandardMaterial, not as a ShaderMaterial.
- * The wall has to keep taking the key light, the seven cell lamps, the
+ * The wall has to keep taking the key light, the eight cell lamps, the
  * shadow maps and the fog, and every one of those is a chunk three already
  * assembles correctly -- reimplementing them to get a rib profile would be
  * trading the whole lighting model for a normal perturbation. Two chunks are

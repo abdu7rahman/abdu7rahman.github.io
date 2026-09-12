@@ -42,10 +42,15 @@ import { WORK } from "../lib/plan.js";
  * is the one that measures best rather than the one that sounded right.
  */
 
-/* The bench is 2.6 by 3.0 m. The course is inset from that so the machine
-   never overhangs, and the cell is 0.1 m -- a Burger is 0.178 m across the
-   wheels, so a cell is about half a footprint and the one-cell inflation in
-   demos/course.js is what keeps the path off a wall. */
+/* The grid cell is 0.1 m -- a Burger is 0.178 m across the wheels, so a cell
+   is about half a footprint and the one-cell inflation in demos/course.js is
+   what keeps the path off a wall.
+
+   This opened by stating the bench as 2.6 by 3.0 m, eight lines above the
+   note below saying it went to 3.0 by 3.8. Both were written here and one of
+   them was never revisited. The bench's dimensions are lab/Bench.jsx's, and
+   this file needs neither of them: the course is a constant it declares
+   itself and the cell is derived from the robot. */
 /* The course, and it is bigger than it was.
  *
  * "Too confined" was the complaint and it was fair: this bay ran on a patch

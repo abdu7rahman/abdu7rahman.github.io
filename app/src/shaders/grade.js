@@ -2,7 +2,7 @@
  *
  * The building was being lit correctly and photographed flat. Everything that
  * is supposed to be a source in here -- the lamp faces on the high-bay
- * luminaires, the emissive top rail down 66 m of guarding, the seven monitors
+ * luminaires, the emissive top rail down the guarding, the eight monitors
  * -- was written into an eight-bit buffer with a tone curve over it and
  * nothing else, so a source and a bright surface came out as the same thing.
  * A source is not a bright surface: it scatters in the lens and in the eye,
