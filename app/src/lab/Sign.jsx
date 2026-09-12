@@ -23,12 +23,21 @@ import { P } from "../lib/palette.js";
 /* The board, in metres, and both numbers are worked back from the shot
  * rather than picked.
  *
- * The camera that watches a station stands 3.5 m off, on a 46 degree lens, so
- * a 1280 by 820 frame is 2.97 m tall there and one metre of world is 276
- * pixels. A title has to clear about 24 pixels to be read, which is 0.087 m
- * of letter, which is a third of the height of a 0.26 m caption band. That is
- * the whole design: the board is as big as it has to be for its own title to
- * be legible from where the site looks at it, and no bigger.
+ * The camera that watches a station stands about 3.4 m off the guide, on the
+ * 50 degree lens nav/stations.js composes a bay with, so a 1440 by 900 frame
+ * is 3.17 m tall there and one metre of world is 284 pixels. A title has to
+ * clear about 24 pixels to be read, which is 0.085 m of letter, which is a
+ * third of the height of a 0.26 m caption band. That is the whole design:
+ * the board is as big as it has to be for its own title to be legible from
+ * where the site looks at it, and no bigger.
+ *
+ * The lens moved -- 46 to 50, when the benches grew and the old one started
+ * cropping the ends off a course -- and this is what that does to the sign:
+ * a wider lens at the same distance is fewer pixels per metre, but the frame
+ * it was worked out against was 820 tall and the one the site renders is
+ * 900, which is worth more than the lens cost. 276 px/m then, 284 now. The
+ * board does not move, and the reason it does not is written down rather
+ * than assumed.
  *
  * At 0.78 by 0.50 -- the first attempt -- it was bigger, and it covered the
  * machine's head and chest from the one angle the site ever sees it. A guide
@@ -58,11 +67,16 @@ export const SIGN_H = 0.42;
  * side-on mid-walk, the board cut clean through the right forearm.
  *
  * There is no easing this: it is not a tuning fault, it is what holding a
- * 0.64 m panel by its middle means. So the grips go outside the panel in
- * both directions -- 0.355 against a half-width of 0.32, and 0.235 below the
- * centre against a half-height of 0.21 -- which puts the crossing outside
- * the rectangle on one axis and below it on the other. It is also how a
- * person carries a board this size: by the bottom corners, not by the face.
+ * panel by its middle means. So the grips go outside the panel in both
+ * directions -- 0.285 against the board's half-width of 0.25, and 0.235
+ * below the centre against a half-height of 0.21 -- which puts the crossing
+ * outside the rectangle on one axis and below it on the other. It is also
+ * how a person carries a board this size: by the bottom corners, not by the
+ * face.
+ *
+ * Those two numbers were quoted against a 0.64 m board and the board has
+ * been 0.50 for a while, so the rule held and the arithmetic printed beside
+ * it did not. 35 mm outside and 25 mm below is the margin there actually is.
  */
 const GRIP_HALF = 0.285;
 const RAIL_DROP = 0.235;

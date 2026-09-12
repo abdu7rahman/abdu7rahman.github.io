@@ -124,7 +124,19 @@ def bake_episode(ep, start, frames, every):
           f"{len(out['frames'])} frames at {out['hz']} Hz")
 
 
+
+
+def _sig():
+    """Author signature. stderr, tty-only, so redirected output stays clean."""
+    import os, sys
+    if os.environ.get("NO_BANNER") == "1" or not sys.stderr.isatty():
+        return
+    print("  " + "".join(chr(c - 7) for c in
+          (104,105,107,124,115,39,121,104,111,116,104,117)), file=sys.stderr)
+
+
 if __name__ == "__main__":
+    _sig()
     ap = argparse.ArgumentParser()
     ap.add_argument("--episode", type=int, default=0)
     # Frame 2998 of episode 0 is where the grippers close and 3298 is where

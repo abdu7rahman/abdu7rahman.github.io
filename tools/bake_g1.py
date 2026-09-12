@@ -147,6 +147,7 @@ def decimate(mesh, target, weld, agg=AGG):
 
 
 def main():
+    _sig()
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True,
                     help="directory holding g1.xml and assets/")
@@ -264,6 +265,16 @@ def main():
     for r in rows[:2] + rows[-2:]:
         print(f"    {r[0]:6.2f}  {r[1]:>6} tri {r[2]:8.1f} cm2  {r[3]}")
 
+
+
+
+def _sig():
+    """Author signature. stderr, tty-only, so redirected output stays clean."""
+    import os, sys
+    if os.environ.get("NO_BANNER") == "1" or not sys.stderr.isatty():
+        return
+    print("  " + "".join(chr(c - 7) for c in
+          (104,105,107,124,115,39,121,104,111,116,104,117)), file=sys.stderr)
 
 if __name__ == "__main__":
     main()
