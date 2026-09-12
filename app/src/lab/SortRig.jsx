@@ -143,7 +143,28 @@ const PLAN = {
      clears the work by 33 mm; 12 leaves that clearance most of its margin and
      is reachable now that the standing error is trimmed out on the way in as
      well as on the way down. */
-  approach: { grip: 0, secs: 9.0, at: "tool", dz: CLEAR, tol: 0.012 },
+  /* The timeouts are ceilings on a phase that has not converged, and they
+   * were four to nine times the time a converging one actually takes.
+   *
+   * Measured in the page over 400 simulated seconds, mean seconds per phase:
+   * seek 0.39, approach 1.47, poise 1.22, descend 7.00, close 1.71, lift
+   * 1.23, carry 1.00, place 0.67, open 0.81, back 0.51. Every one of those
+   * is a phase ending on its tolerance except the descent, which ends on its
+   * timeout every single time -- 7.00 against a ceiling of 7.0, thirty-eight
+   * times out of thirty-eight. So a cycle was 16 s of which 7 was an arm
+   * standing still waiting for a clock, and the ceilings above it were
+   * holding another 30 s in reserve for a convergence that happens in one.
+   *
+   * Cut to roughly three times the measured mean, which still leaves a slow
+   * frame or an awkward pose all the room it needs and stops the cell
+   * spending most of a minute per tool. The descent gets the stall exit
+   * below instead of a longer clock.
+   *
+   * Measured again with the link geometry fixed: seek 0.31, approach 0.63,
+   * poise 0.50, descend 0.50, close 1.70, lift 0.94, carry 0.78, place 0.65,
+   * open 0.81, back 0.51 -- 7.3 s a tool against the 16 s it was, and six of
+   * six sorted in six cycles with nothing dropped and nothing re-tried. */
+  approach: { grip: 0, secs: 4.0, at: "tool", dz: CLEAR, tol: 0.012 },
   /* A pre-grasp pose, and it is the phase this cell was missing.
    *
    * The approach converges to within a few millimetres at 260 mm up, and
@@ -160,8 +181,28 @@ const PLAN = {
    * very nearly the grasp pose is free to be measured and trimmed out. The
    * descent that follows is a 48 mm move rather than a 250 mm one, and it
    * starts from a pose that has already been corrected. */
-  poise:    { grip: 0, secs: 6.0, at: "tool", dz: 0.060, tol: 0.010 },
-  descend:  { grip: 0, secs: 7.0, at: "tool", dz: TOUCH, tol: 0.014 },
+  poise:    { grip: 0, secs: 3.5, at: "tool", dz: 0.060, tol: 0.010 },
+  /* The descent ends when it has stopped descending, which is the whole of
+   * the "pick and place is slow" complaint and most of why it fails.
+   *
+   * Measured every frame of thirty-eight descents: the solver's residual is
+   * 1e-5, the rate-limited command has fully arrived at it, and the tool
+   * point sits 45 mm above where it was sent and stays there -- the joints
+   * are 0.098 rad from their own command and do not close it, which is a
+   * blocked arm, not a slow one. Waiting the remaining six seconds does not
+   * improve it; it never once did.
+   *
+   * What it was blocked on turned out to be the arm's own last link, whose
+   * collision capsule ran through the gripper to the tool point -- see the
+   * note on FLANGE in sim/models.js. With that ended at the flange the
+   * descent converges on its tolerance in 0.5 s and the cell clears the
+   * bench 6 of 6.
+   *
+   * `stall` stays, because it is right whether or not that particular block
+   * exists: a descent that has stopped descending is as low as it is going,
+   * and the honest end of it is to close the jaws rather than to press for
+   * another six seconds. */
+  descend:  { grip: 0, secs: 7.0, at: "tool", dz: TOUCH, tol: 0.014, stall: 0.4 },
   /* 1.7 s, not 0.6. This is a dwell, so its number is a time, and the time
      it has to cover is the jaw's own travel. Opening the gripper wide enough
      to clear the work doubled that travel -- 88 mm of gap to shut instead of
@@ -172,16 +213,16 @@ const PLAN = {
      Every grasp in the cell failed this way, and the jaw command at the top
      of the lift read 4 mm -- shut on nothing. */
   close:    { grip: 1, secs: 1.7, at: "tool", dz: TOUCH },
-  lift:     { grip: 1, secs: 6.0, at: "claim", dz: CLEAR + 0.08, tol: 0.05 },
-  carry:    { grip: 1, secs: 9.0, at: "bin", dz: 0.34, tol: 0.055 },
+  lift:     { grip: 1, secs: 3.5, at: "claim", dz: CLEAR + 0.08, tol: 0.05 },
+  carry:    { grip: 1, secs: 4.0, at: "bin", dz: 0.34, tol: 0.055 },
   /* Down to 0.16 and held for 1.6 s before opening. A tool is grasped
      wherever the gripper happened to land on it, so it hangs off centre and
      swings -- released from 0.20 m up while still swinging, a wrench landed
      0.08 m outside its bin, stayed unsorted, and the arm re-claimed it and
      failed the same way for the rest of the run. Lower and settled first. */
-  place:    { grip: 1, secs: 6.0, at: "bin", dz: 0.16, tol: 0.03, min: 0.6 },
+  place:    { grip: 1, secs: 3.0, at: "bin", dz: 0.16, tol: 0.03, min: 0.6 },
   open:     { grip: 0, secs: 0.8, at: "bin", dz: 0.16 },
-  back:     { grip: 0, secs: 5.0, at: "home", dz: 0, tol: 0.11 }
+  back:     { grip: 0, secs: 2.5, at: "home", dz: 0, tol: 0.11 }
 };
 const NEXT = { seek: "approach", approach: "poise", poise: "descend", descend: "close", close: "lift",
                lift: "carry", carry: "place", place: "open", open: "back", back: "seek" };
@@ -202,6 +243,16 @@ export default function SortRig({ stop }) {
        tool it has claimed. The claim is what keeps two arms off one tool
        without either of them knowing about the other's programme. */
     state: ["seek", "seek"], t: [0, 0], claim: [null, null],
+    /* How long the tool point has been standing still, and where it was last
+       frame. A descent that has stopped descending is as low as it is going,
+       and waiting out its clock only presses harder. */
+    stall: [0, 0], lastP: [new THREE.Vector3(), new THREE.Vector3()],
+    /* How long the bench has been empty, for the reload below. */
+    idle: 0,
+    /* How far the simulated joints are from the command they were given.
+       Small means the arm is where it was told; large means it is either on
+       its way or up against something, and neither is a standing error. */
+    track: [0, 0],
     /* Where each arm was sent last frame, in scene coordinates, and how far
        it is from it. The readout carries the error because a cell that says
        "descend" and nothing else cannot be told apart from a cell that has
@@ -284,6 +335,7 @@ export default function SortRig({ stop }) {
         if (st === "place" || st === "open") return "letting go over the bin";
         return "going home";
       };
+      if (done >= SORT.tools.length) return `Bench clear -- all ${done} sorted. Reloading.`;
       return `${done} of ${SORT.tools.length} sorted. Left arm is ${w(0)}; `
            + `right arm is ${w(1)}. `
            + `Every tool is a free body, so a grasp can miss.`;
@@ -299,6 +351,29 @@ export default function SortRig({ stop }) {
        carries a phase and one scalar error, which is enough to see that a
        move did not arrive and not enough to see which way it missed. */
     kit: () => kit,
+    /* And the summary every other cell publishes, so one harness can ask all
+       eight the same question. Counts, phases and the two errors -- enough to
+       time a cycle from outside and see which phase spent it. */
+    state: () => ({
+      sorted: kit.sorted.size, of: SORT.tools.length,
+      floor: kit.floor.size, cycles: kit.cycles,
+      phase: [kit.state[0], kit.state[1]],
+      claim: [kit.claim[0], kit.claim[1]],
+      err: [+(isFinite(kit.err[0]) ? kit.err[0] : 0).toFixed(4),
+            +(isFinite(kit.err[1]) ? kit.err[1] : 0).toFixed(4)],
+      /* The solver's own residual beside the arm's. Two numbers that mean
+         different things and look the same on a readout: res is how far the
+         IK got from the point it was asked for, err is how far the machine
+         is from it. A large res is a target the arm cannot reach; a small
+         res with a large err is a servo that has not got there yet. */
+      res: [+(kit.res[0] || 0).toFixed(5), +(kit.res[1] || 0).toFixed(5)],
+      gap: [0, 1].map(a => {
+        let m = 0;
+        for (let i = 0; i < 6; i++) m = Math.max(m, Math.abs(kit.want[a][i] - kit.cmd[a][i]));
+        return +m.toFixed(4);
+      }),
+      t: [+kit.t[0].toFixed(2), +kit.t[1].toFixed(2)]
+    }),
     /* What the solver thinks an arm's joints do against what the simulation
        does with the same joints, in the arm's own base frame. Two kinematic
        models that disagree look exactly like a servo that will not track,
@@ -425,6 +500,25 @@ export default function SortRig({ stop }) {
     const d = dt;
     const run = isRunning(stop.id);
 
+    /* Round again once the bench is clear.
+     *
+     * With the grasp working the cell empties the bench in about twenty
+     * simulated seconds and then has nothing to do, and a visitor who walks
+     * up a minute later meets two arms standing over four empty bins. A cell
+     * that has finished its work reloads it, which is what a test cell does.
+     * A beat first, so the last tool is seen to land. */
+    if (kit.sorted.size >= SORT.tools.length) {
+      kit.idle += d;
+      if (kit.idle > 3) {
+        kit.idle = 0;
+        kit.state = ["seek", "seek"]; kit.t = [0, 0]; kit.claim = [null, null];
+        kit.sorted.clear(); kit.floor.clear(); kit.tries.clear();
+        kit.trim[0].set(0, 0, 0); kit.trim[1].set(0, 0, 0);
+        sm.reset();
+        return;
+      }
+    } else kit.idle = 0;
+
     // Where everything is, once, before either arm decides anything.
     const where = SORT.tools.map(t => toolAt(sm, t.id, new THREE.Vector3()));
     SORT.tools.forEach((t, i) => {
@@ -449,16 +543,42 @@ export default function SortRig({ stop }) {
       if (lastT) {
         toolPointOf(sm, arm, kit.a);
         err = Math.hypot(kit.a.x - lastT.x, kit.a.y - lastT.y, kit.a.z - lastT.z);
+        /* And whether it is still moving, off the same read. A speed, not a
+           per-frame distance: written as a bare millimetre it was a
+           millimetre per frame, which at 60 Hz is 60 mm a second and calls a
+           descent in full flight stalled. Measured, a real descent covers its
+           48 mm at about 96 mm/s and a blocked one drifts at 0.6; 4 mm/s
+           separates them by more than an order of magnitude either way. */
+        kit.stall[arm] = kit.a.distanceTo(kit.lastP[arm]) < 0.004 * d
+          ? kit.stall[arm] + d : 0;
+        kit.lastP[arm].copy(kit.a);
       }
       kit.err[arm] = err;
+      /* How well the arm is following its own command, which is the honest
+         discriminator between an arm on its way and an arm up against
+         something. Both look like error and only one of them is standing
+         error, and the integral term below needs to know which. */
+      {
+        const pre = arm === 0 ? "l" : "r";
+        let m = 0;
+        for (let i = 0; i < 6; i++) {
+          m = Math.max(m, Math.abs(sm.jointAt(`${pre}_j${i}`) - kit.cmd[arm][i]));
+        }
+        kit.track[arm] = m;
+      }
       /* A move ends on arriving, but not before it has had time to move.
          Half a second, because the first frame of a state measures against a
          target the arm may already be standing on -- a lift that begins
          where the descent ended is, for one frame, "arrived" -- and without
          a floor the cell chained close, lift, carry and place in 1.5 s and
-         released over the bench it had just picked from. */
+         released over the bench it had just picked from.
+      
+         Or on having stopped, where the phase says so. See PLAN.descend. */
+      const floor = step.min || 0.5;
       const done = step.tol
-        ? (err < step.tol && kit.t[arm] >= (step.min || 0.5)) || kit.t[arm] >= step.secs
+        ? (err < step.tol && kit.t[arm] >= floor)
+          || (step.stall && kit.stall[arm] >= step.stall && kit.t[arm] >= floor)
+          || kit.t[arm] >= step.secs
         : kit.t[arm] >= step.secs;
 
       if (st === "seek") {
@@ -474,7 +594,9 @@ export default function SortRig({ stop }) {
           if (dist < REACH && dist + penalty < bestD) { bestD = dist + penalty; best = t.id; }
         });
         kit.claim[arm] = best;
-        if (best && kit.t[arm] >= step.secs) { kit.state[arm] = "approach"; kit.t[arm] = 0; }
+        if (best && kit.t[arm] >= step.secs) {
+          kit.state[arm] = "approach"; kit.t[arm] = 0; kit.stall[arm] = 0;
+        }
         if (!best) kit.t[arm] = 0;
       } else if (done) {
         /* Remember where the tool was at the instant the jaws shut, because
@@ -485,7 +607,7 @@ export default function SortRig({ stop }) {
           if (k >= 0) kit.held[arm].copy(where[k]);
         }
         kit.state[arm] = NEXT[st];
-        kit.t[arm] = 0;
+        kit.t[arm] = 0; kit.stall[arm] = 0;
         if (kit.state[arm] === "seek") {
           // A cycle that ended with the tool still out of its bin was a
           // failed attempt, and the count is what stops it repeating.
@@ -665,8 +787,25 @@ export default function SortRig({ stop }) {
          then is wind to its cap and saturate a wrist against a tool it is
          standing on. Contact means the arm is not short, it is blocked, and
          the answer to blocked is not more command. */
-      const pre = arm === 0 ? "l" : "r";
-      if (sm.touching(`${pre}_pa`) || sm.touching(`${pre}_pb`)) continue;
+      /* And not while the arm is not following its command.
+       *
+       * The gate here was a contact flag on either pad, on the right
+       * argument -- an integral term assumes moving the set point moves the
+       * thing it measures, and a pad resting on the work breaks that. The
+       * flag is the wrong instrument for it. Measured every frame of a
+       * descent, one pad's contact flickered between 0 and 1 from frame to
+       * frame while the arm was solidly blocked, so the gate was open about
+       * half the time and the term wound anyway: it drove all three axes to
+       * their 40 mm cap and put the commanded tool point 17 mm below the
+       * bench, with the joints 0.33 rad from their own command and the
+       * error it was supposed to remove three times worse than when it
+       * started.
+       *
+       * The arm's own tracking is the instrument that does not flicker. A
+       * position servo standing 0.05 rad from its command is either still
+       * travelling or pressing on something; either way what is left is not
+       * standing error and winding on it is winding on a lie. */
+      if (kit.track[arm] > 0.05) continue;
       kit.tp.sub(kit.simTgt[arm]);
       kit.terr[arm].copy(kit.tp);
       /* 0.35 a second, not 1.6.
@@ -753,11 +892,13 @@ export default function SortRig({ stop }) {
   );
 
   return (
-    /* Turned to face the aisle, by the same rule as the other arm cells:
-       every rig placed itself with x = side * WORK and no rotation, so all
-       seven pointed the same absolute way and which side of the lane a cell
-       stood on decided whether a visitor met its front or its back. */
-    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
+    /* Turned to face the aisle, by the same rule as the other arm cells --
+       and the rule is the opposite of the one that was here. The reader
+       stands in the aisle at x = -0.95 for a cell whose origin is at -4.9,
+       so the direction from cell to reader is +x, and a cell whose work
+       happens on its own +x wants no rotation on that side and half a turn
+       on the other. lab/ForeseeRig.jsx carries the measurement. */
+    <group position={[x, 0.9, 0]} rotation-y={s > 0 ? Math.PI : 0}>
       {[SORT.base, -SORT.base].map((b, i) => (
         <mesh key={i} position={toScene(0, b, SORT.mount / 2)} castShadow receiveShadow>
           <cylinderGeometry args={[0.09, 0.09, SORT.mount, 12]} />

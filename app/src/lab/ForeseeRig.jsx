@@ -141,6 +141,12 @@ export default function ForeseeRig({ stop }) {
      never does what it is named after; large and nothing sampled is clear
      and the arm holds, which is the other end of the same behaviour and
      worth being able to see on purpose. */
+  /* Has anybody actually reached into this cell yet. The console shows the
+     hint as a lit call to action until the first pointer event lands on the
+     bench and as a quiet footnote after, because an instruction that is still
+     shouting once it has been followed is noise. */
+  const touched = useRef(false);
+
   useEffect(() => register(stop.id, {
     title: "Cancel and replan",
     actions: [{ label: "Reset", on: () => {
@@ -181,7 +187,19 @@ export default function ForeseeRig({ stop }) {
         ? "Clear. Move across the cell and it will have to go round you."
         : "Clear. The ball is drifting through the workspace on its own -- watch it cut the path.";
     },
-    hint: "Move the cursor across the cell to put your hand in the way."
+    touched: () => touched.current,
+    hint: "Move the cursor across the cell to put your hand in the way.",
+    /* Where the obstacle actually is, so a probe outside the page can check
+       the one thing this cell is about and cannot be photographed: that the
+       pointer reaches the sheet at all. It did not -- the sheet is a
+       single-sided plane and three.js will not raycast the back of one, so
+       on a cell turned away from the aisle the cursor missed it entirely and
+       the ball drifted on its own timer whatever the reader did. */
+    state: () => ({
+      x: +obs.current.x.toFixed(3), y: +obs.current.y.toFixed(3),
+      z: +obs.current.z.toFixed(3), over: over.current ? 1 : 0,
+      dead: kit.dead ? 1 : 0, via: kit.via ? 1 : 0, touch: kit.touch
+    })
   }), [stop.id, kit, sim]);
 
   useFrame(({ clock }, dt) => {
@@ -320,13 +338,23 @@ export default function ForeseeRig({ stop }) {
   const painted = useRef(false);
 
   return (
-    /* Turned to face the aisle. Every cell in here placed itself with
-       x = side * WORK and no rotation, so all seven pointed the same
-       absolute way and whichever side of the lane a cell stood on decided
-       whether a visitor met its front or its back. Standing at this one you
-       were behind the arm, looking at its base, with the workspace it is
-       supposed to let you reach into on the far side of it. */
-    <group position={[x, 0.9, 0]} rotation-y={s < 0 ? Math.PI : 0}>
+    /* Which way the cell faces, and the rule is the opposite of the one that
+       was here.
+    
+       Every rig used to place itself at x = side * WORK with no rotation, so
+       all of them pointed the same absolute way and which side of the lane a
+       cell stood on decided whether a visitor met its front or its back. The
+       first fix turned the cells on side -1, which is backwards: the reader
+       stands in the aisle at x = -0.95 for a cell whose origin is at -4.9, so
+       the direction from cell to reader is +x, and a cell whose work happens
+       on its own +x wants no rotation there and half a turn on the other
+       side. Measured, because this is the kind of sign that argues either
+       way: the replan cell's cursor sheet sits 0.34 m along the cell's own
+       +x, and under the old rule it came out at world x = -5.24 against a
+       camera at -0.95 -- a third of a metre further off than the arm's own
+       base, with the machine standing between the reader and the thing they
+       are meant to reach into. */
+    <group position={[x, 0.9, 0]} rotation-y={s > 0 ? Math.PI : 0}>
       <group rotation-x={-Math.PI / 2}>
         {/* What the cursor talks to: an invisible sheet standing through the
             workspace, so a pointer moving across the bay maps to a point in
@@ -341,6 +369,7 @@ export default function ForeseeRig({ stop }) {
           position={[0.34, 0, 0.62]}
           rotation-x={Math.PI / 2}
           onPointerMove={(e) => {
+            touched.current = true;
             e.stopPropagation();
             const p = e.object.worldToLocal(e.point.clone());
             /* p.y * 0.0 was in here, which is a multiply by zero: the
@@ -370,7 +399,7 @@ export default function ForeseeRig({ stop }) {
           onPointerOut={() => { over.current = false; }}
         >
           <planeGeometry args={[1.5, 1.4]} />
-          <meshBasicMaterial />
+          <meshBasicMaterial side={THREE.DoubleSide} />
         </mesh>
 
         <mesh ref={tube} frustumCulled={false}>
