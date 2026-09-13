@@ -408,7 +408,7 @@ export const CONTENT = {
      [
       "SpeedFolding Avigal et al., IROS 2022",
       "93%, <120 s per fold",
-      "Real garments from a random initial configuration, engineered bimanual primitives, 4,300 annotated actions",
+      "Real garments from a random initial configuration, engineered bimanual primitives, 4,300 annotated and self-supervised actions",
       "2208.10552"
      ],
      [
@@ -430,7 +430,7 @@ export const CONTENT = {
       "2303.04137"
      ]
     ],
-    "tail": "Read this as context, not a leaderboard — no two rows share a task, a robot or a success criterion. Two things it does show. The 78–90% those architectures report is on rigid objects; none of it is deformables, which is the part that makes garments hard. And the one row that is garment folding, SpeedFolding at 93%, gets there with engineered bimanual action primitives and 4,300 annotated actions rather than an end-to-end learned policy. The distance between 60.4% and 93% is mostly that gap, and closing it is what the sim-to-real work is for."
+    "tail": "Read this as context, not a leaderboard — no two rows share a task, a robot or a success criterion. Two things it does show. The 78–90% those architectures report is on rigid objects; none of it is deformables, which is the part that makes garments hard. And the one row that is garment folding, SpeedFolding at 93%, gets there with engineered bimanual action primitives and 4,300 annotated and self-supervised actions rather than an end-to-end learned policy. The distance between 60.4% and 93% is mostly that gap, and closing it is what the sim-to-real work is for."
    }
   ]
  },
