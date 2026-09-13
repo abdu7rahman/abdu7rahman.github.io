@@ -64,17 +64,27 @@ import { WORK } from "../lib/plan.js";
  * disagreement on the readout a comparison of two different controllers.
  * 98/120 is 82 per cent; the checkpoint's own closed-loop eval is 51/56,
  * which is 91 on the wider maps it was trained on. Neither number is 100 and
- * the bay does not pretend otherwise. What it fails at on this bench is not
- * what that sentence used to say, though: driven headless for 400 simulated
- * seconds twice, 49 runs, it clipped a drum once. "About one run in ten" was
- * written before the cell had a tally on it and never re-derived.
+ * the bay does not pretend otherwise. Driven headless for 1,500 simulated
+ * seconds, 91 runs on this bench:
  *
- * How it actually fails is by stopping -- 6 of 21 runs in the cleaner of the
- * two passes, the network commanding nothing with nothing in the way, which
- * is the failure the note further down explains and the one this bay is for.
- * Another 6 of 21 simply ran past the 25 s ceiling on an unattended attempt,
- * and those used to be counted as stopping too, which is what made the clone
- * look like it gave up on three runs in five.
+ *   reached the flag   33
+ *   stopped            36     commanded nothing with nothing in the way
+ *   ran past 25 s      15     not a failure; see the note at the ceiling
+ *   clipped a drum      6
+ *   wedged              1
+ *
+ * So it clips about one run in fifteen and stops on two in five, and
+ * stopping -- not clipping -- is what this bay is actually showing. The note
+ * further down says why the clone has no way out of it.
+ *
+ * Take the clip rate from this sample and not from a shorter one. Three
+ * 200-to-400 second passes gave 1 in 28, 0 in 21 and 4 in 14. The first two
+ * sit inside the interval on 6 in 91, which is 3 to 14 per cent; the third
+ * does not -- four clips in fourteen runs is about a 1-in-90 draw from that
+ * rate -- so a short pass here is measuring the flags it happened to draw at
+ * least as much as the controller. An earlier version of this comment quoted
+ * one of them, "once in forty-nine runs" off two passes, and the next pass
+ * contradicted it.
  */
 /* And bigger, which for this cell is not a framing choice either.
  *
@@ -282,7 +292,7 @@ export default function PolicyRig({ stop }) {
       if (!net) return "Loading the checkpoint.";
       const n = nav.current, c = cmd.current;
       if (!n.path.length) return "No route to the flag from here. Move it somewhere the planner can reach.";
-      if (n.since < 2.5 && n.why === "hit") return "It clipped a drum. Once in forty-nine runs when this was measured, so you have just seen the rare one.";
+      if (n.since < 2.5 && n.why === "hit") return "It clipped a drum. About one run in fifteen over ninety-one of them, so this is the uncommon way it fails -- stopping is the common one.";
       if (n.since < 2.5 && n.why === "stuck") return "Wedged against something. The expert it copied has a recovery behaviour -- a timed reverse and spin -- and the training script threw every recovery sample away on purpose, so the clone never learned one.";
       if (n.since < 2.5 && n.why === "stalled") return "It stopped. Nothing is in its way; it simply commanded zero and stayed there, which is what a cloned policy does at an observation its teacher never got into.";
       if (n.since < 2.5 && n.why === "time") return "Twenty-five seconds and still going, so it got a fresh flag. Not a failure -- the clone is slower than the controller it copied, and a long way round the drums takes longer than that.";

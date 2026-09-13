@@ -29,21 +29,17 @@ import { WORK } from "../lib/plan.js";
  * so a board ranked on the odometer read as a four-way tie and said nothing
  * about the four different things happening on the track. Cross-track error
  * is the quantity that can disagree, nearest() was already computing it for
- * the controllers and throwing it away, and over two minutes of laps it
- * separates them by a factor of two and a half: Stanley holds to 51 mm at
- * worst, pure pursuit 58, MPPI 113, the sampler 135. Which is the textbook
+ * the controllers and throwing it away, and over one lap at this base's own
+ * ceiling it separates them by a factor of eleven: Stanley holds to 8 mm at
+ * worst, pure pursuit 40, MPPI 49, the sampler 89. Which is the textbook
  * ordering, arrived at by the machines rather than asserted.
+ *
+ * Those four were 51, 58, 113 and 135 when this comment was first written,
+ * and the difference is mostly the collision mask below. The four shared a
+ * world then and spent the back half of every run shoving each other down
+ * the straight, and a controller measured while another machine is pushing
+ * it is being measured on the push.
  */
-/* 1.45 by 1.70, in from 2.30 by 2.70, for the same reason the drive cell's
-   course came in: the machines racing on it are 0.178 m Burgers and from
-   where a visitor stands the four of them were a single grey knot in a
-   corner of an otherwise empty table. Four robots on a 2.3 m track is four
-   robots each a thirteenth of the track's width; on 1.45 they are an eighth,
-   which is the difference between a cluster of shapes and a smudge.
-
-   Nothing about the machines changes. The course is the test and the test is
-   allowed to be the size that lets somebody see it; the superellipse below
-   comes in with it so the corners stay the same corners. */
 /* The course, and it is bigger than it was.
  *
  * "Too confined" was the complaint and it was fair: this bay ran on a patch
@@ -57,12 +53,12 @@ const TICK = 1 / 20;
 /* Where the four start, as a fraction of the lap rather than as a distance.
  *
  * This was 0.26 m and then 0.49, scaled with the track, and both were a
- * distance somebody picked. On a 7 m lap 0.49 m puts all four inside a fifth
- * of it -- looked at in the page, four machines bunched in one corner while
- * the comment beside them said "spaced evenly round it". A quarter of the
- * lap each is what evenly means, and it is the only spacing on a closed loop
- * that has no front. lapLength() measures the plan rather than assuming a
- * superellipse's perimeter, so changing the track changes the grid. */
+ * distance somebody picked. On a 7.68 m lap 0.49 m puts all four inside a
+ * fifth of it -- looked at in the page, four machines bunched in one corner
+ * while the comment beside them said "spaced evenly round it". A quarter of
+ * the lap each is what evenly means, and it is the only spacing on a closed
+ * loop that has no front. lapLength() measures the plan rather than assuming
+ * a superellipse's perimeter, so changing the track changes the grid. */
 function lapLength(p) {
   let d = 0;
   for (let i = 0; i < p.length - 1; i++) {
@@ -137,21 +133,34 @@ export default function RaceRig({ stop }) {
      * this base -- the slider narrows the admissible set, it never widens
      * it past what the URDF's own teleop allows.
      *
-     * Measured in the page, 45 s from the grid, worst cross-track in mm:
+     * Measured in the page at the high tier, one full lap each rather than
+     * a fixed wall of seconds. A lap takes 243 s at the bottom of the slider
+     * and 62 at the top, so the 45 s window this table used to be taken over
+     * was under a fifth of the course at one end and three quarters of it at
+     * the other, and the slow ceilings were being judged on whichever corners
+     * they happened to reach. Worst cross-track in mm:
      *
-     *              0.08 m/s   0.22 m/s
-     *   mppi            54         95
-     *   stanley         57         48
-     *   pure pursuit    67         76
-     *   sampler        117        131
+     *                 0.06  0.10  0.14  0.18  0.22 m/s
+     *   stanley         11    11     9     6     8
+     *   pure pursuit    80    24    28    30    40
+     *   mppi            50    36    51    36    49
+     *   sampler         76    80    83    87    89
      *
-     * Which is the reason for the control rather than a decoration on it:
-     * MPPI is first at the low ceiling and third at the high one, and any
-     * single-speed version of this bay would have published one of those two
-     * orders as the answer. The copy claims the order changes and does not
-     * claim these numbers, because one 45 s run of four stochastic
-     * controllers is a sample and not a benchmark -- the written site is
-     * where the benchmark lives. */
+     * Which is the reason for the control rather than a decoration on it,
+     * though not the reason this comment used to give. Stanley is first at
+     * every ceiling; what moves with speed is the order behind it. Pure
+     * pursuit is last of the four at 0.06 and second from 0.10 up, because
+     * its lookahead is a fixed 0.34 m and at 0.06 m/s that is five and a
+     * half seconds ahead of a machine that has not got anywhere near it.
+     * The sampler is the only one that degrades monotonically, 76 to 89
+     * across the range, which is what a local planner with no path term
+     * should do as you widen its window.
+     *
+     * The copy claims the order behind the leader moves and does not claim
+     * these numbers. One lap of four stochastic controllers is a sample and
+     * not a benchmark: MPPI's worst at the top ceiling came out 30, 40 and
+     * 49 on three separate runs of the same build. The written site is where
+     * the benchmark lives. */
     const cap = { v: MAX_V };
     const runners = [
       { name: "pure pursuit", col: P.hazard,
@@ -181,7 +190,16 @@ export default function RaceRig({ stop }) {
           return [v, w];
         } },
       { name: "mppi", col: "#9b8cff",
-        step: (st) => mppi.step(st, path, rand),
+        step: (st) => {
+          /* The same lookahead the sampler above is given, for the same
+             reason and wrapped the same way. demos/controllers.js carries
+             what happened without it. 0.58 m is a rollout's worth: sixteen
+             steps of 0.1 s at 0.22 m/s is 0.35 m, so the target sits a
+             little past where a rollout can reach and the terminal cost
+             pulls along the plan rather than onto a point already passed. */
+          const [i] = nearest(path, st[0], st[1]);
+          return mppi.step(st, path, rand, ahead(path, i, 0.58));
+        },
         reset: () => mppi.reset() }
     ];
     return { path, runners, rand, cap, dwa, mppi };
@@ -303,12 +321,12 @@ export default function RaceRig({ stop }) {
     say: () => {
       const b = kit.runners.map((r, i) => ({ n: r.name, w: poses.current[i].worst || 0 }))
         .sort((a, c) => a.w - c.w);
-      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan. Move the ceiling and the order changes.";
+      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan. Move the ceiling and the order behind the leader changes.";
       const spread = (b[b.length - 1].w - b[0].w) * 1000;
       return `Same plan, same clock, same robot, capped at ${kit.cap.v.toFixed(2)} m/s. `
            + `${b[0].n} is holding the line best at ${(b[0].w * 1000).toFixed(0)} mm off; `
            + `${b[b.length - 1].n} is worst at ${(b[b.length - 1].w * 1000).toFixed(0)}, `
-           + `${spread.toFixed(0)} mm behind it. Change the ceiling and that order is not the same order.`;
+           + `${spread.toFixed(0)} mm behind it. Change the ceiling and the three behind the leader reorder.`;
     },
     tick: step,
     sim: () => !!sim.current,
@@ -320,10 +338,25 @@ export default function RaceRig({ stop }) {
         const q = poses.current[i];
         return { name: r.name, off: +(q.off || 0).toFixed(4),
                  worst: +(q.worst || 0).toFixed(4), lap: q.lap || 0,
-                 travel: +q.travel.toFixed(3) };
-      })
+                 travel: +q.travel.toFixed(3),
+                 /* What it was told and where it is. These are what found
+                    the pile-up: a harness watching the odometers alone sees
+                    four machines stop and cannot tell a controller that
+                    commanded zero from one being held by its neighbours.
+                    v at 0.22 with the wheels not turning, and four positions
+                    inside 15 cm of each other, says which it is. */
+                 v: +q.v.toFixed(3), w: +q.w.toFixed(3),
+                 x: +q.x.toFixed(3), y: +q.y.toFixed(3) };
+      }),
+      /* And the solver's own count. Every one of them is a wheel or a
+         caster on the floor -- the mask makes a racer-racer pair untestable
+         -- and measured over a run it sits between 7 and 16 as wheels load
+         and unload. It is here because the pile-up showed up as this
+         climbing while the odometers stopped, which is a thing no single
+         machine's own numbers can say. */
+      contacts: sim.current ? sim.current.contacts : -1
     }),
-    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. Drag the ceiling: which controller holds the line best depends on how fast you let them go, and that is the whole result."
+    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. They pass through each other on purpose: four machines at four speeds on one closed loop end up in a queue, and a robot being shoved is not being measured. Drag the ceiling -- Stanley holds the line at every speed and the other three change places behind it."
   }), [stop.id, kit]);
 
   /* The starts, spaced along the path the same way reset() spaces them, so
@@ -339,7 +372,15 @@ export default function RaceRig({ stop }) {
       return [p[k][0], p[k][1],
               Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0])];
     });
-    return wheeledScene({ starts });
+    /* `solo`: the four share a floor and not a body. See sim/models.js's
+       RACER mask for the bits and for the measurement -- four controllers a
+       quarter lap apart on a closed loop at four different speeds pile into
+       one heap, and this bay's whole number is how far each is from the
+       plan, which stops meaning anything the moment they are pushing each
+       other along it. They still collide with the floor, so the physics that
+       makes this a race rather than four animations -- wheel slip, a caster
+       to carry, a body that can roll -- is all still there. */
+    return wheeledScene({ starts, solo: true });
   }, []);
   const _p = useMemo(() => new THREE.Vector3(), []);
   const _h = useMemo(() => new THREE.Vector3(), []);
@@ -364,7 +405,7 @@ export default function RaceRig({ stop }) {
       q.x = p[k][0]; q.y = p[k][1];
       q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
       q.travel = 0; q.turned = 0; q.v = 0; q.w = 0; q.off = 0; q.worst = 0;
-      q.lap = 0; q.idx = k;
+      q.prog = 0; q.lap = 0; q.idx = k;
       if (sm) sm.place(`tb${i}_free`, q.x, q.y, BURGER.tyre, q.psi);
       const t = trails[i];
       if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
@@ -431,13 +472,38 @@ export default function RaceRig({ stop }) {
         q.travel += Math.abs(q.v) * d;
       }
 
-      /* A lap is the plan's own index wrapping, not a line crossed: the
-         start is an arbitrary node on a closed loop and a finish line at it
-         would be a line four machines cross at four different angles. */
-      const prev = q.idx === undefined ? 0 : q.idx;
+      /* A lap is progress round the plan, accumulated, not an index seen to
+         jump from the last quarter to the first.
+       *
+       * It was the jump: `prev > N * 0.75 && idx < N * 0.25`. nearest() asks
+       * which segment of the plan is closest, and this plan is a closed
+       * superellipse 1.94 by 2.56 m that passes near itself -- so a machine
+       * standing where two stretches come together has its nearest segment
+       * flip between a high index and a low one with no motion at all, and
+       * every flip in the right direction was a lap. Measured: mppi reached
+       * lap 4 inside the first 30 s on 3.5 m of a 7.68 m loop, then sat on 4
+       * for the next 13 m because it had moved away from the spot that was
+       * generating them.
+       *
+       * Progress cannot be faked that way. The per-tick index change is
+       * wrapped into [-N/2, N/2] and accumulated, and a flip across the
+       * width of the loop wraps to something near half of it, so the N/8
+       * test drops the flips and keeps the real steps. A Burger at the
+       * ceiling covers 3.7 mm in a tick against a mean segment of 32 mm --
+       * an eighth of one -- so nothing it can honestly do comes near a bar
+       * of 30.
+       *
+       * And one lap is N. nearest() indexes segments, so the index runs 0 to
+       * N-2: 239 steps of +1 round the loop and then 239 -> 0, which is -239
+       * and wraps to +2. 239 + 2 is 241, which is N. */
       const near = nearest(kit.path, q.x, q.y);
       const idx = near[0];
+      const prev = q.idx === undefined ? idx : q.idx;
       q.idx = idx;
+      let step = idx - prev;
+      if (step > N / 2) step -= N;
+      if (step < -N / 2) step += N;
+      if (Math.abs(step) <= N / 8) q.prog = (q.prog || 0) + step;
       /* How far off the line it is, which nearest() has been computing and
          throwing away all along.
        *
@@ -452,8 +518,9 @@ export default function RaceRig({ stop }) {
       q.off = near[2];
       if (q.off > (q.worst || 0)) q.worst = q.off;
       const t = trails[i];
-      if (prev > N * 0.75 && idx < N * 0.25) {
-        q.lap = (q.lap || 0) + 1;
+      const lap = Math.floor((q.prog || 0) / N);
+      if (lap > (q.lap || 0)) {
+        q.lap = lap;
         if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
       }
 

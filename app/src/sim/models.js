@@ -292,8 +292,9 @@ export function wheelsFor(v, w) {
   return [(v - half) / BURGER.tyre, (v + half) / BURGER.tyre];
 }
 
-function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
+function burger(name, { pos = [0, 0], yaw = 0, solo = false } = {}) {
   const R = BURGER.tyre, T = BURGER.track;
+  const SKIN = solo ? RACER : WORLD;
   /* The chassis sits so that base_link is `axle` above the wheel centres,
      which puts the whole robot at the height its own URDF says. */
   const z = R;
@@ -321,7 +322,7 @@ function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
            So the box sits back, between the axle and the caster, which is
            where a Burger's battery and motors actually are. Gravity then
            carries the caster and the robot stands on three points. -->
-      <geom ${WORLD} type="box" size="0.045 0.045 0.025" pos="-0.022 0 0.030"
+      <geom ${SKIN} type="box" size="0.045 0.045 0.025" pos="-0.022 0 0.030"
             mass="0.85" rgba="0.4 0.42 0.45 0"/>
       <body name="${name}_wl" pos="0 ${f(T / 2)} 0">
         <!-- Armature is the rotor and gearbox seen from the output shaft, and
@@ -331,17 +332,17 @@ function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
              last one. -->
         <joint name="${name}_wl" type="hinge" axis="0 1 0"
                armature="0.0008" damping="0.002"/>
-        <geom ${WORLD} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
+        <geom ${SKIN} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
               mass="0.05" friction="1.4 0.02 0.002" rgba="0.2 0.2 0.22 0"/>
       </body>
       <body name="${name}_wr" pos="0 ${f(-T / 2)} 0">
         <joint name="${name}_wr" type="hinge" axis="0 1 0"
                armature="0.0008" damping="0.002"/>
-        <geom ${WORLD} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
+        <geom ${SKIN} type="cylinder" size="${f(R)} 0.009" euler="1.5708 0 0"
               mass="0.05" friction="1.4 0.02 0.002" rgba="0.2 0.2 0.22 0"/>
       </body>
       <!-- The ball caster, aft, riding on almost nothing. -->
-      <geom ${WORLD} type="sphere" size="0.012" pos="-0.052 0 ${f(-R + 0.012)}"
+      <geom ${SKIN} type="sphere" size="0.012" pos="-0.052 0 ${f(-R + 0.012)}"
             mass="0.01" friction="0.04 0.005 0.0002" rgba="0.3 0.3 0.32 0"/>
     </body>`;
   const act = `<velocity name="${name}_wl" joint="${name}_wl" kv="0.6"
@@ -361,9 +362,10 @@ function burger(name, { pos = [0, 0], yaw = 0 } = {}) {
  * them because it cannot go through them, not because a cost term said so.
  */
 export function wheeledScene({ starts = [[0, 0, 0]], obstacles = [],
-                               radius = 0.12, walls = 0, cell = 0.1 } = {}) {
+                               radius = 0.12, walls = 0, cell = 0.1,
+                               solo = false } = {}) {
   const bots = starts.map((st, i) =>
-    burger(`tb${i}`, { pos: [st[0], st[1]], yaw: st[2] || 0 }));
+    burger(`tb${i}`, { pos: [st[0], st[1]], yaw: st[2] || 0, solo }));
   const obs = obstacles.map((o, i) => `
     <body name="obs${i}" mocap="true" pos="${f(o[0])} ${f(o[1])} 0.09">
       <geom ${WORLD} type="cylinder" size="${f(o[2] || radius)} 0.09"
@@ -692,6 +694,23 @@ const LEG_I = {
 /* The dog's own contact class. It touches the ground and nothing else in
    the cell, which is what its bay contains: one piece of terrain. */
 const DOG = 'contype="8" conaffinity="2"';
+/* A machine that shares a floor with other machines and not a body.
+ *
+ * MuJoCo collides two geoms when either one's contype shares a bit with the
+ * other's conaffinity, so taking the 2 out of the affinity leaves the pair
+ * test with the floor intact -- the floor is WORLD and its own affinity of 7
+ * still sees contype 2 -- while two of these test 2 & 5 both ways and come
+ * back zero.
+ *
+ * The race needs it. Four controllers set off a quarter lap apart on one
+ * closed loop at four different speeds, and a closed loop with solid bodies
+ * and no overtaking has exactly one end state: measured, the four were
+ * within 15 cm of each other by 60 s, with seven to sixteen contacts between
+ * them, still commanded at 0.22 m/s with the yaw slamming to +-2.84 and the
+ * odometers advancing about a centimetre a minute. The bay ranks them on how
+ * far each is from the plan, and that number means nothing once they are
+ * shoving each other down the straight. */
+const RACER = 'contype="2" conaffinity="5"';
 
 function go2Leg(name, k) {
   const s = SIDE[k], [hx, hy] = HIP[k], L = s > 0 ? 0 : 1;

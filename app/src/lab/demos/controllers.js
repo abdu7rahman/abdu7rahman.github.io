@@ -133,7 +133,12 @@ export class MPPI {
   constructor(opts) {
     Object.assign(this, {
       K: 96, H: 16, dt: 0.1, lambda: 0.55,
-      sigV: 0.06, sigW: 0.85, maxV: 0.22, maxW: 2.84, ...opts
+      sigV: 0.06, sigW: 0.85, maxV: 0.22, maxW: 2.84,
+      /* The terminal weight. The running cost over sixteen steps reaches a
+         few tens, so this has to be the same order to be heard at all: at
+         0.35 m of miss, 40 puts about 5 on the total. Tuned against laps
+         completed and the tracking error the board reports, not by eye. */
+      wGoal: 40, ...opts
     });
     this.nomV = new Float32Array(this.H);
     this.nomW = new Float32Array(this.H);
@@ -161,8 +166,33 @@ export class MPPI {
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
 
-  step(state, path, rand) {
-    const { K, H, dt, lambda, sigV, sigW, maxV, maxW } = this;
+  /* `goal` is a point further along the path, and it is required, because
+     without one this does not follow a path at all.
+   *
+   * The running cost is distance from the track and a reward for speed, and
+   * on a closed loop those two are both satisfied by driving a tight circle
+   * that happens to lie on it: the rollout stays at d of nearly zero and v
+   * stays high, so nothing in the objective prefers going round the loop to
+   * going round on the spot. Measured before this existed, over 150
+   * simulated seconds against the same plan: pure pursuit, Stanley and the
+   * sampler each completed two laps; MPPI drove 16.9 m -- more than two laps
+   * of distance -- and completed none, because it spent the whole run inside
+   * about 20 cm of one place.
+   *
+   * The other three are all given somewhere to be next. Pure pursuit and
+   * Stanley chase a lookahead on the plan, the sampler is handed
+   * ahead(path, i, 0.58) as its goal, and MPPI got the plan and nothing
+   * else. A terminal cost on where the rollout ends up relative to a point
+   * ahead is the same information in the form this controller takes it, and
+   * it is the form Williams' own navigation cost has: a running cost over
+   * the track and a terminal cost toward where you are going.
+   *
+   * So it is not optional and there is no branch here that skips it. A
+   * default would leave the circling version one missing argument away, and
+   * a TypeError on the first tick is a better way to find that out than a
+   * bay that looks like it is running. */
+  step(state, path, rand, goal) {
+    const { K, H, dt, lambda, sigV, sigW, maxV, maxW, wGoal } = this;
     let best = Infinity;
     for (let k = 0; k < K; k++) {
       let x = state[0], y = state[1], psi = state[2], c = 0;
@@ -175,6 +205,8 @@ export class MPPI {
         const [, , d] = nearest(path, x, y);
         c += d * d * 26 + (d > 0.22 ? 40 : 0) - v * 1.4;
       }
+      const gx = x - goal[0], gy = y - goal[1];
+      c += (gx * gx + gy * gy) * wGoal;
       this.cost[k] = c;
       if (c < best) best = c;
     }

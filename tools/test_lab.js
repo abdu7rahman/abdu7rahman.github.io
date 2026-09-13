@@ -94,8 +94,21 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       while (n < 60 * 600 && g.phase !== 'idle') { g.update(1 / 60, { budget: 40000 }); n++; }
       return { phase: g.phase, seconds: +(n / 60).toFixed(1), trip: +g.trip.toFixed(1) };
     });
-    // One frame for React to see the arrival, then let the camera ease.
-    await pg.waitForTimeout(2500);
+    /* And then for the store to notice. The controller is idle the instant
+       the loop above ends, but the visit only learns that on the next frame
+       React renders -- which under a software renderer is most of a second,
+       and with a second copy of this suite sharing the CPU was more than the
+       2,500 ms this used to wait. That cost two false failures in section D,
+       "the visit knows it arrived" read against a store still saying
+       `walking`, on a build where nothing about the walk had changed. So it
+       polls, the same way the wait above it does and for the same reason. */
+    for (let i = 0; i < 40; i++) {
+      const late = await pg.evaluate(() => window.__lab.journey.get().phase === 'walking');
+      if (!late) break;
+      await pg.waitForTimeout(400);
+    }
+    // Then a beat for the camera to ease into the shot.
+    await pg.waitForTimeout(900);
     return r;
   };
 
@@ -475,6 +488,36 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                  + r.drove + ' m on the last'));
   }
 
+  console.log('\nF1a. and all four racers get round the lap');
+  {
+    /* Two faults lived here and both looked like the cell simply stopping.
+       The four share one MuJoCo world and started a quarter lap apart at four
+       different speeds, so on a closed loop with no overtaking they piled
+       into one heap: measured, within 15 cm of each other by 60 s with seven
+       to sixteen contacts, still commanded at 0.22 m/s, odometers advancing a
+       centimetre a minute for the next four minutes. And MPPI's cost was
+       distance-from-track plus a speed reward with no progress term at all,
+       which a tight circle sitting on the track satisfies perfectly -- it
+       drove 16.9 m, more than two laps' worth, and completed none.
+
+       So: every one of them has to actually get round, and the distances
+       have to stay close, because a racer held up by another is a racer
+       whose tracking error means nothing. */
+    await goTo('race');
+    const r = await pg.evaluate(() => {
+      const c = window.__lab.controls('race'), d = 1 / 60;
+      for (let i = 0; i < 60 * 150; i++) c.tick(d);
+      return c.state();
+    });
+    const laps = r.runners.map(x => x.lap);
+    const trav = r.runners.map(x => x.travel);
+    ok('every racer completed a lap', laps.every(l => l >= 1),
+       r.runners.map(x => x.name + ' lap' + x.lap + ' d' + x.travel.toFixed(1)).join(', '));
+    ok('and none was left behind in a heap',
+       Math.min(...trav) > Math.max(...trav) * 0.6,
+       trav.map(t => t.toFixed(1)).join(' / '));
+  }
+
   console.log('\nF1bb. and the local control cell stops when it gets there');
   {
     /* It did not. The sampler was handed the goal every tick however close
@@ -570,6 +613,62 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     ok('and the quadruped walks one of them', !!st && st.travel > 0.02,
        st ? st.travel + ' m' : '(no state)');
   }
+
+  console.log('\nF1e. and the swerve base does the arithmetic it claims to');
+  {
+    /* Two of the eight cells had no gate on their behaviour at all and this
+       was one of them. Section F only asks whether the base takes a goal.
+
+       What this bay claims is narrower and checkable: that one body twist is
+       turned into eight commands, and that the twist read back off the four
+       wheels is the inverse of that arithmetic rather than a copy of the
+       input. `ask` is what the modules were handed; `did` is least squares
+       over what the steer and drive joints actually did, through the
+       simulation. Measured over 240 s unattended, they agree to a mean of
+       13 mm/s while the base drives 82 m and reaches 53 goals -- so a bar of
+       50 mm/s passes that comfortably and fails anything that has stopped
+       reading the joints, where the two would differ by the whole commanded
+       speed.
+
+       And the arrival counter, because this cell's own failure was parking
+       on its first goal and never leaving: two branches gated on
+       `runs === arrived`, the first of which made them unequal. A stationary
+       speck and "reached 0 of 1". */
+    await goTo('swerve');
+    const r = await pg.evaluate(() => {
+      const c = window.__lab.controls('swerve'), d = 1 / 60;
+      let sum = 0, n = 0;
+      for (let i = 0; i < 60 * 240; i++) {
+        c.tick(d);
+        const st = c.state();
+        // Only while it is being asked to go somewhere: the twist it reads
+        // back standing still is trivially the twist it asked for.
+        if (Math.hypot(st.ask[0], st.ask[1]) > 0.05) {
+          sum += Math.hypot(st.did[0] - st.ask[0], st.did[1] - st.ask[1]); n++;
+        }
+      }
+      const st = c.state();
+      return { arrived: st.arrived, runs: st.runs, travel: st.travel,
+               flips: st.flips, mean: n ? sum / n : -1, n };
+    });
+    ok('the swerve base keeps reaching goals', r.arrived >= 10,
+       r.arrived + ' of ' + r.runs + ' runs in 240 s, ' + r.travel + ' m');
+    ok('and the twist it reads back is the one it asked for',
+       r.n > 1000 && r.mean >= 0 && r.mean < 0.05,
+       (r.mean * 1000).toFixed(1) + ' mm/s mean over ' + r.n + ' commanded ticks');
+    ok('and the modules take the short way round', r.flips > r.runs,
+       r.flips + ' reversals over ' + r.runs + ' runs');
+  }
+
+  /* The replan cell is the one bay not gated here, and deliberately: its
+     claim is a comparison between two modes over hundreds of simulated
+     seconds each, and tools/test_replan.js already runs exactly that -- the
+     same cell through the same tick, predictive against reactive, counting
+     contacts. Re-running it inside this file would double the slowest
+     measurement in the project to say the same thing twice. Section F checks
+     that the cell answers the cursor; test_replan.js checks that the answer
+     is worth anything. The cost and search bays are the same arrangement,
+     in tools/test_crawl.mjs and tools/test_search.mjs. */
 
   console.log('\nF2. and it holds the sign in its hands');
   {
