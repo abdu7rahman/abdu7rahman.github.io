@@ -407,8 +407,17 @@
       </p>
     </div>
     <div class="chase__stage" data-reveal>
-      <canvas id="qlc-canvas" width="1204" height="626" aria-label="A Unitree Go2 course drawn from above. Click anywhere on it to set the goal; each cost function's route is painted on as it drives there."></canvas>
-      <p class="chase__read" id="qlc-read">click anywhere on the course &middot; four cost functions will drive there</p>
+      <canvas id="qlc-canvas" width="1204" height="626" aria-label="A Unitree Go2 course drawn from above. Press run the course to draw it, then click anywhere on it to set the goal; each cost function's route is painted on as it drives there."></canvas>
+      <!-- Run first, and this line has to say so. lab.js draws nothing until
+           a run comes back -- the plate is at opacity 0 until `live` is called
+           from the course message -- so the reader arriving here was being
+           told to click a course that is neither drawn nor visible, on a
+           section whose Run button the line never mentioned. Measured: with
+           the runtime up and the other six demos all painting, this canvas
+           had zero ink until the button was pressed, and 9,314 sampled
+           pixels of it a moment after. The assembly plate below already does
+           it this way round. -->
+      <p class="chase__read" id="qlc-read">press run the course &middot; then click anywhere on it and four cost functions will drive there</p>
       <div class="lab-tablewrap"><table class="lab-table" id="qlc-table"></table></div>
     </div>
     <div class="chase__head chase__head--again" data-reveal>
@@ -626,7 +635,7 @@
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
 <script src="feedback.js?v=f5943204" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=8a35e845" defer></script>
+<script src="demo.js?v=1f42f87f" defer></script>
 <script src="lab.js?v=d4094538" defer></script>
 <script src="field.js?v=1c23bf3b" defer></script>
 </body>

@@ -2145,6 +2145,22 @@
     } catch (e) {
       log(String(e && e.message ? e.message : e), "err");
       runLabel.textContent = "Failed to load";
+      /* And say so on each plate, not only on this one's button.
+       *
+       * The five sections below this are drawn by Python that arrives over
+       * the network -- the runtime from a CDN, the modules from the
+       * repository -- and when either does not arrive their canvases are
+       * never made live, so they sit at opacity 0 and the section reads as
+       * a gap. Measured with the runtime blocked: six of the seven plates
+       * had no ink at all, no console error was raised, and the replan
+       * plate went on saying "loading the predictive replanner" for as long
+       * as anybody waited. lab/lab.js already does this for the two plates
+       * it owns; this is the same sentence for the rest of them. */
+      var why = String(e && e.message ? e.message : e).slice(0, 120);
+      ["chase-read", "race-read", "arm-read", "foresee-read"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = "the runtime failed to load: " + why;
+      });
     }
   }
 
