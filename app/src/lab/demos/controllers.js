@@ -183,9 +183,18 @@ export class MPPI {
    * Stanley chase a lookahead on the plan, the sampler is handed
    * ahead(path, i, 0.58) as its goal, and MPPI got the plan and nothing
    * else. A terminal cost on where the rollout ends up relative to a point
-   * ahead is the same information in the form this controller takes it, and
-   * it is the form Williams' own navigation cost has: a running cost over
-   * the track and a terminal cost toward where you are going.
+   * ahead is the same information in the form this controller takes it:
+   * Williams states the objective as phi(x_T) plus a sum of running costs,
+   * so a terminal term is exactly where it belongs.
+   *
+   * It is not what his own racing cost does, though, and the difference is
+   * the interesting part. AutoRally's navigation cost is running-only --
+   * track, speed, slip angle, steering, throttle, crash, no terminal term
+   * at all -- and the thing that makes the car go anywhere is the
+   * desired-speed term, which this controller already had as -v * 1.4. A
+   * speed reward is enough for a car because a car at racing speed has a
+   * turning radius and cannot sit on the line revolving. A Burger capped at
+   * 0.22 m/s with 2.84 rad/s of yaw available can, and did.
    *
    * So it is not optional and there is no branch here that skips it. A
    * default would leave the circling version one missing argument away, and
