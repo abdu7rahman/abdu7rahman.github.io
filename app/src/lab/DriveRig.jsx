@@ -55,6 +55,10 @@ import { WORK } from "../lib/plan.js";
  * course takes what is left after a hand's width of margin.
  */
 const COURSE_X = 2.70, COURSE_Y = 3.40;
+/* Half the Burger's 0.178 m track plus a centimetre: the distance at which
+   the goal is under the machine rather than ahead of it. See the note at the
+   arrival test for what happened without one. */
+const ARRIVE = 0.09;
 const HORIZON = 2.6;
 const TICK = 1 / 20;          // 20 Hz, which is the rate the written
                               // benchmarks time this controller at
@@ -299,10 +303,38 @@ export default function DriveRig({ stop }) {
     cmd.current.acc += d;
     if (cmd.current.acc >= TICK) {
       cmd.current.acc -= TICK;
-      const [v, w, pickIdx] = ctrl.plan([q.x, q.y, q.psi],
-                                        [goal.current.x, goal.current.y], obs.current);
-      cmd.current.v = v; cmd.current.w = w;
-      paintFan(pickIdx);
+      /* There, and therefore stopped.
+       *
+       * This cell had no arrival condition at all: the sampler was handed the
+       * goal every tick however close the robot already was, and a local
+       * planner asked to approach a point it is standing on has no good
+       * answer. Traced over forty simulated seconds, the goal reached at
+       * about t=31, it went (0.22, 0.28) -> (-0.06, 0.99) -> (0, -2.84) ->
+       * (0.22, 0.57) and repeated: (-0.06, 0.994) is demos/dwa.js's own
+       * "nothing admissible" fallback, 2.84 is the Burger's full yaw rate,
+       * and what a reader sees is the machine reversing, snapping round and
+       * lurching off. It never settled -- from t=35 it just orbited the goal
+       * at full speed for as long as anybody watched.
+       *
+       * The cause is the heading term. atan2 over a vector that is nearly
+       * zero flips sign on millimetres, so the controller is chasing a target
+       * heading that reverses between ticks, and every rollout it scores is
+       * wrong by the time the next one runs.
+       *
+       * 0.09 m is the Burger's own half-width plus a centimetre -- it is
+       * there when the goal is under the machine rather than in front of it.
+       * lab/SwerveRig.jsx has had the same test at 0.10 since it was written;
+       * this bay simply never got one. */
+      const far = Math.hypot(goal.current.x - q.x, goal.current.y - q.y);
+      if (far < ARRIVE) {
+        cmd.current.v = 0; cmd.current.w = 0;
+        paintFan(-1);
+      } else {
+        const [v, w, pickIdx] = ctrl.plan([q.x, q.y, q.psi],
+                                          [goal.current.x, goal.current.y], obs.current);
+        cmd.current.v = v; cmd.current.w = w;
+        paintFan(pickIdx);
+      }
     }
 
     /* The command goes to the wheels, and where the robot ends up is

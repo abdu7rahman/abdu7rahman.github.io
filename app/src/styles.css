@@ -296,8 +296,22 @@ canvas { display: block; touch-action: pan-y; }
             letter-spacing: .08em; text-transform: uppercase; }
 .panel dd { margin: 0; }
 
-.panel .cards, .panel .tl, .panel .rows { list-style: none; margin: 0; padding: 0; }
-.panel .card { display: grid; grid-template-columns: 26px 1fr auto; gap: 12px;
+/* `projects`, not `cards`. The office's own card deck down at line 579 is
+   `.cards` too, and that rule is position: fixed, 420 px wide, pinned bottom
+   right. This one only ever set list-style, margin and padding, so the
+   positioning came through unopposed and the projects list inside a room
+   panel was being laid out as the office's floating deck: 420 px wide
+   whatever the panel was, fourteen thousand pixels tall because every chip
+   wrapped onto its own line in an 89 px column, and most of it above the top
+   of the window. Two different things cannot share a class name. */
+.panel .projects, .panel .tl, .panel .rows { list-style: none; margin: 0; padding: 0; }
+/* 1.4fr and 1fr, not 1fr and auto. An `auto` stats column takes whatever
+   its widest row of dl groups wants, and the project with four of them --
+   detection, latency, blind spot, IK pool -- wanted 500 of the panel's 660,
+   leaving its description a 110 px column that broke "colour-based" onto a
+   line of its own. Fractions cannot starve each other: the prose keeps about
+   55 characters, which is a measure, and the stats wrap instead of pushing. */
+.panel .card { display: grid; grid-template-columns: 26px 1.4fr 1fr; gap: 12px;
                padding: 14px 0; border-top: 1px solid #26262a; }
 .panel .card:first-child { border-top: 0; }
 .panel .idx { color: var(--hazard); font: 700 12.5px/1.6 var(--mono); }
@@ -305,7 +319,8 @@ canvas { display: block; touch-action: pan-y; }
                 margin: 8px 0 0; padding: 0; }
 .panel .chips li { border: 1px solid #303036; border-radius: 999px;
                    padding: 3px 9px; font: 500 12.5px/1.5 var(--ui); color: #b4b4ba; border-radius: 999px; }
-.panel .stats { margin: 0; display: flex; gap: 16px; align-items: flex-start; }
+.panel .stats { margin: 0; display: flex; flex-wrap: wrap; gap: 10px 16px;
+                align-items: flex-start; }
 .panel .stat dd { font: 700 17px/1.1 var(--ui); color: var(--ink); }
 
 .panel .bench { margin: 0 0 22px; }

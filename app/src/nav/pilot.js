@@ -201,7 +201,22 @@ export class Pilot {
       while (e > Math.PI) e -= Math.PI * 2;
       while (e < -Math.PI) e += Math.PI * 2;
       if (Math.abs(e) < FACE) { this.phase = "idle"; this.w = 0; this.v = 0; return this.phase; }
-      this.w = Math.max(-1.1, Math.min(1.1, e * 2.2));
+      /* At the machine's own ceiling, not half of it.
+       *
+       * This capped at 1.1 rad/s with no note saying why, against a maxW of
+       * 2.20 that the same pilot uses while walking -- so the guide turned to
+       * face the work at half the rate it is allowed to turn while moving,
+       * standing still, with the reader waiting on it. Simulated against
+       * FACE: a half turn took 3.17 s. At maxW it is 2.05, and at a gain of
+       * 3.2 rather than 2.2 it is 1.75, because the old gain spent the last
+       * thirty degrees crawling proportionally toward the threshold.
+       *
+       * Nothing downstream minds. v is zero here so there is no arc to clear,
+       * and nav/gait.js lags the commanded rate by an eighth of a second
+       * before the legs see it, which is what keeps a faster turn from
+       * snapping. */
+      const cap = this.local.maxW;
+      this.w = Math.max(-cap, Math.min(cap, e * 3.2));
       this.v = 0;
       this.integrate(dt);
       return this.phase;

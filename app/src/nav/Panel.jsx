@@ -77,7 +77,7 @@ export default function Panel({ id }) {
   if (id === "work") {
     return (
       <div ref={edges} className="panel panel--wide">
-        <ol className="cards">
+        <ol className="projects">
           {CONTENT.work.map((p, i) => (
             <li key={i} className="card">
               <span className="idx">{String(i + 1).padStart(2, "0")}</span>

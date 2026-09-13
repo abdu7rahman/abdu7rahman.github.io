@@ -475,6 +475,49 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                  + r.drove + ' m on the last'));
   }
 
+  console.log('\nF1bb. and the local control cell stops when it gets there');
+  {
+    /* It did not. The sampler was handed the goal every tick however close
+       the robot already was, and a local planner approaching a point it is
+       standing on has no good answer: traced over forty simulated seconds it
+       went (0.22, 0.28) -> (-0.06, 0.99) -> (0, -2.84) -> (0.22, 0.57) and
+       repeated -- demos/dwa.js's own "nothing admissible" fallback, then the
+       Burger's full yaw rate -- and then orbited the goal for as long as
+       anybody watched.
+
+       The cursor has to be parked for this to mean anything. With nobody
+       pointing the rig drives the goal round a circle of its own, and a
+       robot chasing a moving goal forever is the bay working. */
+    await goTo('drive');
+    const aim = await pg.evaluate(() => {
+      const L = window.__lab, T = L.THREE;
+      const o = L.scene.getObjectByName('pad-drive');
+      if (!o) return null;
+      L.scene.updateMatrixWorld(true);
+      const p = new T.Vector3().setFromMatrixPosition(o.matrixWorld).project(L.camera);
+      if (p.z >= 1) return null;
+      return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight };
+    });
+    ok('the drive pad is on screen', !!aim, String(aim));
+    if (aim) {
+      await pg.mouse.move(aim.x - 40, aim.y - 20);
+      await pg.waitForTimeout(400);
+      await pg.mouse.move(aim.x, aim.y);
+      await pg.waitForTimeout(2500);
+      const r = await pg.evaluate(() => {
+        const c = window.__lab.controls('drive'), d = 1 / 60;
+        for (let i = 0; i < 60 * 30; i++) c.tick(d);
+        const a = c.state();
+        for (let i = 0; i < 60 * 5; i++) c.tick(d);
+        const b = c.state();
+        return { v: Math.abs(b.v), w: Math.abs(b.w),
+                 moved: +Math.hypot(b.x - a.x, b.y - a.y).toFixed(4) };
+      });
+      ok('the base is stopped at the goal', r.v === 0 && r.w === 0, JSON.stringify(r));
+      ok('and it stays stopped', r.moved < 0.005, r.moved + ' m over five seconds');
+    }
+  }
+
   console.log('\nF1c. and the cost cell plans four paths and walks one');
   {
     /* Section F asks whether a cell responds. This asks whether this one
@@ -625,6 +668,29 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
       ok('and no arm passes through the body', r.inside === 0 && r.elbow > 0.02,
          r.inside + ' joints inside, nearest elbow ' + (r.elbow * 1000).toFixed(0) + ' mm clear');
     }
+  }
+
+  console.log('\nF3. the guide turns to face the work without a pause');
+  {
+    /* It turned at 1.1 rad/s against a maxW of 2.20 that the same pilot uses
+       while walking -- half rate, standing still, with the reader waiting.
+       Driven here rather than timed off the wall clock, because this page
+       renders at about one and a half frames a second and the pilot
+       integrates per second of simulated time either way. */
+    const t = await pg.evaluate(() => {
+      const g = window.__lab.guide, p = g.pose;
+      const face = p.yaw + Math.PI;          // the worst case: a half turn
+      g.goTo(p.x, p.z, face);
+      let n = 0;
+      while (n < 60 * 30 && g.phase !== 'idle') { g.update(1 / 60, { budget: 40000 }); n++; }
+      let e = face - g.pose.yaw;
+      while (e > Math.PI) e -= Math.PI * 2;
+      while (e < -Math.PI) e += Math.PI * 2;
+      return { secs: +(n / 60).toFixed(2), phase: g.phase, err: +Math.abs(e).toFixed(3) };
+    });
+    ok('it finishes the turn', t.phase === 'idle' && t.err < 0.12, JSON.stringify(t));
+    ok('and a half turn takes under two and a half seconds', t.secs < 2.5,
+       t.secs + ' s');
   }
 
   console.log('\nG0. a room that has more reading says so');
