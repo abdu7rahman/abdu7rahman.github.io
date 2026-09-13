@@ -668,11 +668,14 @@ export default function ForeseeRig({ stop }) {
             with the horizon because the uncertainty does.
         
             Drawn as sections and not as the spheres themselves, which was
-            the first version and is what a screenshot settled: at the cap
-            the tube is 1.10 m of radius on a 3 m bench, so four translucent
-            domes stacked over the whole cell and the arm inside them was
-            gone. A section carries the same number and leaves the machine
-            visible, which is the only reason the number is worth drawing. */}
+            the first version and is what a screenshot settled: the tube was
+            0.90 m of radius at the cap then, on a 3 m bench, so four
+            translucent domes stacked over the whole cell and the arm inside
+            them was gone. The cap is 0.10 now and the radius with it, 0.40 m
+            at the default ball and 0.52 at the slider's largest, which is
+            small enough to draw either way -- but a section still carries
+            the same number and leaves the machine visible, and that is the
+            only reason the number is worth drawing at all. */}
         {HORIZONS.map((h, i) => (
           <mesh key={i} ref={el => (cone.current[i] = el)} rotation-x={0}>
             <torusGeometry args={[1, 0.012, 6, 48]} />

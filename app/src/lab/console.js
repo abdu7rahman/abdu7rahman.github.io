@@ -63,6 +63,19 @@ export function isRunning(id) { return running.get(id) !== false; }
  * was the lag, and none of it was buying anything: a quadruped crawling a
  * hill forty metres behind you is not on screen.
  *
+ * Those are one machine's milliseconds, and worth saying so. Re-taken the
+ * same way on a different CPU after the race and replan cells changed:
+ * cost 1.37, race 0.99, sorting 0.68, swerve 0.23, search 0.20, replan 0.20,
+ * local control 0.14, cloned 0.08 -- 3.88 ms in all. Every cell came out
+ * lower, the five nothing has touched included, search by 46 per cent and
+ * local control by 39, so what the column is measuring is partly the
+ * machine. What survives is the shape: the two heaviest cells carry about
+ * three fifths of the total in both takes, and the total is a few
+ * milliseconds against 16.7 either way. The race cell's own 31 per cent
+ * sits inside the spread of the cells nothing changed, so dropping its
+ * robot-to-robot contacts is not visible here and this note does not claim
+ * it is.
+ *
  * So a cell runs when the lens is within RANGE of it. Measured by standing
  * at each of the eight stations in turn, that is two, three, four, three,
  * four, four, three, two walking in -- never eight, two at either end where
