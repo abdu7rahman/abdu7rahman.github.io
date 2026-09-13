@@ -518,6 +518,32 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
     }
   }
 
+  console.log('\nF1c0. and the cloned cell accounts for its own runs');
+  {
+    /* Every run ends exactly one way, and the ways are different things.
+       The 25 s ceiling on an unattended attempt used to call finish("stalled"),
+       so a run that was merely long -- the clone is slower than the controller
+       it copied -- was booked as the network commanding nothing. Measured over
+       400 simulated seconds before the split: 10 arrived and 17 "stalled";
+       after it, 9 arrived, 6 stalled and 6 over time.
+
+       The arithmetic is the gate. If the four outcomes stop summing to the
+       run count, something has started ending a run without saying how. */
+    await goTo('policy');
+    const r = await pg.evaluate(() => {
+      const c = window.__lab.controls('policy'), d = 1 / 60;
+      for (let i = 0; i < 60 * 200; i++) c.tick(d);
+      const s = c.state();
+      return { runs: s.runs, arrived: s.arrived, clipped: s.clipped,
+               wedged: s.wedged, stalled: s.stalled, timedout: s.timedout };
+    });
+    const sum = r.arrived + r.clipped + r.wedged + r.stalled + r.timedout;
+    ok('the cloned cell finished some runs', r.runs > 3, JSON.stringify(r));
+    ok('and every one is accounted for exactly once', sum === r.runs,
+       sum + ' outcomes against ' + r.runs + ' runs  ' + JSON.stringify(r));
+    ok('and it reaches the flag more than never', r.arrived > 0, String(r.arrived));
+  }
+
   console.log('\nF1c. and the cost cell plans four paths and walks one');
   {
     /* Section F asks whether a cell responds. This asks whether this one

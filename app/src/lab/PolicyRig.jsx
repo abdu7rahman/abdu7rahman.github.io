@@ -64,8 +64,17 @@ import { WORK } from "../lib/plan.js";
  * disagreement on the readout a comparison of two different controllers.
  * 98/120 is 82 per cent; the checkpoint's own closed-loop eval is 51/56,
  * which is 91 on the wider maps it was trained on. Neither number is 100 and
- * the bay does not pretend otherwise -- it clips a drum about one run in ten
- * and you can watch it happen.
+ * the bay does not pretend otherwise. What it fails at on this bench is not
+ * what that sentence used to say, though: driven headless for 400 simulated
+ * seconds twice, 49 runs, it clipped a drum once. "About one run in ten" was
+ * written before the cell had a tally on it and never re-derived.
+ *
+ * How it actually fails is by stopping -- 6 of 21 runs in the cleaner of the
+ * two passes, the network commanding nothing with nothing in the way, which
+ * is the failure the note further down explains and the one this bay is for.
+ * Another 6 of 21 simply ran past the 25 s ceiling on an unattended attempt,
+ * and those used to be counted as stopping too, which is what made the clone
+ * look like it gave up on three runs in five.
  */
 /* And bigger, which for this cell is not a framing choice either.
  *
@@ -175,8 +184,8 @@ export default function PolicyRig({ stop }) {
   const over = useRef(false);
   const cmd = useRef({ v: 0, w: 0, dv: 0, dw: 0, acc: 0, gap: 0 });
   const nav = useRef({ path: [], wp: 0, cell: -1, clipped: 0, wedged: 0,
-                       stalled: 0, arrived: 0, runs: 0, worst: 9, since: 0,
-                       still: 0, quiet: 0, last: 0, why: "" });
+                       stalled: 0, timedout: 0, arrived: 0, runs: 0, worst: 9,
+                       since: 0, still: 0, quiet: 0, last: 0, why: "" });
   const obs = useMemo(() => new Float64Array(15), []);
   const scratch = useRef(null);
   const beams = useRef();
@@ -240,7 +249,7 @@ export default function PolicyRig({ stop }) {
                      travel: 0, turned: 0 };
     cmd.current = { v: 0, w: 0, dv: 0, dw: 0, acc: 0, gap: 0 };
     nav.current = { path: [], wp: 0, cell: -1, clipped: 0, wedged: 0,
-                    stalled: 0, arrived: 0, runs: 0, worst: 9, since: 0,
+                    stalled: 0, timedout: 0, arrived: 0, runs: 0, worst: 9, since: 0,
                     still: 0, quiet: 0, last: 0, why: "" };
     const sm = sim.current;
     if (sm) sm.place("tb0_free", START[0], START[1], BURGER.tyre, START[2]);
@@ -264,6 +273,7 @@ export default function PolicyRig({ stop }) {
         ["disagreement", (c.gap * 1000).toFixed(0) + " mm/s"],
         ["goals reached", n.arrived + " of " + n.runs + " here"],
         ["gave up", n.clipped + " hit, " + n.wedged + " stuck, " + n.stalled + " stopped"],
+        ["ran long", n.timedout + " over 25 s"],
         ["closest it came", n.worst < 9 ? (n.worst * 1000).toFixed(0) + " mm" : "--"],
         ["trained on", net ? net.train.samples.toLocaleString() + " samples" : "--"]
       ];
@@ -272,9 +282,10 @@ export default function PolicyRig({ stop }) {
       if (!net) return "Loading the checkpoint.";
       const n = nav.current, c = cmd.current;
       if (!n.path.length) return "No route to the flag from here. Move it somewhere the planner can reach.";
-      if (n.since < 2.5 && n.why === "hit") return "It clipped a drum. The clone does that about one run in ten, and you just watched it.";
+      if (n.since < 2.5 && n.why === "hit") return "It clipped a drum. Once in forty-nine runs when this was measured, so you have just seen the rare one.";
       if (n.since < 2.5 && n.why === "stuck") return "Wedged against something. The expert it copied has a recovery behaviour -- a timed reverse and spin -- and the training script threw every recovery sample away on purpose, so the clone never learned one.";
       if (n.since < 2.5 && n.why === "stalled") return "It stopped. Nothing is in its way; it simply commanded zero and stayed there, which is what a cloned policy does at an observation its teacher never got into.";
+      if (n.since < 2.5 && n.why === "time") return "Twenty-five seconds and still going, so it got a fresh flag. Not a failure -- the clone is slower than the controller it copied, and a long way round the drums takes longer than that.";
       if (n.since < 2.5 && n.why === "goal") return "Reached. A network did that, not a controller -- 29,813 samples of watching one.";
       if (over.current) return "The flag follows your cursor. A* replans, and the network drives to the waypoint it hands over.";
       if (Math.abs(c.v) < 0.02) return "Barely moving. The fan is what it is reacting to -- every beam is a clearance reading.";
@@ -289,6 +300,13 @@ export default function PolicyRig({ stop }) {
       return { v: +c.v.toFixed(3), w: +c.w.toFixed(3), gap: +c.gap.toFixed(4),
                travel: +q.travel.toFixed(3), path: n.path.length, wp: n.wp,
                runs: n.runs, arrived: n.arrived,
+               /* Why the ones that did not arrive did not. The console has
+                  shown these since the cell was written and state() did not,
+                  so a harness could see that a run had ended and not what
+                  ended it -- which is the difference between "the clone
+                  fails" and "the clone clips drums". */
+               clipped: n.clipped, wedged: n.wedged, stalled: n.stalled,
+               timedout: n.timedout,
                net: net ? 1 : 0, sim: sim.current ? 1 : 0 };
     }
   }), [stop.id, net]);
@@ -302,6 +320,7 @@ export default function PolicyRig({ stop }) {
     if (why === "goal") n.arrived++;
     else if (why === "hit") n.clipped++;
     else if (why === "stalled") n.stalled++;
+    else if (why === "time") n.timedout++;
     else n.wedged++;
     if (why !== "goal") {
       // Put it back on clear ground. A wedged base cannot drive out of a
@@ -423,8 +442,15 @@ export default function PolicyRig({ stop }) {
     else if (n.quiet > 4) finish("stalled");
     else if (Math.hypot(q.x - goal.current.x, q.y - goal.current.y) < 0.16) finish("goal");
     /* And a ceiling on how long one attempt gets, so a cell nobody is
-       pointing at keeps starting new runs instead of circling one flag. */
-    else if (!over.current && n.since > 25) finish("stalled");
+       pointing at keeps starting new runs instead of circling one flag.
+       Counted as its own thing, because it is not the network stopping.
+       This called finish("stalled"), so an attempt that was merely long --
+       the clone is slower than its teacher and the course is 2.70 by 3.40 m
+       -- was recorded as the clone commanding nothing. Measured over 400 s
+       before the split: 28 runs, 10 arrived, 1 clipped, 0 wedged and 17
+       "stalled", which read as a policy that gives up on three runs in five
+       and was mostly this line. */
+    else if (!over.current && n.since > 25) finish("time");
   }
 
   /* The fan, drawn out of the observation that was just taken rather than
