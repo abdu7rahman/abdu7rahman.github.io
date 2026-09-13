@@ -73,18 +73,32 @@ const SECS = Number(process.env.SECS || 400);
     for (let i = 0; i < secs * 60; i++) c.tick(d);
     const after = c.state();
     return { predict: after.predict,
-             hits: after.hits - before.hits, saves: after.saves - before.saves };
+             hits: after.hits - before.hits, saves: after.saves - before.saves,
+             /* And how much it got done. Contacts on their own rank a
+                stopped arm first, and this harness measured a stopped arm
+                and called it a four-fold improvement: at the tube this cell
+                used to carry, predictive finished one end-to-end move in
+                300 s against reactive's 156, so "16 against 74" was the
+                ratio of two machines doing wildly different amounts of
+                work. */
+             moves: after.moves - before.moves };
   }, [which, secs]);
 
   console.log(`\n  ${SECS} s of simulated time each, same cell, same drift.\n`);
   const p = await run(true, SECS);    // predictive
   const r = await run(false, SECS);   // reactive
+  const per = v => v.moves ? v.hits / v.moves : Infinity;
   const row = (n, v) => console.log('  ' + n.padEnd(14) + String(v.hits).padStart(5)
-    + ' contacts   ' + String(v.saves).padStart(5) + ' cancelled early');
+    + ' contacts ' + String(v.moves).padStart(5) + ' moves '
+    + per(v).toFixed(2).padStart(6) + ' each   '
+    + String(v.saves).padStart(5) + ' cancelled early');
   row('predictive', p);
   row('reactive', r);
-  const better = r.hits > 0 ? (r.hits / Math.max(1, p.hits)).toFixed(1) : '--';
-  console.log(`\n  predicting is ${better}x fewer contacts\n`);
+  /* A run with no contacts at all is a real outcome at this tube, and
+     dividing by it would print Infinity. */
+  console.log(per(p) > 0
+    ? `\n  predicting is ${(per(r) / per(p)).toFixed(1)}x fewer contacts per finished move\n`
+    : `\n  predicting took no contacts at all over ${p.moves} finished moves\n`);
   let fail = 0;
   const ok = (n, c, d) => c ? console.log('  PASS  ' + n)
                             : (fail++, console.log('  FAIL  ' + n + '  <- ' + d));
@@ -93,7 +107,14 @@ const SECS = Number(process.env.SECS || 400);
   ok('reactive actually hits things', r.hits > 5, r.hits + ' contacts');
   ok('predicting cuts contacts by half or better', p.hits * 2 <= r.hits,
      p.hits + ' against ' + r.hits);
-  ok('and it cancels early rather than not moving', p.saves > 0, p.saves + ' early cancels');
+  /* This line used to read "and it cancels early rather than not moving" and
+     assert saves > 0, which an arm that never moves satisfies more easily
+     than one that does -- it cancels constantly. The thing it was trying to
+     say needs the move counter to say it. */
+  ok('and it is not buying that by standing still', p.moves > r.moves * 0.4,
+     p.moves + ' finished moves against ' + r.moves);
+  ok('and it is ahead per finished move', per(p) < per(r),
+     per(p).toFixed(2) + ' against ' + per(r).toFixed(2));
   console.log('');
   await b.close(); srv.close();
   process.exit(fail ? 1 : 0);

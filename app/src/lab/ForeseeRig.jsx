@@ -53,18 +53,29 @@ import { WORK } from "../lib/plan.js";
  * The switch on the console turns it off, and that is the bay: reactive, the
  * arm cancels when the ball reaches it and the contact counter goes up;
  * predictive, it cancels while the ball is still a hand's width away and the
- * counter does not.
+ * counter mostly does not.
  *
- * Measured in the page, 500 simulated seconds of the same drifting obstacle
- * on each setting: reactive took 126 contacts, predictive took 29. The
- * filter is not magic and the 29 are the honest half of it -- a
- * constant-velocity model is wrong about anything that changes direction,
- * which is why the tube widens with the horizon rather than tracking a
- * point, and it still gets caught. Four out of five is what the estimate is
- * worth here, and the readout carries both counts so nobody has to take that
- * on faith.
+ * Measured in the page, 300 simulated seconds of the same drifting obstacle
+ * on each setting: reactive finished 156 end-to-end moves and took 78
+ * contacts; predictive finished 95 and took 2. The filter is not magic and
+ * that 2 is the honest half of it -- a constant-velocity model is wrong
+ * about anything that changes direction, which is why the tube widens with
+ * the horizon rather than tracking a point, and it still gets caught.
+ *
+ * The finished moves are in that sentence because a contact count on its own
+ * ranks a stopped arm first, and this cell spent a long time being one: the
+ * note at the tube's own two constants is what that cost and how it was
+ * found. The readout carries both numbers so nobody has to take either on
+ * faith.
  */
 const TICK = 1 / 30;
+/* How much of the forecast's own uncertainty the arm is made to respect: the
+   width of the tube it will not plan through, in standard deviations, and the
+   metres at which that width stops growing. Named here rather than written
+   into the call because they are the one pair of numbers in this cell that
+   decides what it does, and the long note at the call site is about how they
+   were chosen. */
+const N_SIGMA = 2, CAP = 0.10;
 const SPEED = 0.55;          // fraction of the plan traversed per second
 const OBS_R = 0.20;          // metres, and the console scales from it
 const TUBE_R = 0.011;        // the drawn plan, in metres
@@ -139,6 +150,18 @@ export default function ForeseeRig({ stop }) {
                 is the number the whole cell is for. */
              clock: 0,
              track: new Track([0.45, 0.0, 0.55]), ttc: -1, warned: 0,
+             /* And how much work it got done while doing it.
+              *
+              * Contacts on their own rank a stopped arm first, which is not
+              * a hypothetical: at the tube this cell used to carry, measured
+              * over 300 unattended seconds, the predictive setting held
+              * position for 86 per cent of ticks and finished one
+              * end-to-end move while collecting 16 contacts, and the
+              * reactive one finished 156 and collected 74. Sixteen contacts
+              * a move against half of one. The count of finished moves
+              * beside the count of contacts is what makes that visible, on
+              * the readout and to the harness. */
+             moves: 0,
              predict: true, hits: 0, saves: 0 };
   }, []);
 
@@ -155,6 +178,7 @@ export default function ForeseeRig({ stop }) {
   const over = useRef(false);
   const mat = useRef();
   const _fc = useMemo(() => [0, 0, 0, 0], []);
+  const _fpt = useMemo(() => new THREE.Vector3(), []);
 
   /* The plan is drawn as a tube and not as a line, because WebGL ignores
      linewidth: a LineBasicMaterial is one device pixel wide however near the
@@ -202,12 +226,17 @@ export default function ForeseeRig({ stop }) {
     actions: [{ label: "Reset", on: () => {
       kit.a = Float32Array.from(ENDS[0]); kit.b = Float32Array.from(ENDS[1]);
       kit.via = null; kit.u = 0; kit.dead = false; kit.dir = 1;
+      kit.hits = 0; kit.saves = 0; kit.moves = 0;
       cmd.current.set(ENDS[0]); act.current.set(ENDS[0]); painted.current = false;
       if (sim.current) { sim.current.reset(); for (let i = 0; i < 6; i++) sim.current.qpos[i] = ENDS[0][i]; }
     } }],
     choice: {
       get: () => kit.predict,
-      set: (v) => { kit.predict = v; kit.hits = 0; kit.saves = 0; },
+      // All three together: a contact count carried across a mode change
+      // and a move count that was not would make the ratio meaningless.
+      set: (v) => {
+        kit.predict = v; kit.hits = 0; kit.saves = 0; kit.moves = 0;
+      },
       options: [
         { value: true, label: "Predictive" },
         { value: false, label: "Reactive" }
@@ -232,7 +261,13 @@ export default function ForeseeRig({ stop }) {
       ["cancelled early", kit.warned > 0 ? (kit.warned * 1000).toFixed(0) + " ms" : "--"],
       ["clearance", kit.ready ? (kit.gap * 100).toFixed(0) + " cm" : "--"],
       ["touching", kit.ready ? String(kit.touch) : "--"],
-      ["hit / avoided", kit.hits + " / " + kit.saves]
+      ["hit / avoided", kit.hits + " / " + kit.saves],
+      /* Because the row above is not a score on its own: an arm standing
+         still is never hit. Switch modes and read both rows -- reading only
+         the first is how this cell came to carry a forecast tube that held
+         the arm still for 86 per cent of a run and was called four times
+         safer for it. */
+      ["moves finished", String(kit.moves)]
     ],
     /* What it is doing, in words. The whole point of this bay is a moment
        that lasts about a second, and a readout row that flickers from
@@ -270,7 +305,7 @@ export default function ForeseeRig({ stop }) {
       dead: kit.dead ? 1 : 0, via: kit.via ? 1 : 0, touch: kit.touch,
       ttc: +kit.ttc.toFixed(3), warned: +kit.warned.toFixed(3),
       speed: +kit.track.speed.toFixed(3), predict: kit.predict ? 1 : 0,
-      hits: kit.hits, saves: kit.saves
+      hits: kit.hits, saves: kit.saves, moves: kit.moves
     })
   }), [stop.id, kit, sim]);
 
@@ -336,30 +371,58 @@ export default function ForeseeRig({ stop }) {
         return out;
       };
       kit.ttc = timeToCollision(armAt, kit.armPts, kit.radii, kit.track, {
-        /* Two sigmas and a 0.35 m cap, where predictive_replanning/run.py
-           defaults to one and 0.10. The filter itself does not diverge --
-           accel_std 1.2 and meas_std 0.02 are the module's own, and a
-           constant-velocity forecast at that process noise reaches 1.5 m of
-           sigma by 1.6 s, so the cap is doing real work either way.
-           What differs is how much of that uncertainty the arm is made to
-           respect.
+        /* Two sigmas and a 0.10 m cap, against predictive_replanning/run.py's
+           one and 0.10. The filter itself does not diverge -- accel_std 1.2
+           and meas_std 0.02 are the module's own, and a constant-velocity
+           forecast at that process noise reaches 1.5 m of sigma by 1.6 s --
+           it grows as 0.6 t squared -- so a cap of 0.10 binds at 0.41 s and
+           one of 0.35 at 0.76 s, and either way it is binding before the
+           1.6 s horizon is half spent. What these two decide is how much of
+           that uncertainty the arm is made to respect.
 
-           Measured, because the wider tube is the more expensive one and a
-           preference is not a reason. tools/test_replan.js, 300 s of the
-           same drift at each setting: two sigmas and 0.35 gives 16 contacts
-           against 86 reactive; one sigma and 0.10 gives 35 against 82. The
-           reference implementation's own defaults are twice the contacts
-           here, which is not a close call, and this bay is the one place in
-           the building where the honest answer is the more cautious one --
-           a cell about seeing the collision coming that walks into half of
-           them is not making its point.
+           The cap was 0.35, and it was chosen on contacts alone. Contacts
+           alone rank a stopped arm first, and that is not a hypothetical: a
+           0.20 m ball plus two sigmas of 0.35 is a 0.90 m radius inside a
+           workspace about 1.2 m across, so nothing was ever clear. Measured
+           over 300 unattended seconds it held position for 86 per cent of
+           ticks and finished one end-to-end move. Reactive finished 156.
+           "16 contacts against 74" was never a result; it was the ratio of
+           two machines doing wildly different amounts of work.
+
+           So the number to rank on is contacts per finished move, and the
+           cell counts moves now. tools/test_replan.js, 300 s of the same
+           drift at each setting:
+
+                            contacts  moves  per move  held
+             2 and 0.10            2     95      0.02   35%
+             1 and 0.10           26    106      0.25   28%
+             2 and 0.20           24     21      1.14   79%
+             2 and 0.35            1      1      1.00   99%
+             reactive             78    156      0.50    4%
+
+           Two sigmas of 0.10 is a 0.40 m radius. It finishes three moves in
+           five at the reactive arm's rate and is touched once or twice in
+           five minutes rather than seventy-odd times, which is the claim
+           this bay exists to make. Better than an order of magnitude per
+           finished move, and no more precise than that: the numerator is
+           two, and two runs of this build gave 1 and 2 contacts against
+           reactive's 74 and 78. The reference implementation's single sigma
+           sits between the two, clearly ahead of reactive and roughly an
+           order of magnitude behind this.
+
+           And the two rows in the middle are the shape of it: widening the
+           tube past about half a metre does not buy fewer contacts, it buys
+           an arm that cannot find anywhere to go and gets hit where it
+           stands.
 
            The earlier note here said the cap was "the cell's own" because
            the workspace is 1.2 m across. That was not a reason, it was an
-           arithmetic error: two sigmas of 0.35 is a 1.58 m tube, wider than
-           the workspace it claimed to be bounded by. */
-        base: kit.r, nSigma: 2, clearance: 0.02, horizon: 1.6, steps: 10,
-        cap: 0.35,
+           arithmetic error -- and the arithmetic was wrong twice over: two
+           sigmas of 0.35 around a 0.20 m ball is a 1.80 m tube, not the
+           1.58 m that note went on to quote, which is what the same sum
+           gives for a 0.09 m obstacle and not for this one. */
+        base: kit.r, nSigma: N_SIGMA, clearance: 0.02, horizon: 1.6, steps: 10,
+        cap: CAP,
         rate: SPEED / Math.max(0.05, 1 - kit.u)
       });
       const soon = kit.predict && kit.ttc >= 0;
@@ -372,7 +435,10 @@ export default function ForeseeRig({ stop }) {
         if (!m) continue;
         m.visible = kit.predict;
         if (!kit.predict) continue;
-        const r = kit.track.radiusAt(HORIZONS[i], kit.r, 2, 0.35, _fc);
+        // The same two numbers the cancel test above is using. They were
+        // written out here as literals, so changing the tube would have
+        // changed what the arm avoids and not what the reader is shown.
+        const r = kit.track.radiusAt(HORIZONS[i], kit.r, N_SIGMA, CAP, _fc);
         m.position.set(_fc[0], _fc[1], _fc[2]);
         /* The ring's own tube stays the thickness it was authored at while
            its radius scales, or a far horizon comes out as a fat doughnut
@@ -400,7 +466,29 @@ export default function ForeseeRig({ stop }) {
         // that cancels and re-accelerates inside one frame is a controller
         // nobody can see cancel.
         if (kit.hold > 0.22) {
-          const via = replan(from, kit.b, obs.current, kit.r + 0.02,
+          /* Around the forecast, not around the ball.
+           *
+           * This asked for a detour clear of where the obstacle is, at the
+           * ball's own radius, while the test that had just cancelled the
+           * plan was about where the obstacle will be, at the width of the
+           * filter's uncertainty. Two different obstacles, so the sampler
+           * certified a detour and timeToCollision cancelled it on the next
+           * tick for a reason the sampler had never been told about, and the
+           * cell went round that loop for as long as anybody watched.
+           *
+           * The detour is planned around the forecast at the horizon that
+           * cancelled the plan now, at the radius that forecast justifies.
+           * The two tests are still not identical -- clear() measures to the
+           * arm's centreline and timeToCollision carries a radius per link
+           * -- but they are about the same obstacle in the same place. */
+          let at = obs.current, rad = kit.r + 0.02;
+          if (kit.predict && kit.ttc >= 0) {
+            // radiusAt fills _fc with the forecast before returning the
+            // radius, so the point has to be read after the call.
+            rad = kit.track.radiusAt(kit.ttc, kit.r, N_SIGMA, CAP, _fc) + 0.02;
+            at = _fpt.set(_fc[0], _fc[1], _fc[2]);
+          }
+          const via = replan(from, kit.b, at, rad,
                              kit.fk, kit.scratch, kit.rand);
           if (via) {
             kit.a = from; kit.via = via; kit.u = 0; kit.dead = false;
@@ -429,6 +517,7 @@ export default function ForeseeRig({ stop }) {
          same to within float error, and after a cancelled detour they are
          not, and starting from the goal would teleport it. */
       kit.dir = -kit.dir;
+      kit.moves++;
       kit.a = Float32Array.from(act.current);
       kit.b = Float32Array.from(ENDS[kit.dir > 0 ? 1 : 0]);
       kit.via = null; kit.u = 0;
