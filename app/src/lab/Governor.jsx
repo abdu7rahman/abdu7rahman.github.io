@@ -32,10 +32,52 @@ const STEP_DOWN = 0.8;
 const STEP_UP = 0.1;
 const EARN = 4;          // consecutive fast windows before it gives any back
 
-export default function Governor({ cap = 2 }) {
+/* And what to do when resolution runs out.
+ *
+ * Everything above moves one number, because pixel ratio is the only setting
+ * that can change without recompiling the building. The settings that cannot
+ * are the expensive ones: lib/capability.js's own measurements put shadow
+ * work at 47 per cent of the draw calls and 65 per cent of the geometry in a
+ * fully drawn frame, and shadows, the post chain and the sample counts are
+ * all fixed at load from `cores >= 8 && mem >= 8`.
+ *
+ * So a machine that cannot hold its tier walks dpr down to 1.0 and then has
+ * nothing left to give, and keeps drawing 808 calls and 562,000 triangles a
+ * frame for as long as the reader stays. The guess that put it there is not
+ * revisited, because by the time there is evidence against it the evidence
+ * cannot be acted on.
+ *
+ * It can be acted on next time. Sustained slowness at the floor is recorded,
+ * and capability.js reads it as a ceiling on the following load -- which is
+ * the one moment the settings it gates are free to change. Slow here means
+ * slow for STUCK consecutive windows while already at FLOOR, which is three
+ * seconds of a machine having been given every reduction this file can make
+ * and still missing 42 fps; a tab that was briefly busy does not reach it.
+ *
+ * And it is reversible. A machine that later holds the full cap for CLEAR
+ * windows has the note removed, so hardware that was throttled, or busy, or
+ * plugged in since, is not held down by one bad afternoon. */
+const STUCK = 6;         // slow windows at the floor before it is written down
+const CLEAR = 20;        // fast windows at full cap before the note is lifted
+const NOTE = "lab-tier";
+const DOWN = { high: "medium", medium: "low", low: null };
+
+function remember(tier) {
+  try {
+    const next = DOWN[tier];
+    if (next) localStorage.setItem(NOTE, next);
+  } catch (e) { /* private mode; the note is an optimisation, not a feature */ }
+}
+
+function forget() {
+  try { localStorage.removeItem(NOTE); } catch (e) { /* as above */ }
+}
+
+export default function Governor({ cap = 2, tier = "high" }) {
   const setDpr = useThree(s => s.setDpr);
   const gl = useThree(s => s.gl);
-  const st = useMemo(() => ({ t: 0, n: 0, fast: 0, dpr: cap, frames: [] }), [cap]);
+  const st = useMemo(() => ({ t: 0, n: 0, fast: 0, dpr: cap, frames: [],
+                              stuck: 0, clear: 0, wrote: false }), [cap]);
   const ready = useRef(0);
 
   useFrame((_, dt) => {
@@ -80,11 +122,29 @@ export default function Governor({ cap = 2 }) {
       st.fast = 0;
     }
 
+    /* Out of resolution and still behind: write it down for the next load,
+       which is when the settings this file cannot touch are free to move. */
+    if (med > SLOW && st.dpr <= FLOOR) {
+      st.clear = 0;
+      if (++st.stuck >= STUCK && !st.wrote) { st.wrote = true; remember(tier); }
+    } else {
+      st.stuck = 0;
+      /* And the way back. Holding the full cap comfortably for a long stretch
+         is evidence the note is stale -- a throttled machine that cooled down,
+         a laptop that got plugged in, a tab that stopped competing. */
+      if (med < FAST && st.dpr >= cap) {
+        if (++st.clear >= CLEAR) { st.clear = 0; st.wrote = false; forget(); }
+      } else {
+        st.clear = 0;
+      }
+    }
+
     /* Readable from outside, because "is it dropping frames" is the one
        question about this building a screenshot cannot answer. */
     if (typeof window !== "undefined" && window.__lab) {
       window.__lab.fps = { median: +(1 / med).toFixed(1), dpr: +st.dpr.toFixed(2),
-                           cap, actual: gl.getPixelRatio() };
+                           cap, actual: gl.getPixelRatio(), tier,
+                           stuck: st.stuck, demoted: st.wrote };
     }
   });
 

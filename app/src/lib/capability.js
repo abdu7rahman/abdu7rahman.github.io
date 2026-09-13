@@ -173,11 +173,41 @@ export function detect() {
      never mistaken for a measurement of the real thing. */
   soft = /swiftshader|llvmpipe|softwarepipe|microsoft basic/i.test(renderer);
 
+  /* What a previous visit found out the hard way.
+   *
+   * The three lines below are a guess about the GPU made from two numbers
+   * that are not about the GPU, and lab/Governor.jsx's header says so at
+   * length: eight cores and eight gigabytes describes most laptops sold in
+   * the last five years, integrated graphics included. The Governor rescues
+   * what it can -- pixel ratio, which is the largest single lever and the
+   * only one free to move mid-walk -- but shadows, the post chain and the
+   * sample counts are fixed here, and by this file's own measurement shadow
+   * work alone is 47 per cent of the draw calls in a drawn frame.
+   *
+   * So when the Governor runs out of resolution and the machine is still
+   * behind, it writes down the tier below the one it was given, and this is
+   * where that is read. Load time is the one moment those settings can
+   * change without recompiling every material in the building.
+   *
+   * Only ever downward, and only to a tier this file knows: a note is
+   * evidence that a machine struggled, which is a reason to ask less of it
+   * and never a reason to ask more. The Governor removes it again when the
+   * same machine holds the full pixel ratio for a long stretch. */
+  let noted = null;
+  try {
+    const n = localStorage.getItem("lab-tier");
+    if (n && TIERS[n]) noted = n;
+  } catch (e) { /* private mode, or no storage; the guess stands alone */ }
+
   let tier;
   if (!gl) tier = "low";
   else if (soft || coarse || narrow) tier = "low";
   else if (cores >= 8 && mem >= 8) tier = "high";
   else tier = "medium";
+
+  const guessed = tier;
+  const ORDER = ["low", "medium", "high"];
+  if (noted && ORDER.indexOf(noted) < ORDER.indexOf(tier)) tier = noted;
 
   /* A tier can be asked for. This is not a feature for readers: it is the
      only way the graded frame gets photographed, because the browser that can
@@ -214,8 +244,8 @@ export function detect() {
   } catch (e) { quality = TIERS[tier]; /* no location, no override */ }
 
   cached = {
-    tier, forced, soft, webgl2, coarse, narrow, cores, mem, renderer,
-    quality
+    tier, guessed, noted, forced, soft, webgl2, coarse, narrow, cores, mem,
+    renderer, quality
   };
   return cached;
 }

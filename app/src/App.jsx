@@ -35,7 +35,7 @@ export default function App() {
      cellShadows for four components and only post was ever consumed:
      ?lab=low rendered byte for byte the same frame as ?lab=high, which is
      the whole ladder doing nothing. */
-  const { quality } = detect();
+  const { quality, tier } = detect();
   const rigs = STOPS.filter(s => s.kind === "rig");
 
   return (
@@ -75,7 +75,9 @@ export default function App() {
             way to get it is to refuse to fill the shadows. */}
         {/* Resolution follows the measured frame rate from here on; the
             tier above is only the opening guess. */}
-        <Governor cap={quality.dpr} />
+        {/* The tier goes with the cap so the Governor knows what to write
+            down if the machine cannot hold it. */}
+        <Governor cap={quality.dpr} tier={tier} />
 
         <ambientLight intensity={0.16} color={"#6d6a66"} />
         {/* The key. Its box follows the visitor rather than sitting on the
