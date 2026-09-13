@@ -372,7 +372,11 @@ export default function ForeseeRig({ stop }) {
       };
       kit.ttc = timeToCollision(armAt, kit.armPts, kit.radii, kit.track, {
         /* Two sigmas and a 0.10 m cap, against predictive_replanning/run.py's
-           one and 0.10. The filter itself does not diverge -- accel_std 1.2
+           one and 0.10 -- checked, not remembered: run_one() declares
+           n_sigma=1.0 and sigma_cap=0.10, and the clearance of 0.02 this call
+           passes is its default too. The horizon is the one number here that
+           differs without being argued: 1.6 s against the reference's
+           ttc_threshold of 2.0, which is the threshold its own proposal set. The filter itself does not diverge -- accel_std 1.2
            and meas_std 0.02 are the module's own, and a constant-velocity
            forecast at that process noise grows as about 0.6 t squared.
            Measured off this cell's own filter rather than off the module's
@@ -425,10 +429,11 @@ export default function ForeseeRig({ stop }) {
            arithmetic error -- and the arithmetic was wrong twice over: two
            sigmas of 0.35 around a 0.20 m ball is a 1.80 m tube, not the
            1.58 m that note went on to quote. 1.58 is what the same sum gives
-           for a 0.09 m obstacle, which is the reference cell's own radius --
-           predictive_replanning/cell.py builds its MJCF with
-           obstacle_radius=0.09 -- so that figure was the module's cell and
-           not this one. */
+           for a 0.09 m obstacle, which is the radius cell.py's build_mjcf
+           declares -- though a trial never uses it, because run.py builds the
+           model from the obstacle track's own radius and that defaults to
+           0.07. Either way the figure came from the reference's obstacle and
+           not from this cell's 0.20 m ball. */
         base: kit.r, nSigma: N_SIGMA, clearance: 0.02, horizon: 1.6, steps: 10,
         cap: CAP,
         rate: SPEED / Math.max(0.05, 1 - kit.u)
