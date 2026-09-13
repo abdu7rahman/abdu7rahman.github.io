@@ -94,7 +94,18 @@ export class Track {
     return out;
   }
 
-  /* White-noise-acceleration process noise, the CV model's own. */
+  /* White-noise-acceleration process noise, the CV model's own.
+   *
+   * This class is a port of predictive_replanning/predict.py's
+   * ObstacleTracker and was checked against it term by term rather than
+   * written from the same textbook: the initial P is meas_std squared on
+   * position and 0.5 squared on velocity, F carries dt in the position-
+   * velocity block, Q is dt^4/4, dt^3/2 and dt^2 times accel_std squared in
+   * the three blocks below, the update is P <- F P F' + Q with S = H P H' + R,
+   * and forecast's sigma is the root of the mean of the position variances.
+   * All six agree, and so do the constants. That is what makes the sigma
+   * figures quoted at the cell's own tube its model's numbers and not this
+   * port's approximation of them. */
   Q(dt, out) {
     out.fill(0);
     const q = this.accelStd * this.accelStd;
