@@ -89,8 +89,19 @@ const skipped = (n,why) => { skip++; console.log('  SKIP  '+n+'  <- '+why); };
     await p2.goto(BASE + '/demo.html', { waitUntil:'load' });   await p2.waitForTimeout(900);
     ok('a second tab is the same visit', c2.join(',') === 'get', c2.join(','));
 
-    // Wind the clock back past the window: the reader came back later.
-    await p.evaluate(w => localStorage.setItem('visit-seen', String(Date.now() - w - 1000)), 30*60*1000);
+    /* Wind the clock back past the window: the reader came back later.
+     *
+     * Two windows back and not one window plus a second, because the margin
+     * has to cover the clock moving backwards between this line and the
+     * reload. visits.js counts a visit as still open when `now - last` is
+     * under the window, so with a one-second margin a clock that steps back
+     * more than a second makes an expired visit look current -- and this is
+     * exactly the failure that produced, once, on a sandbox whose wall clock
+     * is virtualised: "after 30 min idle it counts again <- get", with
+     * nothing in the diff anywhere near visits.js. A margin of a whole
+     * window tolerates any backwards step short of half an hour, and the
+     * case it is testing is unchanged. */
+    await p.evaluate(w => localStorage.setItem('visit-seen', String(Date.now() - w * 2)), 30*60*1000);
     calls.length = 0;
     await p.reload({ waitUntil:'load' });                      await p.waitForTimeout(900);
     ok('after 30 min idle it counts again', calls.join(',') === 'hit', calls.join(','));
