@@ -374,11 +374,16 @@ export default function ForeseeRig({ stop }) {
         /* Two sigmas and a 0.10 m cap, against predictive_replanning/run.py's
            one and 0.10. The filter itself does not diverge -- accel_std 1.2
            and meas_std 0.02 are the module's own, and a constant-velocity
-           forecast at that process noise reaches 1.5 m of sigma by 1.6 s --
-           it grows as 0.6 t squared -- so a cap of 0.10 binds at 0.41 s and
-           one of 0.35 at 0.76 s, and either way it is binding before the
-           1.6 s horizon is half spent. What these two decide is how much of
-           that uncertainty the arm is made to respect.
+           forecast at that process noise grows as about 0.6 t squared.
+           Measured off this cell's own filter rather than off the module's
+           note: sigma is 0.106 m at 0.4 s, 0.872 at 1.2 and 1.543 at 1.6, so
+           a cap of 0.10 binds at 0.39 s and one of 0.35 at 0.76, and either
+           is binding before the 1.6 s horizon is half spent. The numbers do
+           not move with how long the filter has been tracking -- 0.5 s of
+           history and 60 s give the same curve, because the forward
+           covariance is dominated by the process noise over the horizon and
+           not by what the filter has learned. What these two decide is how
+           much of that uncertainty the arm is made to respect.
 
            The cap was 0.35, and it was chosen on contacts alone. Contacts
            alone rank a stopped arm first, and that is not a hypothetical: a
@@ -419,8 +424,11 @@ export default function ForeseeRig({ stop }) {
            the workspace is 1.2 m across. That was not a reason, it was an
            arithmetic error -- and the arithmetic was wrong twice over: two
            sigmas of 0.35 around a 0.20 m ball is a 1.80 m tube, not the
-           1.58 m that note went on to quote, which is what the same sum
-           gives for a 0.09 m obstacle and not for this one. */
+           1.58 m that note went on to quote. 1.58 is what the same sum gives
+           for a 0.09 m obstacle, which is the reference cell's own radius --
+           predictive_replanning/cell.py builds its MJCF with
+           obstacle_radius=0.09 -- so that figure was the module's cell and
+           not this one. */
         base: kit.r, nSigma: N_SIGMA, clearance: 0.02, horizon: 1.6, steps: 10,
         cap: CAP,
         rate: SPEED / Math.max(0.05, 1 - kit.u)
