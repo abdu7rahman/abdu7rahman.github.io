@@ -379,7 +379,40 @@ export default function RaceRig({ stop }) {
        plan, which stops meaning anything the moment they are pushing each
        other along it. They still collide with the floor, so the physics that
        makes this a race rather than four animations -- wheel slip, a caster
-       to carry, a body that can roll -- is all still there. */
+       to carry, a body that can roll -- is all still there.
+
+       This is not a good answer and it should not survive. A reader watching
+       one machine drive through another is watching what looks like a broken
+       renderer, and it was reported as exactly that. It is recorded here
+       rather than quietly left because the two obvious replacements have
+       both been measured and both fail, and the next person to look at this
+       should not spend the afternoon rediscovering that.
+
+       Bounding the race does not work. The idea was that four machines a
+       quarter lap apart cannot catch each other inside one lap, so end the
+       race when everybody has finished one and line up again. Measured with
+       the pair test back on: at 0.06 m/s the field closed to the 0.64 m
+       guard inside a lap and the solver was resolving twenty contacts, and
+       at 0.10 every single race ended bunched rather than finished. They
+       converge in about the time of one lap at every ceiling, so any race
+       long enough to be worth watching is long enough for them to meet.
+
+       Plain concentric lanes do not work either, for a subtler reason. Four
+       lanes 0.25 m apart -- about the closest two Burgers can pass -- make
+       the outer lap twice the inner, 10.23 m against 5.14, and the corners
+       correspondingly gentler. Running every controller in every lane, the
+       same controller varies by 5 mm (stanley) to 52 mm (the sampler) purely
+       from which lane it was given, against a spread between controllers
+       within one lane of about 68 mm. The lane is as big an effect as the
+       thing being measured, and it is monotonic in offset: everything does
+       better on the outside.
+
+       That monotonicity is the way out, if somebody wants one. A bias that
+       is systematic in lane offset cancels when each controller drives every
+       lane and the board averages the four races -- a Latin square, and the
+       numbers above are what make the rotation necessary rather than tidy.
+       The other honest option is one controller at a time against the board,
+       which gives up the four-at-once and gives up nothing else. */
     return wheeledScene({ starts, solo: true });
   }, []);
   const _p = useMemo(() => new THREE.Vector3(), []);
