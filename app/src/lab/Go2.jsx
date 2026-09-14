@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ASSET } from "../lib/paths.js";
+import { useMemo, useRef } from "react";
+import { useBake } from "../lib/bake.js";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { creaseNormals } from "../lib/mesh.js";
@@ -54,21 +54,6 @@ const MESH = {
 // The leg order everything outside this file uses, and no offset at all.
 const ORDER = ["FL", "FR", "RL", "RR"];
 
-let cached = null;
-
-function useGo2() {
-  const [mesh, setMesh] = useState(cached);
-  useEffect(() => {
-    if (cached) return;
-    let live = true;
-    fetch(ASSET("go2.json"))
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
-      .then(j => { cached = j; if (live) setMesh(j); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return mesh;
-}
 
 /* `joints` is a ref to twelve angles in FL FR RL RR order and hip, thigh,
  * calf within each -- the URDF's own joints, which is also the order
@@ -82,7 +67,7 @@ function useGo2() {
  * not been written yet leaves the machine where it was.
  */
 export default function Go2({ scale = 1, tint, joints }) {
-  const mesh = useGo2();
+  const mesh = useBake("go2.json");
   const groups = useRef([]);
   const body = useRef();
 

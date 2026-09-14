@@ -34,6 +34,35 @@ import * as THREE from "three";
    copy of a ten megabyte file. */
 let pending = null;
 
+/* Whether anybody has asked for a machine to move yet.
+ *
+ * The comment above says nothing here loads until something asks, and that
+ * stopped being true the moment every cell in the building mounted at once:
+ * eight rigs, eight useSim calls in one commit, and 2.5 MB of compressed
+ * wasm on the critical path of a page whose reader has not yet chosen where
+ * to go. Measured on a cold load of the built site: mujoco.wasm was the
+ * largest single transfer of the load and finished last of everything.
+ *
+ * So the request waits for the first sign of interest. nav/journey.js calls
+ * want() when the reader picks anywhere to walk -- which is the first thing
+ * they do, and which buys the whole length of the walk to fetch and compile
+ * in. Until then the cells draw their own baked motion, which is exactly
+ * what they already do for the seconds before the engine resolves.
+ */
+let wanted = false;
+const waiting = [];
+
+export function want() {
+  if (wanted) return;
+  wanted = true;
+  for (const fn of waiting.splice(0)) fn();
+}
+
+export function whenWanted(fn) {
+  if (wanted) fn();
+  else waiting.push(fn);
+}
+
 export function engine() {
   if (pending) return pending;
   /* Absolute, and loaded by URL rather than by package name. Vite would

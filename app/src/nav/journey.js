@@ -1,3 +1,4 @@
+import { want } from "../sim/engine.js";
 import { STOPS } from "../lib/plan.js";
 
 /* Where the visit is up to.
@@ -62,6 +63,10 @@ export function choose(route) {
 
 export function goTo(id) {
   if (!STOPS.some(s => s.id === id)) return;
+  /* Somebody has picked somewhere to be, which is the first moment this page
+     knows a machine is going to be watched. sim/engine.js carries why the
+     10 MB of physics waits for this rather than for the page load. */
+  want();
   state.target = id;
   state.at = null;
   state.phase = "walking";

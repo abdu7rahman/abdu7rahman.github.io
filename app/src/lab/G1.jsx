@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import { useBake } from "../lib/bake.js";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { ASSET } from "../lib/paths.js";
 import { creaseNormals } from "../lib/mesh.js";
 import { P } from "../lib/palette.js";
 
@@ -24,24 +24,10 @@ import { P } from "../lib/palette.js";
  * 339 KB gzipped, fetched once and cached at module scope however many are
  * mounted -- the same rule UR12e.jsx follows, and for the same reason.
  */
-let cached = null;
-let pending = null;
-
-export function useG1() {
-  const [tree, setTree] = useState(cached);
-  useEffect(() => {
-    if (cached) return;
-    let live = true;
-    if (!pending) {
-      pending = fetch(ASSET("g1.json"))
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
-        .then(j => { cached = j; return j; });
-    }
-    pending.then(j => { if (live) setTree(j); }).catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return tree;
-}
+/* This file worked it out first -- it kept the in-flight promise beside the
+   answer where the other three kept only the answer -- and lib/bake.js is
+   that rule for all four. */
+export function useG1() { return useBake("g1.json"); }
 
 /* Which joint is which, by name, so a gait can talk about a knee instead of
    about index 17. Built once from the bake rather than written out here: a

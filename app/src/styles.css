@@ -620,3 +620,53 @@ canvas { display: block; touch-action: pan-y; }
   .cards { left: 12px; right: 12px; width: auto; bottom: 62px; }
   .cards__body { font-size: 12.5px; }
 }
+
+/* The door: what is on screen between first paint and the first frame.
+
+   Positioned and coloured here rather than inline in index.html so it takes
+   the same tokens as everything else over this building -- the plate, the
+   stencilled caps, the mono. It is the one piece of chrome that has to be
+   styled before the app exists, and the built stylesheet is render-blocking,
+   so it is.
+
+   The two rows are states and not a bar. A progress bar over a load whose
+   total nobody knows is a lie told smoothly; "the machines 2 of 4" is the
+   count lib/bake.js actually keeps, and the row goes quiet when it is done
+   rather than filling up. */
+#door {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; align-content: center; justify-items: start;
+  gap: 18px; padding: clamp(24px, 7vw, 90px);
+  background: var(--air);
+  transition: opacity .4s ease;
+}
+#door[data-state="shut"] { opacity: 0; pointer-events: none; }
+.door-h {
+  margin: 0; font: 800 clamp(30px, 7vw, 58px)/1 var(--ui);
+  letter-spacing: -.02em; text-transform: uppercase;
+}
+.door-s { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.door-s li {
+  display: flex; align-items: baseline; gap: 10px;
+  font: 600 13px/1.4 var(--mono); letter-spacing: .04em;
+  text-transform: uppercase; color: #6d6e76;
+}
+/* A leading rule per row, lit while that row is what is being waited on and
+   left lit once it is done, so the eye can see the order it happens in. */
+.door-s li::before {
+  content: ""; width: 26px; height: 2px; background: var(--steel);
+  transition: background .25s ease;
+}
+.door-s li[data-state="now"] { color: #a8a8ad; }
+.door-s li[data-state="now"]::before { background: var(--hazard); }
+.door-s li[data-state="done"] { color: #8f9098; }
+.door-s li[data-state="done"]::before { background: var(--accent); }
+.door-s b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.door-f {
+  margin: 0; max-width: 44ch;
+  font: 400 14px/1.6 var(--ui); color: #8a8b93;
+}
+.door-f a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  #door, .door-s li::before { transition: none; }
+}

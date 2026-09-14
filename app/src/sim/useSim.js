@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { engine, Sim } from "./engine.js";
+import { engine, whenWanted, Sim } from "./engine.js";
 
 /* A compiled MuJoCo scene, tied to the life of a React component.
  *
@@ -23,11 +23,17 @@ export function useSim(build, deps = []) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let live = true;
-    engine().then(mj => {
+    /* And not before somebody wants one. A cell that compiles its scene on
+       mount is a cell that pulls the engine down on page load, which is the
+       one thing engine.js says it does not do. */
+    whenWanted(() => {
       if (!live) return;
-      ref.current = new Sim(mj, build());
-      setReady(true);
-    }).catch(() => { if (live) setReady(false); });
+      engine().then(mj => {
+        if (!live) return;
+        ref.current = new Sim(mj, build());
+        setReady(true);
+      }).catch(() => { if (live) setReady(false); });
+    });
     return () => {
       live = false;
       if (ref.current) { ref.current.dispose(); ref.current = null; }

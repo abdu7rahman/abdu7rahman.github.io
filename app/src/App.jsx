@@ -25,6 +25,7 @@ import Rooms from "./halls/Rooms.jsx";
 import Readout from "./nav/Readout.jsx";
 import { P, KEY } from "./lib/palette.js";
 import { STOPS } from "./lib/plan.js";
+import { Doorman } from "./lib/door.js";
 
 export default function App() {
   /* Read once, at the top, and passed down as numbers rather than looked up
@@ -118,6 +119,9 @@ export default function App() {
           {/* The finish. Off on the low tier, where the fill it costs is the
               whole budget. */}
           {quality.post && <Grade />}
+          {/* Last in the tree, so the frame it reports is a frame with
+              everything above it in it. */}
+          <Doorman />
         </Suspense>
       </Canvas>
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ASSET } from "../lib/paths.js";
+import { useMemo, useRef } from "react";
+import { useBake } from "../lib/bake.js";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { creaseNormals } from "../lib/mesh.js";
@@ -53,25 +53,10 @@ export const MAX_W = 2.84;     // BURGER_MAX_ANG_VEL, rad/s
    the bench with nothing added to make it. The baked wheel geometry agrees --
    its lowest vertex lands at base_link z = -0.0099. */
 
-let cached = null;
 let warned = false;
 
-function useTurtleBot() {
-  const [mesh, setMesh] = useState(cached);
-  useEffect(() => {
-    if (cached) return;
-    let live = true;
-    fetch(ASSET("turtlebot3.json"))
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
-      .then(j => { cached = j; if (live) setMesh(j); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return mesh;
-}
-
 export default function TurtleBot({ scale = 1, tint, pose }) {
-  const mesh = useTurtleBot();
+  const mesh = useBake("turtlebot3.json");
   const groups = useRef([]);
   const drive = useRef();
   const M = useMemo(() => ({

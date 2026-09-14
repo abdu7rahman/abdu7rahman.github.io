@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ASSET } from "../lib/paths.js";
+import { useMemo, useRef } from "react";
+import { useBake } from "../lib/bake.js";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { creaseNormals } from "../lib/mesh.js";
@@ -36,24 +36,9 @@ const SLIDE = new THREE.Matrix4();
  * from the last to the first is a 33 degree snap in one frame.
  */
 const CYCLE = 14;
-let cached = null;
-
-function useArm() {
-  const [mesh, setMesh] = useState(cached);
-  useEffect(() => {
-    if (cached) return;
-    let live = true;
-    fetch(ASSET("ur12e-hero.json"))
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
-      .then(j => { cached = j; if (live) setMesh(j); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return mesh;
-}
 
 export default function UR12e({ phase = 0, scale = 1, tint, q: driven }) {
-  const mesh = useArm();
+  const mesh = useBake("ur12e-hero.json");
   const groups = useRef([]);
   const q = useMemo(() => new Float32Array(6), []);
   const frames = useMemo(() => Array.from({ length: 6 }, () => new THREE.Matrix4()), []);

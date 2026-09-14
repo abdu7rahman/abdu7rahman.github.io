@@ -35,6 +35,29 @@
 <body>
 <div id="root"></div>
 
+<!-- The wait, and what it is waiting on.
+
+     This page is a 1.3 MB module that builds a sixty-seven metre building
+     before it draws a pixel of it, and until this markup existed what a
+     reader got in the meantime was the background colour. Written here and
+     not in the app for the reason that matters: the stylesheet is
+     render-blocking and arrives with the document, so this is on screen at
+     first paint -- while the module that would have rendered it is still
+     being parsed. lib/door.js fills the counts in and takes it away.
+
+     Static text, no counts, until something real has happened: an empty
+     "0 of 0" is a worse first frame than no number at all. -->
+<div id="door" data-state="open" role="status" aria-live="polite">
+  <p class="door-h">High bay</p>
+  <ul class="door-s">
+    <li data-step="machines" data-state="wait">the machines <b data-note></b></li>
+    <li data-step="building" data-state="wait">the building <b data-note></b></li>
+  </ul>
+  <p class="door-f">Eight test cells, six rooms and a simulator, built before
+     you are shown any of it. It is the same work
+     <a href="/written.html">as a document</a>, which is the quick way in.</p>
+</div>
+
 <!-- The two pieces of chrome that are not React's, and are here rather than
      in the app for one reason each.
 
