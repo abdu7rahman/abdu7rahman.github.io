@@ -63,16 +63,41 @@ const SECS = Number(process.env.SECS || 400);
     return c && c.sim && c.sim(); }, null, { timeout: 180000 });
   await pg.waitForTimeout(3000);
 
-  const run = (which, secs) => pg.evaluate(([which, secs]) => {
+  /* In segments, and the segments are printed, because one run of this is
+   * not a measurement.
+   *
+   * An arm on a repeating plan and a ball on a Lissajous are a chaotic pair:
+   * the encounters that produce contacts depend on the phase the two happen
+   * to meet at, and that phase is an arbitrarily fine function of the start.
+   * Found the hard way. Two builds of this cell differing only in whether
+   * the frame accumulator was cleared on restart -- twenty-one calls of a
+   * nine thousand call run at one rate rather than another -- gave the
+   * reactive setting 55 contacts and 2. Both were reproducible to the
+   * contact; neither was a fact about reactive control.
+   *
+   * So the run is long and it is reported in pieces. The totals are what the
+   * gates read; the pieces are so that nobody, including whoever wrote this,
+   * can quote a single number off one segment as though it were stable.
+   */
+  const SEGS = 6;
+  const run = (which, secs) => pg.evaluate(([which, secs, segs]) => {
     const c = window.__lab.controls('foresee');
-    // The mode is the cell's own control, set the way the reader sets it --
-    // which also zeroes both counters, so each run starts from nothing.
+    /* The mode is the cell's own control, set the way the reader sets it --
+       which restarts the whole cell, so both settings are measured from the
+       same state on the same random numbers. */
     c.choice.set(which);
     const before = c.state();
     const d = 1 / 60;
-    for (let i = 0; i < secs * 60; i++) c.tick(d);
+    const per = [];
+    let mark = before;
+    for (let k = 0; k < segs; k++) {
+      for (let i = 0; i < (secs / segs) * 60; i++) c.tick(d);
+      const now = c.state();
+      per.push({ hits: now.hits - mark.hits, moves: now.moves - mark.moves });
+      mark = now;
+    }
     const after = c.state();
-    return { predict: after.predict,
+    return { predict: after.predict, per,
              hits: after.hits - before.hits, saves: after.saves - before.saves,
              /* And how much it got done. Contacts on their own rank a
                 stopped arm first, and this harness measured a stopped arm
@@ -82,7 +107,7 @@ const SECS = Number(process.env.SECS || 400);
                 ratio of two machines doing wildly different amounts of
                 work. */
              moves: after.moves - before.moves };
-  }, [which, secs]);
+  }, [which, secs, SEGS]);
 
   console.log(`\n  ${SECS} s of simulated time each, same cell, same drift.\n`);
   const p = await run(true, SECS);    // predictive
@@ -94,6 +119,12 @@ const SECS = Number(process.env.SECS || 400);
     + String(v.saves).padStart(5) + ' cancelled early');
   row('predictive', p);
   row('reactive', r);
+  const seg = (n, v) => console.log('  ' + n.padEnd(14)
+    + v.per.map(x => (x.hits + '/' + x.moves).padStart(7)).join(' '));
+  console.log('\n  per ' + (SECS / SEGS).toFixed(0) + ' s segment, contacts/moves:');
+  seg('predictive', p);
+  seg('reactive', r);
+  console.log('');
   /* A run with no contacts at all is a real outcome at this tube, and
      dividing by it would print Infinity. */
   console.log(per(p) > 0

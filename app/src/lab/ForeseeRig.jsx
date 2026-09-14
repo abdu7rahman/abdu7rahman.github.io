@@ -56,18 +56,27 @@ import { WORK } from "../lib/plan.js";
  * predictive, it cancels while the ball is still a hand's width away and the
  * counter mostly does not.
  *
- * Measured in the page by tools/test_replan.js, 150 simulated seconds of the
- * same drifting obstacle on each setting: reactive finished 63 end-to-end
- * moves and took 55 contacts, predictive finished 43 and took 10. A quarter
- * of the contacts per finished move, and the filter is not magic -- a
+ * Measured in the page by tools/test_replan.js, 600 simulated seconds of
+ * the same drifting obstacle on each setting: reactive finished 256
+ * end-to-end moves and took 635 contacts, predictive finished 202 and took
+ * 57. A ninth of the contacts per finished move, for four moves in five of
+ * the work. The filter is not magic and the 57 is the honest half -- a
  * constant-velocity model is wrong about anything that changes direction,
  * which is why the tube widens with the horizon rather than tracking a
- * point, and it still gets caught ten times.
+ * point, and it still gets caught.
  *
- * Those two rows used to read 2 contacts against 78, and that number was
- * measured on an arm working on the opposite side of its own base from the
- * obstacle. Almost nothing could reach it, so almost nothing did. See FACE
- * below.
+ * Reported in six segments rather than as one number, because one run of
+ * this is not a measurement: an arm on a repeating plan and a ball on a
+ * Lissajous are a chaotic pair, and two builds differing only in whether a
+ * frame accumulator was cleared on restart once gave the reactive setting 55
+ * contacts and 2. The segments here are 88 to 116 against 5 to 16, which is
+ * a result.
+ *
+ * Those rows have read almost anything at various times, and twice the
+ * reason was the cell rather than the controller: once when the arm worked
+ * on the opposite side of its own base from the obstacle so almost nothing
+ * could reach it, and once when the obstacle was slower than the arm so a
+ * reflex handled it perfectly. See FACE and DRIFT_W.
  *
  * The finished moves are in that sentence because a contact count on its own
  * ranks a stopped arm first, and this cell spent a long time being one: the
@@ -82,7 +91,7 @@ const TICK = 1 / 30;
    into the call because they are the one pair of numbers in this cell that
    decides what it does, and the long note at the call site is about how they
    were chosen. */
-const N_SIGMA = 2, CAP = 0.03;
+const N_SIGMA = 2, CAP = 0.10;
 const SPEED = 0.55;          // fraction of the plan traversed per second
 const OBS_R = 0.20;          // metres, and the console scales from it
 const TUBE_R = 0.011;        // the drawn plan, in metres
@@ -175,7 +184,35 @@ const PAD_W = 1.5, PAD_H = 1.1;
  * ask for. */
 const DRIFT = REACH + 0.24;
 const DRIFT_Y = 0.60;        // how far it swings either side of the centre line
-const DRIFT_W = 0.55;        // and how fast the orbit runs, in radians a second
+
+/* How fast the orbit runs, and it is the number that decides whether this
+ * bay says anything at all.
+ *
+ * A reactive controller cancels when the obstacle is already in its path.
+ * That is only a mistake if the obstacle can get there faster than the arm
+ * can leave, so an obstacle slower than the arm is one a reflex handles
+ * perfectly well -- and at the 0.55 rad/s this orbit was first written at,
+ * the ball's fastest point is 0.28 m/s against a tool doing 0.47, and the
+ * reactive setting took two contacts in 600 s. It was not being caught
+ * because it was never being asked a question it could get wrong.
+ *
+ * Swept with tools/test_replan.js, 240 s at each rate, contacts per finished
+ * move, and the shape of it is a band rather than a slope:
+ *
+ *     rad/s   ball peak   predictive   reactive
+ *      0.55      0.28         0.34       0.02
+ *      0.95      0.49         1.21       1.39
+ *      1.35      0.70         0.46       2.55
+ *      1.80      0.93         1.18       1.41
+ *
+ * Below the arm's own speed the reflex wins because there is nothing to
+ * predict. Far above it prediction stops paying too, and that is the honest
+ * half: a constant-velocity forecast over a 1.6 s horizon is a claim about a
+ * thing that has not changed direction, and a ball at 0.93 m/s on this orbit
+ * changes direction inside the horizon. 1.35 is where the question is worth
+ * asking -- a ball half again as fast as the tool, caught 0.46 times a move
+ * against a reflex's 2.55. */
+const DRIFT_W = 1.35;
 
 /* The horizons the forecast is drawn at, in seconds. timeToCollision checks
    ten of them; four is what a reader can tell apart. */
@@ -317,7 +354,20 @@ export default function ForeseeRig({ stop }) {
     kit.a = Float32Array.from(ENDS[0]); kit.b = Float32Array.from(ENDS[1]);
     kit.via = null; kit.u = 0; kit.dead = false; kit.dir = 1;
     kit.hits = 0; kit.saves = 0; kit.moves = 0;
-    kit.rand = seeded(kit.seed); kit.clock = 0; kit.track.reset(obs.current);
+    kit.rand = seeded(kit.seed); kit.clock = 0; kit.acc = 0;
+    /* The ball goes back to the top of its orbit before the filter is told
+       where it is, and that is what makes a restart mean something.
+     *
+     * Resetting the clock alone puts the ball back on the next tick but
+     * seeds the tracker with wherever the last run left it, so the filter
+     * opens holding a velocity across a jump -- and the whole cell follows
+     * from what the filter believes. Measured: two 600 s runs of the same
+     * build, differing only in how many frames the page had rendered before
+     * the harness started, gave the predictive setting 71 contacts and 107
+     * over an identical 204 finished moves. The reactive setting gave 635
+     * both times, because it never asks the filter anything. */
+    obs.current.set(FACE * (DRIFT + 0.10), 0, PAD_Z);
+    kit.track.reset(obs.current);
     cmd.current.set(ENDS[0]); act.current.set(ENDS[0]); painted.current = false;
     if (sim.current) { sim.current.reset(); for (let i = 0; i < 6; i++) sim.current.qpos[i] = ENDS[0][i]; }
   }
@@ -515,58 +565,43 @@ export default function ForeseeRig({ stop }) {
            not by what the filter has learned. What these two decide is how
            much of that uncertainty the arm is made to respect.
 
-           The cap was 0.35, and it was chosen on contacts alone. Contacts
-           alone rank a stopped arm first, and that is not a hypothetical: a
-           0.20 m ball plus two sigmas of 0.35 is a 0.90 m radius inside a
-           workspace about 1.2 m across, so nothing was ever clear. It held
-           position for 86 per cent of ticks and finished one end-to-end move
-           in 300 s, against a reactive arm's 156. "16 contacts against 74"
-           was never a result; it was the ratio of two machines doing wildly
-           different amounts of work.
+           The cap was 0.35 once, and it was chosen on contacts alone.
+           Contacts alone rank a stopped arm first, and that is not a
+           hypothetical: a 0.20 m ball plus two sigmas of 0.35 is a 0.90 m
+           radius inside a workspace about 1.2 m across, so nothing was ever
+           clear. It held position for 86 per cent of ticks and finished one
+           end-to-end move in 300 s against a reactive arm's 156. "16
+           contacts against 74" was never a result; it was the ratio of two
+           machines doing wildly different amounts of work. So the number to
+           rank on is contacts per finished move, and the cell counts moves.
 
-           So the number to rank on is contacts per finished move, and the
-           cell counts moves. It was then tuned to 0.10 on that, which was the
-           right number for a cell whose obstacle could barely reach its arm
-           -- see FACE at the top of this file for what was wrong with the
-           geometry, and it was wrong in the direction that makes any tube
-           look safe. With the arm working where the ball actually is, the
-           whole table moves. tools/test_replan.js, 150 s at each cap, the
-           same drift, predictive:
+           It is 0.10 because the reference declares 0.10 and because the
+           sweep agrees. tools/test_replan.js, 240 s at each cap against the
+           same obstacle, predictive, with reactive at 260 contacts over 102
+           finished moves -- 2.55 each -- for scale:
 
                       contacts  moves  per move
-             0.03           11     43      0.26
-             0.05           21     29      0.72
-             0.07           14     22      0.64
-             0.10            4     22      0.18
-             reactive       55     63      0.87
+             0.02           41     82      0.50
+             0.03           54     83      0.65
+             0.05           34     80      0.42
+             0.10           30     79      0.38
+             0.14           26     80      0.33
+             0.20           28     66      0.42
 
-           The four predictive rows are each the first run on a fresh page,
-           so each drew the sampler's stream from the same seed; the reactive
-           row is from after the mode switch learned to restart the cell, and
-           is the one the harness prints today. See the switch's own note for
-           why the two had to be made comparable before any of this was worth
-           reading.
+           Flat through the middle and then it turns: at 0.20 the arm is
+           still avoiding things but has lost a fifth of its work, which is
+           the old failure creeping back. 0.14 is a contact or two ahead of
+           0.10 and inside the spread the harness's own per-segment rows
+           show, so there is nothing there to prefer it for; 0.10 is the
+           reference's value and has a provenance. Two sigmas of it rather
+           than the reference's one is the deliberately conservative half,
+           and this table is what says the cell can afford it.
 
-           0.10 has the best per-move number on that table and is not the
-           answer, which is the same trap one step further in: 22 finished
-           moves against the reactive arm's 66 is an arm that is safe because
-           it is mostly not moving, and this harness's own gate -- predictive
-           must finish more than four in ten of the moves reactive does --
-           rejects it. 0.03 passes it, at 43.
-
-           Two sigmas of 0.03 is a 0.26 m radius around the 0.20 m ball. It
-           finishes two moves in three at the reactive arm's rate and is
-           touched a quarter as often per move, which is the claim this bay
-           exists to make, and it is a factor of four and not of forty: the
-           reference implementation's own single sigma at 0.10 sits in the
-           same region. A tube wide enough to be certain is a tube that stops
-           the arm, and that is the shape of the whole table rather than a
-           result about one number.
-
-           And the two rows in the middle are the shape of it: widening the
-           tube past about half a metre does not buy fewer contacts, it buys
-           an arm that cannot find anywhere to go and gets hit where it
-           stands.
+           An earlier version of this comment argued for 0.03 off a table
+           with the same shape and different numbers, and what changed is not
+           the tube. The obstacle was slower than the arm then, so the width
+           of the forecast was the only thing that could stop anything -- see
+           DRIFT_W for that, and for the measurement that found it.
 
            The earlier note here said the cap was "the cell's own" because
            the workspace is 1.2 m across. That was not a reason, it was an
