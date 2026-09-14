@@ -488,34 +488,61 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
                  + r.drove + ' m on the last'));
   }
 
-  console.log('\nF1a. and all four racers get round the lap');
+  console.log('\nF1a. and all four racers get round, in their own lanes');
   {
-    /* Two faults lived here and both looked like the cell simply stopping.
-       The four share one MuJoCo world and started a quarter lap apart at four
-       different speeds, so on a closed loop with no overtaking they piled
-       into one heap: measured, within 15 cm of each other by 60 s with seven
-       to sixteen contacts, still commanded at 0.22 m/s, odometers advancing a
-       centimetre a minute for the next four minutes. And MPPI's cost was
-       distance-from-track plus a speed reward with no progress term at all,
-       which a tight circle sitting on the track satisfies perfectly -- it
-       drove 16.9 m, more than two laps' worth, and completed none.
+    /* Three faults have lived here and all three looked like the cell simply
+       stopping. The four shared one MuJoCo world and started a quarter lap
+       apart at four different speeds, so on a closed loop with no overtaking
+       they piled into one heap: within 15 cm of each other by 60 s, still
+       commanded at 0.22 m/s, odometers advancing a centimetre a minute for
+       the next four minutes. MPPI's cost was distance-from-track plus a speed
+       reward with no progress term, which a tight circle sitting on the track
+       satisfies perfectly -- it drove 16.9 m and completed no laps. And the
+       answer to the first of those was to mask the pair test off, which made
+       the machines drive through each other on screen.
 
-       So: every one of them has to actually get round, and the distances
-       have to stay close, because a racer held up by another is a racer
-       whose tracking error means nothing. */
+       The lanes are what replaced the mask, so this checks what the lanes
+       claim rather than what one shared loop claimed. A race ends when every
+       one of them has a lap in, so a completed race is the round-the-course
+       test; the rotation has to actually rotate, or the average across lanes
+       is four copies of one lane; and no two of them may ever come within a
+       body's width, which is the whole reason the mask could come off.
+
+       Not distance travelled any more: the inner lane is 5.14 m and the
+       outer 10.23, so two racers doing exactly what they should differ by a
+       factor of two on the odometer. */
     await goTo('race');
     const r = await pg.evaluate(() => {
       const c = window.__lab.controls('race'), d = 1 / 60;
-      for (let i = 0; i < 60 * 150; i++) c.tick(d);
-      return c.state();
+      const first = c.state().runners.map(x => x.lane);
+      let gap = Infinity, who = '';
+      for (let i = 0; i < 60 * 200; i++) {
+        c.tick(d);
+        if (i % 10) continue;
+        const R = c.state().runners;
+        for (let a = 0; a < R.length; a++) for (let b = a + 1; b < R.length; b++) {
+          const g = Math.hypot(R[a].x - R[b].x, R[a].y - R[b].y);
+          if (g < gap) { gap = g; who = R[a].name + ' / ' + R[b].name; }
+        }
+      }
+      const s = c.state();
+      return { first, now: s.runners.map(x => x.lane), done: s.done,
+               board: s.board, gap, who, contacts: s.contacts };
     });
-    const laps = r.runners.map(x => x.lap);
-    const trav = r.runners.map(x => x.travel);
-    ok('every racer completed a lap', laps.every(l => l >= 1),
-       r.runners.map(x => x.name + ' lap' + x.lap + ' d' + x.travel.toFixed(1)).join(', '));
-    ok('and none was left behind in a heap',
-       Math.min(...trav) > Math.max(...trav) * 0.6,
-       trav.map(t => t.toFixed(1)).join(' / '));
+    ok('a whole race finishes, so every racer got round', r.done >= 1,
+       r.done + ' races in 200 s');
+    ok('and the finished race is written into every controller\'s row',
+       r.board.every(row => row.some(v => v !== null)),
+       JSON.stringify(r.board));
+    /* Four lanes rotating one place a race, so after any completed race
+       nobody is in the lane they started in. */
+    ok('and the lanes actually rotate',
+       r.done >= 1 && r.now.every((l, i) => l !== r.first[i]),
+       'started ' + JSON.stringify(r.first) + ', now ' + JSON.stringify(r.now));
+    /* 0.178 m is the Burger's own width. This is the assertion the collision
+       mask used to make impossible to state. */
+    ok('and no two of them ever come within a body\'s width',
+       r.gap > 0.178, r.gap.toFixed(3) + ' m at worst, ' + r.who);
   }
 
   console.log('\nF1bb. and the local control cell stops when it gets there');

@@ -90,7 +90,7 @@ export const STOPS = [
      bay says four because four is what is on the bench. */
   { id: "race",     kind: "rig",  side: -1, at: 2.3, title: "Race",
     sub: "DWA, MPPI, pure pursuit, Stanley",
-    note: "The same plan, the same clock and the same base, four ways of following it." },
+    note: "The same figure, the same clock and the same base, four ways of following it \u2014 one to a lane, swapping lanes every race." },
   /* A swerve base where the reachable set used to be.
    *
    * The envelope bay showed a UR12e's workspace, which is a number on a data

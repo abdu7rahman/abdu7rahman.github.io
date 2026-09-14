@@ -12,16 +12,16 @@ import { detect } from "../lib/capability.js";
 import { P } from "../lib/palette.js";
 import { WORK } from "../lib/plan.js";
 
-/* Four controllers, one plan, one clock.
+/* Four controllers, four lanes, one clock.
  *
- * The same closed path, the same start, the same Burger ceilings, and four
- * machines on it that see nothing of each other. They separate because they
- * are different controllers and not because any of them was given an
- * advantage: pure pursuit cuts the corners its lookahead tells it to,
- * Stanley holds the line and steers harder to do it, the velocity-space
- * sampler goes wide where there is room because it refuses trajectories
- * rather than tracking a line, and MPPI averages over its rollouts instead
- * of picking one and commits earlier for it.
+ * The same closed figure, the same Burger ceilings, and four machines on
+ * concentric copies of it. They separate because they are different
+ * controllers and not because any of them was given an advantage: pure
+ * pursuit cuts the corners its lookahead tells it to, Stanley holds the line
+ * and steers harder to do it, the velocity-space sampler goes wide where
+ * there is room because it refuses trajectories rather than tracking a line,
+ * and MPPI averages over its rollouts instead of picking one and commits
+ * earlier for it.
  *
  * What is compared is how far off the line each one gets, not how far it
  * went, and that is a correction. Four controllers round one closed loop all
@@ -35,10 +35,12 @@ import { WORK } from "../lib/plan.js";
  * ordering, arrived at by the machines rather than asserted.
  *
  * Those four were 51, 58, 113 and 135 when this comment was first written,
- * and the difference is mostly the collision mask below. The four shared a
- * world then and spent the back half of every run shoving each other down
- * the straight, and a controller measured while another machine is pushing
- * it is being measured on the push.
+ * and the difference is what the lanes are for. The four shared one loop
+ * then and spent the back half of every run shoving each other down the
+ * straight, and a controller measured while another machine is pushing it is
+ * being measured on the push. The note at LANES is how that was fixed
+ * without either masking the collisions off or handing the outer lane an
+ * advantage.
  */
 /* The course, and it is bigger than it was.
  *
@@ -50,23 +52,6 @@ import { WORK } from "../lib/plan.js";
  */
 const COURSE_X = 2.70, COURSE_Y = 3.40;
 const TICK = 1 / 20;
-/* Where the four start, as a fraction of the lap rather than as a distance.
- *
- * This was 0.26 m and then 0.49, scaled with the track, and both were a
- * distance somebody picked. On a 7.68 m lap 0.49 m puts all four inside a
- * fifth of it -- looked at in the page, four machines bunched in one corner
- * while the comment beside them said "spaced evenly round it". A quarter of
- * the lap each is what evenly means, and it is the only spacing on a closed
- * loop that has no front. lapLength() measures the plan rather than assuming
- * a superellipse's perimeter, so changing the track changes the grid. */
-function lapLength(p) {
-  let d = 0;
-  for (let i = 0; i < p.length - 1; i++) {
-    d += Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
-  }
-  return d;
-}
-
 function seeded(a) {
   return function () {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -81,13 +66,13 @@ function seeded(a) {
    of these tracks a constant-curvature arc perfectly. Sampled from a
    superellipse so the straights are straight and the corners are tight
    enough to separate a cutter from a tracker. */
-function makePath() {
+function makePath(off = 0) {
   const pts = [];
   /* Scaled with the course by the same fraction it always occupied of it:
      0.359 of the width and 0.376 of the depth, which keeps the straights and
      the corner radii in proportion so the four controllers are being asked
      the same question on a bigger floor. */
-  const A = 0.97, B = 1.28, n = 3.2;
+  const A = 0.97 + off, B = 1.28 + off, n = 3.2;
   for (let i = 0; i < 240; i++) {
     const t = (i / 240) * Math.PI * 2;
     const c = Math.cos(t), s = Math.sin(t);
@@ -98,12 +83,58 @@ function makePath() {
   return pts;
 }
 
+/* Four lanes, 0.25 m apart, and a rotation so the lanes cancel.
+ *
+ * 0.25 m is about the closest two 0.178 m Burgers can pass, and 0.375 either
+ * side of the old single plan puts the outer lane at 2.69 by 3.31 m inside a
+ * 2.70 by 3.40 m course -- the widest set that fits.
+ *
+ * Lanes on their own would be cheating, and tools/bench_lanes.mjs is the
+ * measurement that says so. Run every controller in every lane and the same
+ * controller varies by 5 mm (stanley) to 52 mm (dwa) purely from which lane
+ * it was given, against a spread between controllers within one lane of
+ * about 68 mm -- the lane is as large an effect as the thing being measured.
+ * An inner lap is 5.14 m against the outer's 10.23 and the corners are
+ * correspondingly tighter, and everything does better on the outside.
+ *
+ * But it does better monotonically, and that is the way out. A bias that is
+ * systematic in lane offset cancels when every controller drives every lane
+ * and the board averages: race one has them in lanes 0 1 2 3, race two in
+ * 1 2 3 0, and after four races each controller has run each lane exactly
+ * once. A Latin square, which is what the rotation is for -- not tidiness.
+ *
+ * The board says which race it is on for the same reason. One race is a
+ * result about four controllers in four different lanes and it is on screen
+ * immediately; the average is the one that is about the controllers, and it
+ * does not exist until the fourth race is in.
+ *
+ * And the thing lanes have to earn, which is that the machines cannot reach
+ * each other. 0.25 m of spacing is not obviously enough: the sampler is
+ * 126 mm off its line at worst on the inner lane, so two neighbours leaning
+ * toward each other at the same moment close 252 mm of a 250 mm gap before
+ * either body is counted at all. Measured instead of argued, in
+ * tools/bench_lanes.mjs, over 200 s of each of the four rotations: the
+ * closest any two of them ever come is 0.209 m centre to centre, stanley and
+ * the sampler in race four, against a Burger 0.178 m across. Thirty-one
+ * millimetres of clear air at the worst moment of eight hundred seconds of
+ * driving, which is what lets the pair test go back on.
+ *
+ * And then the same question of the simulation rather than of the kinematic
+ * model, because that bench integrates a unicycle and this bay integrates
+ * four bases with wheel slip and a caster each: 400 s of the rotation in the
+ * page, closest approach 0.224 m, the same pair. The dynamics smooth the
+ * corners slightly rather than roughening them, so the bench is the
+ * pessimistic one, which is the direction a check of this kind should err.
+ */
+const LANES = [-0.375, -0.125, 0.125, 0.375];
+const RACES = LANES.length;
+
 export default function RaceRig({ stop }) {
   const s = stop.side;
   const x = s * WORK;
 
   const kit = useMemo(() => {
-    const path = makePath();
+    const lanes = LANES.map(makePath);
     const rand = seeded(0xC0FFEE11);
     /* Scaled by the tier, and only the sample counts. MPPI is the expensive
        one here -- 96 sequences of 16 steps, each scoring against the plan,
@@ -162,11 +193,13 @@ export default function RaceRig({ stop }) {
      * 49 on three separate runs of the same build. The written site is where
      * the benchmark lives. */
     const cap = { v: MAX_V };
+    /* Each step takes the lane it is driving rather than closing over one
+       plan, because which lane that is changes between races. */
     const runners = [
       { name: "pure pursuit", col: P.hazard,
-        step: (st) => purePursuit(st, path, { look: 0.34, maxV: cap.v, maxW: MAX_W }) },
+        step: (st, path) => purePursuit(st, path, { look: 0.34, maxV: cap.v, maxW: MAX_W }) },
       { name: "stanley", col: P.teal,
-        step: (st) => stanley(st, path, { k: 2.4, lead: 0.10, maxV: cap.v, maxW: MAX_W }) },
+        step: (st, path) => stanley(st, path, { k: 2.4, lead: 0.10, maxV: cap.v, maxW: MAX_W }) },
       /* Named for what it is. This is demos/dwa.js -- the sampling half of
          Fox, Burgard and Thrun's dynamic window approach, and the same
          controller the local control bay two stops back runs -- and calling
@@ -177,7 +210,7 @@ export default function RaceRig({ stop }) {
          turtlebot3_description states no acceleration limit to narrow it
          with. */
       { name: "dwa", col: "#c8b46a",
-        step: (st) => {
+        step: (st, path) => {
           // The sampler needs a goal, not a path: it is a local planner. The
           // goal is the point on the plan a lookahead ahead, which is the
           // fairest thing to hand it -- anything further and it is being
@@ -190,7 +223,7 @@ export default function RaceRig({ stop }) {
           return [v, w];
         } },
       { name: "mppi", col: "#9b8cff",
-        step: (st) => {
+        step: (st, path) => {
           /* The same lookahead the sampler above is given, for the same
              reason and wrapped the same way. demos/controllers.js carries
              what happened without it. 0.58 m is a rollout's worth: sixteen
@@ -202,21 +235,51 @@ export default function RaceRig({ stop }) {
         },
         reset: () => mppi.reset() }
     ];
-    return { path, runners, rand, cap, dwa, mppi };
+    /* `board[c][l]` is controller c's worst cross-track in lane l, or null
+       until that pairing has been run. The average across a row is the
+       controller's number and the thing the lanes were rotated for. */
+    const board = runners.map(() => LANES.map(() => null));
+    return { lanes, runners, rand, cap, dwa, mppi,
+             race: 0, board, done: 0 };
   }, []);
 
+  /* Which lane a machine is in this race, and it is the rotation. Controller
+     i drives lane (i + race) mod four, so over four races each of them has
+     driven each lane once and the board can average the lane out. */
+  const laneIx = (i) => (i + kit.race) % RACES;
+
+  /* Where a machine starts on its lane, and it is a quarter of a lap round
+     from its neighbour.
+   *
+   * Not for clearance -- separate lanes have that already, and 0.224 m of it
+   * measured. For the picture. Started abreast, all four sit on one radius,
+   * and from the aisle that radius is very nearly the line of sight: the
+   * first thing a reader saw of this bay was four robots in a heap, which is
+   * exactly the fault the lanes were built to remove, arriving back as an
+   * optical illusion. A quarter lap each puts one machine on each side of
+   * the figure and the cell reads as a race from the frame it opens on.
+   *
+   * By plan index rather than by arc length, which for a superellipse
+   * sampled at a constant parameter is within a few centimetres of it and is
+   * a starting mark rather than a measurement. */
+  function startAt(i) {
+    const p = kit.lanes[laneIx(i)];
+    const k = Math.round((i / RACES) * (p.length - 1));
+    return { p, k };
+  }
+
+  function gridOf(i) {
+    const { p, k } = startAt(i);
+    return { x: p[k][0], y: p[k][1],
+             psi: Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]) };
+  }
+
   const poses = useRef(kit.runners.map((_, i) => {
-    /* Spaced along the plan from one start, evenly, and on a closed loop
-       there is no front: the four are a lap apart from nobody. The heading
-       is the plan's own tangent where each one stands. */
-    const p = kit.path;
-    const lead = lapLength(p) / 4;
-    let acc = 0, k = 0;
-    while (k < p.length - 2 && acc < i * lead) {
-      acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
-    }
-    const psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
-    return { x: p[k][0], y: p[k][1], psi, travel: 0, turned: 0, v: 0, w: 0 };
+    const p = kit.lanes[i];
+    const k = Math.round((i / RACES) * (p.length - 1));
+    return { x: p[k][0], y: p[k][1],
+             psi: Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]),
+             travel: 0, turned: 0, v: 0, w: 0 };
   }));
   const acc = useRef(0);
   const mat = useRef();
@@ -277,12 +340,12 @@ export default function RaceRig({ stop }) {
    * the cell's light and reads as something being followed. Built once, from
    * a closed 240-point loop, which is 2,880 triangles and no per-frame
    * cost. */
-  const planGeo = useMemo(() => {
-    const pts = kit.path.map(([a, b]) => new THREE.Vector3(a, b, 0.004));
+  const planGeo = useMemo(() => kit.lanes.map(lane => {
+    const pts = lane.map(([a, b]) => new THREE.Vector3(a, b, 0.004));
     const curve = new THREE.CatmullRomCurve3(pts, true);
     return new THREE.TubeGeometry(curve, pts.length, 0.006, 6, true);
-  }, [kit]);
-  useEffect(() => () => planGeo.dispose(), [planGeo]);
+  }), [kit]);
+  useEffect(() => () => planGeo.forEach(g => g.dispose()), [planGeo]);
 
   /* Distance travelled, per machine, which is the only comparison that
      means anything: every one of them is on the same plan with the same
@@ -290,7 +353,7 @@ export default function RaceRig({ stop }) {
      one that wasted the least. Not distance along the reference -- a
      controller that wanders would score well on that for wandering. */
   useEffect(() => register(stop.id, {
-    title: "Four controllers, one plan",
+    title: "Four controllers, four lanes",
     actions: [{ label: "Restart", on: () => reset() }],
     slider: {
       label: "Ceiling", min: 0.06, max: MAX_V, step: 0.005,
@@ -305,28 +368,53 @@ export default function RaceRig({ stop }) {
       fmt: (v) => v.toFixed(2) + " m/s"
     },
     readout: () => {
-      /* Ranked on the worst each has been off the line, best first, because
-         that is the number beside it and a board sorted on something it does
-         not show is a board nobody can read. */
-      const board = kit.runners.map((r, i) => ({
-        name: r.name, q: poses.current[i]
-      })).sort((a, b) => (a.q.worst || 0) - (b.q.worst || 0));
-      return board.map((b, k) =>
-        [(k + 1) + "  " + b.name,
-         "lap " + ((b.q.lap || 0) + 1) + " \u00b7 off "
-           + ((b.q.off || 0) * 1000).toFixed(0) + " mm, worst "
-           + ((b.q.worst || 0) * 1000).toFixed(0)]);
+      /* Two numbers per controller and they are different claims. `worst` is
+         this race, in the lane it happens to be in, and it is on screen from
+         the first corner. The average is the one the rotation exists for and
+         it is only shown for the lanes actually driven -- a mean over one
+         lane is that lane's bias with a mean's name on it, so the row says
+         how many are in. Ranked on whichever of the two it is showing,
+         because a board sorted on something it does not display is a board
+         nobody can read. */
+      const rows = kit.runners.map((r, i) => {
+        const q = poses.current[i];
+        const run = kit.board[i].filter(v => v !== null);
+        const mean = run.length ? run.reduce((a, b) => a + b, 0) / run.length : null;
+        return { name: r.name, worst: q.worst || 0, mean, n: run.length,
+                 lane: LANES[laneIx(i)],
+                 key: mean === null ? (q.worst || 0) : mean };
+      }).sort((a, b) => a.key - b.key);
+      return rows.map((b, k) => [
+        (k + 1) + "  " + b.name,
+        b.n >= RACES
+          ? (b.mean * 1000).toFixed(0) + " mm, every lane"
+          : "lane " + (b.lane > 0 ? "+" : "") + b.lane.toFixed(3)
+            + " \u00b7 worst " + (b.worst * 1000).toFixed(0) + " mm"
+            + (b.n ? " \u00b7 " + (b.mean * 1000).toFixed(0) + " over " + b.n : "")
+      ]);
     },
     /* What it is doing, in words. */
     say: () => {
-      const b = kit.runners.map((r, i) => ({ n: r.name, w: poses.current[i].worst || 0 }))
+      const done = kit.done >= RACES;
+      const score = (i) => {
+        const run = kit.board[i].filter(v => v !== null);
+        return run.length >= RACES ? run.reduce((a, b) => a + b, 0) / run.length
+                                   : (poses.current[i].worst || 0);
+      };
+      const b = kit.runners.map((r, i) => ({ n: r.name, w: score(i) }))
         .sort((a, c) => a.w - c.w);
-      if (!b.length || !b[b.length - 1].w) return "Four controllers setting off on one plan. Move the ceiling and the order behind the leader changes.";
+      if (!b[b.length - 1].w)
+        return "Four controllers setting off, one to a lane. Each of them drives "
+             + "every lane over four races, because an inner lane is a different "
+             + "question from an outer one.";
       const spread = (b[b.length - 1].w - b[0].w) * 1000;
-      return `Same plan, same clock, same robot, capped at ${kit.cap.v.toFixed(2)} m/s. `
-           + `${b[0].n} is holding the line best at ${(b[0].w * 1000).toFixed(0)} mm off; `
-           + `${b[b.length - 1].n} is worst at ${(b[b.length - 1].w * 1000).toFixed(0)}, `
-           + `${spread.toFixed(0)} mm behind it. Change the ceiling and the three behind the leader reorder.`;
+      return (done
+          ? `Race ${kit.done + 1}, averaged over the last four -- every controller in every lane. `
+          : `Race ${kit.done + 1} of ${RACES}. `)
+        + `Same plan, same clock, same robot, capped at ${kit.cap.v.toFixed(2)} m/s. `
+        + `${b[0].n} is holding the line best at ${(b[0].w * 1000).toFixed(0)} mm off; `
+        + `${b[b.length - 1].n} is worst at ${(b[b.length - 1].w * 1000).toFixed(0)}, `
+        + `${spread.toFixed(0)} mm behind it. Change the ceiling and the three behind the leader reorder.`;
     },
     tick: step,
     sim: () => !!sim.current,
@@ -334,9 +422,14 @@ export default function RaceRig({ stop }) {
        change actually changed the answer rather than only the label. */
     state: () => ({
       cap: +kit.cap.v.toFixed(3),
+      /* Which race, and the board so far, so a harness can check that the
+         rotation actually rotates and that a controller's four entries are
+         four different lanes rather than the same one four times. */
+      race: kit.race, done: kit.done,
+      board: kit.board.map(row => row.map(v => v === null ? null : +v.toFixed(4))),
       runners: kit.runners.map((r, i) => {
         const q = poses.current[i];
-        return { name: r.name, off: +(q.off || 0).toFixed(4),
+        return { name: r.name, lane: laneIx(i), off: +(q.off || 0).toFixed(4),
                  worst: +(q.worst || 0).toFixed(4), lap: q.lap || 0,
                  travel: +q.travel.toFixed(3),
                  /* What it was told and where it is. These are what found
@@ -348,72 +441,57 @@ export default function RaceRig({ stop }) {
                  v: +q.v.toFixed(3), w: +q.w.toFixed(3),
                  x: +q.x.toFixed(3), y: +q.y.toFixed(3) };
       }),
-      /* And the solver's own count. Every one of them is a wheel or a
-         caster on the floor -- the mask makes a racer-racer pair untestable
-         -- and measured over a run it sits between 7 and 16 as wheels load
-         and unload. It is here because the pile-up showed up as this
-         climbing while the odometers stopped, which is a thing no single
-         machine's own numbers can say. */
+      /* And the solver's own count, which is wheels and casters on the
+         floor: four bases, two wheels and a caster each, loading and
+         unloading through the corners. Measured over 400 s of the rotation
+         it runs from 0 to 20 and sits between 4 and 14 most of the time.
+         Not a collision detector -- the pair test between two racers is live
+         again, but over that same run the closest any two of them came was
+         0.224 m centre to centre against a 0.178 m body, so what this counts
+         is the floor. It is here because it is what found the pile-up the
+         lanes replaced: it climbed while the odometers stopped, which is a
+         thing no single machine's own numbers can say. */
       contacts: sim.current ? sim.current.contacts : -1
     }),
-    hint: "Off is how far it is from the plan right now, worst is the furthest it has been this run. They pass through each other on purpose: four machines at four speeds on one closed loop end up in a queue, and a robot being shoved is not being measured. Drag the ceiling -- Stanley holds the line at every speed and the other three change places behind it."
+    hint: "One lane each, and they swap lanes every race: an inner lap is half the length of an outer one with tighter corners, so the lane is worth as much as the controller and only cancels if everybody drives all four. Worst is the furthest off the line this race; the averaged number appears once the fourth race is in. Drag the ceiling -- Stanley holds the line at every speed and the other three change places behind it."
   }), [stop.id, kit]);
 
-  /* The starts, spaced along the path the same way reset() spaces them, so
-     the compiled scene opens with the grid already formed. */
+  /* The starts, one at the head of each lane, so the compiled scene opens
+     with the field already on the grid. */
   const [sim] = useSim(() => {
-    const p = makePath();
-    const starts = [0, 1, 2, 3].map(i => {
-      let acc = 0, k = 0;
-      const lead = lapLength(p) / 4;
-      while (k < p.length - 2 && acc < i * lead) {
-        acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
-      }
+    const starts = LANES.map((off, i) => {
+      const p = makePath(off);
+      const k = Math.round((i / LANES.length) * (p.length - 1));
       return [p[k][0], p[k][1],
               Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0])];
     });
-    /* `solo`: the four share a floor and not a body. See sim/models.js's
-       RACER mask for the bits and for the measurement -- four controllers a
-       quarter lap apart on a closed loop at four different speeds pile into
-       one heap, and this bay's whole number is how far each is from the
-       plan, which stops meaning anything the moment they are pushing each
-       other along it. They still collide with the floor, so the physics that
-       makes this a race rather than four animations -- wheel slip, a caster
-       to carry, a body that can roll -- is all still there.
-
-       This is not a good answer and it should not survive. A reader watching
-       one machine drive through another is watching what looks like a broken
-       renderer, and it was reported as exactly that. It is recorded here
-       rather than quietly left because the two obvious replacements have
-       both been measured and both fail, and the next person to look at this
-       should not spend the afternoon rediscovering that.
-
-       Bounding the race does not work. The idea was that four machines a
-       quarter lap apart cannot catch each other inside one lap, so end the
-       race when everybody has finished one and line up again. Measured with
-       the pair test back on: at 0.06 m/s the field closed to the 0.64 m
-       guard inside a lap and the solver was resolving twenty contacts, and
-       at 0.10 every single race ended bunched rather than finished. They
-       converge in about the time of one lap at every ceiling, so any race
-       long enough to be worth watching is long enough for them to meet.
-
-       Plain concentric lanes do not work either, for a subtler reason. Four
-       lanes 0.25 m apart -- about the closest two Burgers can pass -- make
-       the outer lap twice the inner, 10.23 m against 5.14, and the corners
-       correspondingly gentler. Running every controller in every lane, the
-       same controller varies by 5 mm (stanley) to 52 mm (the sampler) purely
-       from which lane it was given, against a spread between controllers
-       within one lane of about 68 mm. The lane is as big an effect as the
-       thing being measured, and it is monotonic in offset: everything does
-       better on the outside.
-
-       That monotonicity is the way out, if somebody wants one. A bias that
-       is systematic in lane offset cancels when each controller drives every
-       lane and the board averages the four races -- a Latin square, and the
-       numbers above are what make the rotation necessary rather than tidy.
-       The other honest option is one controller at a time against the board,
-       which gives up the four-at-once and gives up nothing else. */
-    return wheeledScene({ starts, solo: true });
+    /* Solid, and that is the whole reason for the lanes.
+     *
+     * These four used to share a floor and not a body -- the pair test
+     * between two racers was masked off, so a reader watching one machine
+     * drive through another was watching what looked like a broken renderer,
+     * and it was reported as exactly that. The mask was there because four
+     * controllers at four speeds a quarter lap apart on one closed loop end
+     * up in a queue, and a controller being shoved down a straight is being
+     * measured on the shove: it cost the four of them 51, 58, 113 and 135 mm
+     * of worst cross-track against the 8 to 89 they hold when nothing is
+     * touching them.
+     *
+     * Two replacements were measured before this one and both failed, and
+     * they are worth not rediscovering. Bounding the race to one lap does not
+     * work: four machines a quarter lap apart converge in about a lap at
+     * every ceiling, so at 0.06 m/s the field closed to the 0.64 m guard
+     * inside one and the solver was resolving twenty contacts, and at 0.10
+     * every race ended bunched rather than finished. Plain concentric lanes
+     * do not work either, because the lane is as large an effect as the
+     * controller -- see the note at LANES for that measurement and for why
+     * rotating them fixes it.
+     *
+     * Lanes 0.25 m apart with the rotation is the one that does. The machines
+     * are 0.178 m wide and never share a lane, so nothing has to be masked
+     * off: a racer-racer contact is a real fault now and the contact count on
+     * the console is the thing that would show it. */
+    return wheeledScene({ starts });
   }, []);
   const _p = useMemo(() => new THREE.Vector3(), []);
   const _h = useMemo(() => new THREE.Vector3(), []);
@@ -426,19 +504,21 @@ export default function RaceRig({ stop }) {
    * real positions straight back over everything this had just set and the
    * button did nothing at all. The pose objects are a copy of the
    * simulation's answer, not the state. */
-  function reset() {
-    const p = kit.path;
+  /* Put the field on the grid for whatever race kit.race now is. The board
+     is not touched: it is what survives a race, and clearing it here would
+     make the rotation pointless. */
+  function grid() {
     const sm = sim.current;
     poses.current.forEach((q, i) => {
-      let acc = 0, k = 0;
-      const lead = lapLength(p) / 4;
-      while (k < p.length - 2 && acc < i * lead) {
-        acc += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++;
-      }
-      q.x = p[k][0]; q.y = p[k][1];
-      q.psi = Math.atan2(p[k + 1][1] - p[k][1], p[k + 1][0] - p[k][0]);
+      const g = gridOf(i);
+      q.x = g.x; q.y = g.y; q.psi = g.psi;
       q.travel = 0; q.turned = 0; q.v = 0; q.w = 0; q.off = 0; q.worst = 0;
-      q.prog = 0; q.lap = 0; q.idx = k;
+      /* Left undefined rather than zeroed, so the first tick seeds it from
+         nearest() -- the lane closes on itself at index zero, and a machine
+         standing on that seam is as likely to be nearest the last segment as
+         the first. Seeding it with a zero it is not on spends the first two
+         ticks unwinding a step that never happened. */
+      q.prog = 0; q.lap = 0; q.idx = undefined;
       if (sm) sm.place(`tb${i}_free`, q.x, q.y, BURGER.tyre, q.psi);
       const t = trails[i];
       if (t) { t.n = 0; t.geo.setDrawRange(0, 0); t.lastX = 1e9; t.lastY = 1e9; }
@@ -449,6 +529,26 @@ export default function RaceRig({ stop }) {
        the new race unwinding the last one. */
     kit.runners.forEach(r => { if (r.reset) r.reset(); });
     acc.current = 0;
+  }
+
+  /* Everybody has finished their lap: write the race into the board, turn
+     the lanes one place, and line up again. */
+  /* It keeps going round rather than stopping at four. Each cell of the
+     board is overwritten by the most recent race in that lane, so once the
+     square is full the average is always over the last four -- a reader who
+     leaves the bay running is watching the experiment repeat, not a frozen
+     result with four robots driving decoratively underneath it. */
+  function nextRace() {
+    poses.current.forEach((q, i) => { kit.board[i][laneIx(i)] = q.worst || 0; });
+    kit.done++;
+    kit.race = (kit.race + 1) % RACES;
+    grid();
+  }
+
+  function reset() {
+    kit.race = 0; kit.done = 0;
+    kit.board.forEach(row => row.fill(null));
+    grid();
   }
 
   useFrame(({ camera }, dt) => {
@@ -476,10 +576,11 @@ export default function RaceRig({ stop }) {
       });
       sm.step(d);
     }
-    const N = kit.path.length;
     poses.current.forEach((q, i) => {
+      const lane = kit.lanes[laneIx(i)];
+      const N = lane.length;
       if (tick) {
-        const [v, w] = kit.runners[i].step([q.x, q.y, q.psi]);
+        const [v, w] = kit.runners[i].step([q.x, q.y, q.psi], lane);
         q.v = v; q.w = w;
       }
       if (sm) {
@@ -529,7 +630,7 @@ export default function RaceRig({ stop }) {
        * And one lap is N. nearest() indexes segments, so the index runs 0 to
        * N-2: 239 steps of +1 round the loop and then 239 -> 0, which is -239
        * and wraps to +2. 239 + 2 is 241, which is N. */
-      const near = nearest(kit.path, q.x, q.y);
+      const near = nearest(lane, q.x, q.y);
       const idx = near[0];
       const prev = q.idx === undefined ? idx : q.idx;
       q.idx = idx;
@@ -569,6 +670,12 @@ export default function RaceRig({ stop }) {
         t.lastX = q.x; t.lastY = q.y;
       }
     });
+
+    /* One lap each and the race is over. Not a fixed wall of seconds: the
+       outer lane is 10.23 m against the inner's 5.14, so any clock long
+       enough for the outside is two laps on the inside and the two machines
+       are not being asked the same question. */
+    if (poses.current.every(q => (q.lap || 0) >= 1)) nextRace();
   }
 
   return (
@@ -579,10 +686,13 @@ export default function RaceRig({ stop }) {
                         fragmentShader={FIELD_FRAG} transparent depthWrite={false} />
       </mesh>
 
-      {/* The plan itself, once, in ink: it belongs to none of them. */}
-      <mesh geometry={planGeo} frustumCulled={false}>
-        <meshStandardMaterial color={"#8d8d94"} roughness={0.6} metalness={0.1} />
-      </mesh>
+      {/* The lanes, in ink: they belong to none of them, and which machine is
+          in which changes between races. */}
+      {planGeo.map((g, i) => (
+        <mesh key={"lane" + i} geometry={g} frustumCulled={false}>
+          <meshStandardMaterial color={"#8d8d94"} roughness={0.6} metalness={0.1} />
+        </mesh>
+      ))}
 
       {kit.runners.map((r, i) => (
         <line key={"t" + r.name} geometry={trails[i].geo} frustumCulled={false}>

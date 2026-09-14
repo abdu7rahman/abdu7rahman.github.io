@@ -40,6 +40,23 @@ function seeded(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
+/* The same integration, but keeping the whole track rather than only the
+   worst error, so two of them can be compared against each other. */
+function trace(makeCtl, path, secs) {
+  const rand = seeded(0xC0FFEE11);
+  const ctl = makeCtl(path, rand);
+  const p0 = path[0], p1 = path[1];
+  let x = p0[0], y = p0[1], psi = Math.atan2(p1[1]-p0[1], p1[0]-p0[0]);
+  const out = [];
+  const d = 1 / 20;
+  for (let i = 0; i < secs * 20; i++) {
+    const [v, w] = ctl([x, y, psi]);
+    psi += w * d; x += Math.cos(psi) * v * d; y += Math.sin(psi) * v * d;
+    out.push([x, y]);
+  }
+  return out;
+}
+
 function run(makeCtl, path, secs = 200) {
   const rand = seeded(0xC0FFEE11);
   const ctl = makeCtl(path, rand);
@@ -81,3 +98,38 @@ for (const [name, mk] of Object.entries(CTL)) {
   console.log('  ' + name.padEnd(30) + row.map(v => String(Math.round(v)).padStart(7)).join('')
               + String(Math.round(spread)).padStart(9));
 }
+
+/* And the question the fairness table does not answer: can two of them touch.
+ *
+ * Lanes only replace the collision mask if the machines cannot reach each
+ * other, and 0.25 m of lane spacing is not obviously enough -- the sampler is
+ * 126 mm off its line at worst on the inner lane, so two neighbours leaning
+ * toward each other at the same moment close 252 mm of a 250 mm gap before
+ * either body is counted. A Burger is 0.178 m across, so the centres have to
+ * stay further apart than that.
+ *
+ * Every rotation, not just the one arrangement: the rotation puts each
+ * controller next to each of the others, and the pair that can touch is the
+ * pair that is worst in the lanes it is worst in.
+ */
+const NAMES = Object.keys(CTL);
+const SECS = 200;
+console.log('\nclosest two machines ever get, centre to centre, over ' + SECS + ' s');
+console.log('  a Burger is 0.178 m across, so anything above that cannot touch\n');
+let worstPair = null, worstGap = Infinity;
+for (let race = 0; race < 4; race++) {
+  const tr = NAMES.map((n, i) => trace(CTL[n], lanes[(i + race) % 4], SECS));
+  let gap = Infinity, who = '';
+  for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) {
+    for (let k = 0; k < tr[a].length; k++) {
+      const d = Math.hypot(tr[a][k][0] - tr[b][k][0], tr[a][k][1] - tr[b][k][1]);
+      if (d < gap) { gap = d; who = NAMES[a] + ' / ' + NAMES[b]; }
+    }
+  }
+  console.log('  race ' + (race + 1) + ': ' + gap.toFixed(3) + ' m  (' + who + ')');
+  if (gap < worstGap) { worstGap = gap; worstPair = who; }
+}
+console.log('\n  closest over all four races: ' + worstGap.toFixed(3) + ' m, '
+            + worstPair + ' -- ' + (worstGap > 0.178
+              ? 'clear by ' + ((worstGap - 0.178) * 1000).toFixed(0) + ' mm'
+              : 'THEY TOUCH'));
