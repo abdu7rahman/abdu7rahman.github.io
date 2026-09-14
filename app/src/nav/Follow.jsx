@@ -139,6 +139,34 @@ function aimY(id, shot) {
   return Math.min(AIM_HI, Math.max(AIM_LO, mid));
 }
 
+/* How far to drop the aim so the work rides above the console rather than
+ * behind it.
+ *
+ * Every shot in this building is composed to put its subject in the middle
+ * of the frame, which is right on a landscape frame where the console is a
+ * card in one corner. On a phone held upright the console is a full-width
+ * sheet along the bottom, and the middle of the frame is exactly where it
+ * starts. Measured at 390 by 844 before this existed: the work occupied
+ * about 15 per cent of the height, centred at 48 per cent of it, and the
+ * console's top edge was at 39 to 45 per cent -- so nothing of the replan
+ * cell's arm was visible at all and about a quarter of the race cell was.
+ *
+ * Aiming lower raises the subject in the frame, so this is a subtraction.
+ * How much is a fraction of what the lens covers at the subject's own
+ * distance, which keeps it right whatever the shot's distance and fov are,
+ * and it fades in with the aspect: nothing at 1.0 and all of it by 0.5, so a
+ * tablet in portrait gets part of the correction rather than a cliff.
+ */
+const RISE = 0.26;      // of the frame height, at the narrowest
+
+function riseFor(camera, eye, look) {
+  const a = Math.max(0.35, camera.aspect);
+  if (a >= 1) return 0;
+  const t = Math.min(1, (1 - a) / 0.5);
+  const d = eye.distanceTo(look);
+  return t * RISE * 2 * d * Math.tan(camera.fov * Math.PI / 360);
+}
+
 export default function Follow() {
   const { camera, scene: sc } = useThree();
   scene = sc;
@@ -270,7 +298,7 @@ export default function Follow() {
       if (shot) {
         _eye.set(shot.eye[0], shot.eye[1], shot.eye[2]);
         _look.set(shot.look[0], shot.look[1], shot.look[2]);
-        _look.y = aimY(j.at || j.target, shot);
+        _look.y = aimY(j.at || j.target, shot) - riseFor(camera, _eye, _look);
         wantFov = shot.fov;
       } else {
         _eye.set(gx + _fwd.x * 2.35, 1.52, gz + _fwd.z * 2.35);

@@ -477,7 +477,18 @@ canvas { display: block; touch-action: pan-y; }
 }
 
 @media (max-width: 820px) {
-  .console { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+  /* Full width, and capped, because it was taking the building with it.
+     Measured on a 390 by 844 frame: the console came out 450 to 505 px tall
+     -- 53 to 60 per cent of the viewport -- and the cell it describes is
+     composed at the middle of the frame, so between 70 and 100 per cent of
+     the machine was behind this panel. Two fifths of the height is enough
+     for the title, the controls and the first rows of the board, and the
+     rest scrolls. nav/Follow.jsx does the other half, by aiming the shot
+     into the band this leaves. */
+  .console {
+    left: 12px; right: 12px; bottom: 12px; max-width: none;
+    max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain;
+  }
   /* One at a time on a small screen. Reading and operating are two
      different intents and there is not room for both -- the column runs to
      the bottom of the viewport and the console sits on top of it. The
