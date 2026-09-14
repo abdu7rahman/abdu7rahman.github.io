@@ -71,12 +71,11 @@ function inv3(m, out) {
 
 export class Track {
   constructor(pos, { measStd = 0.02, accelStd = 1.2 } = {}) {
-    this.x = new Float64Array([pos[0], pos[1], pos[2], 0, 0, 0]);
+    this.x = new Float64Array(6);
     this.P = new Float64Array(36);
-    for (let i = 0; i < 3; i++) this.P[i * 6 + i] = measStd * measStd;
-    for (let i = 3; i < 6; i++) this.P[i * 6 + i] = 0.25;
     this.measVar = measStd * measStd;
     this.accelStd = accelStd;
+    this.reset(pos);
     this._F = new Float64Array(36);
     this._Q = new Float64Array(36);
     this._A = new Float64Array(36);
@@ -85,6 +84,21 @@ export class Track {
     this._Si = new Float64Array(9);
     this._K = new Float64Array(18);     // 6 x 3
     this._xf = new Float64Array(6);
+  }
+
+  /* Back to knowing nothing but where it is, which the constructor was the
+     only way to get to. A page that compares two settings on the same
+     obstacle has to be able to put the filter back where it started between
+     them, or the second setting is measured on a filter the first one warmed
+     up -- and a tracker that has been running for a minute is holding a
+     velocity estimate that the reset obstacle is about to contradict. */
+  reset(pos) {
+    const p = pos.x === undefined ? pos : [pos.x, pos.y, pos.z];
+    this.x.set([p[0], p[1], p[2], 0, 0, 0]);
+    this.P.fill(0);
+    for (let i = 0; i < 3; i++) this.P[i * 6 + i] = this.measVar;
+    for (let i = 3; i < 6; i++) this.P[i * 6 + i] = 0.25;
+    return this;
   }
 
   F(dt, out) {
