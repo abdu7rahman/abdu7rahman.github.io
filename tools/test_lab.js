@@ -69,6 +69,24 @@ const ok = (n, c, d = '') => c ? (pass++, console.log('  PASS  ' + n))
   await pg.waitForFunction(() => window.__lab && window.__lab.guide && window.__lab.map,
                            null, { timeout: 120000 }).catch(() => {});
 
+  /* Through the front door the way a reader comes through it.
+   *
+   * The door offers a choice once the building behind it has loaded -- walk
+   * it, or read the document instead -- and until one is taken it is a
+   * full-screen overlay, so every pointer test below would be clicking on it
+   * rather than on the canvas. Clicking the button is the honest fix: it is
+   * the path a first-time visitor takes, and a suite that skipped it would
+   * be testing a page no visitor sees. A returning visitor never sees this,
+   * which is why it is tolerated rather than waited for. */
+  console.log('\n0. the front door');
+  const front = await pg.waitForSelector('#door [data-pick="walk"]',
+                                         { state: 'visible', timeout: 180000 }).catch(() => null);
+  if (front) await front.click();
+  await pg.waitForFunction(() => !document.getElementById('door'),
+                           null, { timeout: 30000 }).catch(() => {});
+  ok('the front door opens on a choice, and taking it lets you in', !!front,
+     front ? '' : 'no walk button appeared');
+
   const J = () => pg.evaluate(() => window.__lab.journey.get());
 
   /* Finish whatever walk is outstanding, by running the guide's own

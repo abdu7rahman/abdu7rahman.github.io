@@ -63,6 +63,21 @@ export function whenWanted(fn) {
   else waiting.push(fn);
 }
 
+/* Start the download without letting the cells go.
+ *
+ * want() and warm() are two different questions and the door asks them at two
+ * different moments. warm() fetches and instantiates the module; want()
+ * releases the eight cells to compile their scenes against it. Between them
+ * sits the only free time this page ever gets -- the seconds a reader spends
+ * looking at the choice at the door -- and spending it on the 2.5 MB
+ * download while spending none of it on eight MJCF compiles is the whole
+ * trick: the compiles are main-thread work and would stutter the building
+ * the reader is being shown, and the download is not.
+ *
+ * So by the time somebody picks the building, the engine is already in the
+ * page and want() is a compile rather than a compile behind a download. */
+export function warm() { engine().catch(() => {}); }
+
 export function engine() {
   if (pending) return pending;
   /* Absolute, and loaded by URL rather than by package name. Vite would

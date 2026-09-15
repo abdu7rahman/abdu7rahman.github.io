@@ -31,8 +31,8 @@
      it. Declared here so a reader who wants the page rather than the
      building can find it, and so a crawler knows the two are one thing. -->
 <link rel="alternate" type="text/html" href="/written.html" title="The same work, written">
-  <script type="module" crossorigin src="/build/index-Bxi-rmWZ.js"></script>
-  <link rel="stylesheet" crossorigin href="/build/index-CjeJA9eB.css">
+  <script type="module" crossorigin src="/build/index-DrpkSP9K.js"></script>
+  <link rel="stylesheet" crossorigin href="/build/index-BqLGamJk.css">
 </head>
 <body>
 <div id="root"></div>
@@ -49,15 +49,29 @@
 
      Static text, no counts, until something real has happened: an empty
      "0 of 0" is a worse first frame than no number at all. -->
-<div id="door" data-state="open" role="status" aria-live="polite">
+<div id="door" data-state="open" data-mode="loading">
   <p class="door-h">High bay</p>
-  <ul class="door-s">
+  <p class="door-l">Motion planning, manipulation and physical AI. Eight test
+     cells running published controllers under real physics, and the same work
+     written down.</p>
+  <ul class="door-s" role="status" aria-live="polite">
     <li data-step="machines" data-state="wait">the machines <b data-note></b></li>
     <li data-step="building" data-state="wait">the building <b data-note></b></li>
   </ul>
-  <p class="door-f">Eight test cells, six rooms and a simulator, built before
-     you are shown any of it. It is the same work
-     <a href="/written.html">as a document</a>, which is the quick way in.</p>
+  <!-- The fork, and it is hidden until the building behind it is actually
+       ready to be walked into. Offering a door that is not yet open is worse
+       than making somebody wait for it, because the wait then happens after
+       the click with nothing on screen to explain it. -->
+  <div class="door-pick" hidden>
+    <button type="button" class="door-go" data-pick="walk">
+      Walk the building
+      <em>eight live cells and a guide that takes you round</em>
+    </button>
+    <a class="door-go door-go--alt" href="/written.html" data-pick="read">
+      Read it as a document
+      <em>the same work, benchmarks and all, on one page</em>
+    </a>
+  </div>
 </div>
 
 <!-- The two pieces of chrome that are not React's, and are here rather than
