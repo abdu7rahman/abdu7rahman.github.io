@@ -134,7 +134,20 @@ export default function Grade({ on = true }) {
   }, [kit]);
 
   /* Priority 1 takes rendering away from R3F's own loop; anything that wants
-     to run before the frame is drawn has to sit below this. */
+     to run before the frame is drawn has to sit below this.
+   
+     Which is also the trap waiting for anybody who tries to warm the shaders
+     up. three compiles a different program for a render target than for the
+     canvas -- a target gets linear radiance with the tone curve off, the
+     canvas gets the curve and the sRGB encode -- and everything this file
+     draws goes to a target. So a compileAsync(scene, camera) called from
+     anywhere else runs with the canvas bound and builds a second copy of
+     every program in the building, none of which will ever be used.
+   
+     That was tried, and counted: thirty-six programs after the first frame,
+     all of them for the target, and then twenty-nine more on the next frame,
+     all of them for a canvas this scene is never drawn to. If the warm-up is
+     worth having it belongs in here, where kit.a can be bound first. */
   useFrame(({ clock }) => {
     if (!on) { gl.setRenderTarget(null); gl.render(scene, camera); return; }
     const { scene0, cam0, mesh, mats } = kit;

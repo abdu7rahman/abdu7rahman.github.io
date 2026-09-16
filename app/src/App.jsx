@@ -36,7 +36,7 @@ export default function App() {
      cellShadows for four components and only post was ever consumed:
      ?lab=low rendered byte for byte the same frame as ?lab=high, which is
      the whole ladder doing nothing. */
-  const { quality, tier } = detect();
+  const { quality, tier, forced } = detect();
   const rigs = STOPS.filter(s => s.kind === "rig");
 
   return (
@@ -53,6 +53,36 @@ export default function App() {
         onCreated={({ gl, scene }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.toneMappingExposure = 1.30;
+          /* The largest single thing this page spends its startup on, and it
+           * is a debug feature.
+           *
+           * three checks every program for link errors the first time it is
+           * used, and the check is four synchronous reads back from the GPU:
+           * getProgramInfoLog, both getShaderInfoLogs and getProgramParameter
+           * for LINK_STATUS, in WebGLProgram's onFirstUse. A read back has to
+           * wait for the link to finish, which is the stall
+           * KHR_parallel_shader_compile exists to avoid, and three does it
+           * once per program.
+           *
+           * Measured with a CPU profile from navigation to the door opening:
+           * that one function was 4,645 ms of 6,103, or 76 per cent of every
+           * millisecond the main thread spent. For scale, the whole bundle's
+           * parse was 123 ms and creaseNormals -- the heaviest thing this
+           * repository itself wrote -- was 204.
+           *
+           * How much of that a real GPU pays is not measurable here and is
+           * not claimed: this project's harness runs on SwiftShader, which
+           * has no parallel-compile extension and does the compile as
+           * main-thread CPU work, so turning the check off moved the stall
+           * from onFirstUse into WebGLUniforms -- which queries ACTIVE_UNIFORMS
+           * and waits for the same link -- and the total did not move. On
+           * hardware that compiles on its own threads it is the wait that
+           * goes.
+           *
+           * It stays on when the tier is forced, which is what `?lab=` does
+           * and what every suite in tools/ passes, so a shader that fails to
+           * link still says so to the harness and to anybody debugging. */
+          gl.debug.checkShaderErrors = forced;
           /* The fog is not the background, and it was.
            *
            * Both were P.air at #0b0b0c, so everything past the fog's far
