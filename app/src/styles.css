@@ -674,7 +674,9 @@ canvas { display: block; touch-action: pan-y; }
 .door-s li[data-state="done"]::before { background: var(--accent); }
 .door-s b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .door-l {
-  margin: 0; max-width: 46ch;
+  /* Wide enough that it does not rag into a narrow column under a headline
+     that runs the width of the frame. */
+  margin: 0; max-width: 54ch;
   font: 400 15px/1.65 var(--ui); color: #8a8b93;
 }
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mohammed Abdul Rahman &mdash; robotics engineer</title>
-<meta name="description" content="Motion planning, manipulation and physical AI. A robotics high bay you can walk through, with eight rigs running real code in the browser.">
+<meta name="description" content="Robotics engineer — motion planning, manipulation and physical AI. Eight robots running real controllers live in your browser, and the same work written down.">
 <meta name="author" content="Mohammed Abdul Rahman">
 <meta name="theme-color" content="#0b0b0c">
 <link rel="canonical" href="https://abdu7rahman.github.io/">
@@ -14,7 +14,7 @@
      a scraper resolves these without a document base. assets/og.png is built
      by tools/gen_og.js from the same tokens as style.css. -->
 <meta property="og:title" content="Mohammed Abdul Rahman &mdash; robotics engineer">
-<meta property="og:description" content="Motion planning, manipulation and physical AI. A robotics high bay you can walk through, with eight rigs running real code in the browser.">
+<meta property="og:description" content="Robotics engineer — motion planning, manipulation and physical AI. Eight robots running real controllers live in your browser, and the same work written down.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Mohammed Abdul Rahman">
 <meta property="og:url" content="https://abdu7rahman.github.io/">
@@ -31,8 +31,8 @@
      it. Declared here so a reader who wants the page rather than the
      building can find it, and so a crawler knows the two are one thing. -->
 <link rel="alternate" type="text/html" href="/written.html" title="The same work, written">
-  <script type="module" crossorigin src="/build/index-DrpkSP9K.js"></script>
-  <link rel="stylesheet" crossorigin href="/build/index-BqLGamJk.css">
+  <script type="module" crossorigin src="/build/index-C0N-WkZc.js"></script>
+  <link rel="stylesheet" crossorigin href="/build/index-B9n_2gga.css">
 </head>
 <body>
 <div id="root"></div>
@@ -50,10 +50,17 @@
      Static text, no counts, until something real has happened: an empty
      "0 of 0" is a worse first frame than no number at all. -->
 <div id="door" data-state="open" data-mode="loading">
-  <p class="door-h">High bay</p>
-  <p class="door-l">Motion planning, manipulation and physical AI. Eight test
-     cells running published controllers under real physics, and the same work
-     written down.</p>
+  <!-- The name, because that is what the front of a portfolio is for. It
+       said "High bay" -- the trade name for a building with a tall clear
+       span and a travelling crane, which is what this place is and which
+       tells a visitor nothing at all about whose it is. lib/plan.js made
+       exactly that argument about the station index and then the door went
+       and did it anyway. The lede is the one the entry station already
+       carries, so the building and its door say the same thing in the same
+       voice. -->
+  <p class="door-h">Mohammed Abdul Rahman</p>
+  <p class="door-l">Robotics engineer. Motion planning, manipulation, and the
+     bringup that gets it onto real hardware.</p>
   <ul class="door-s" role="status" aria-live="polite">
     <li data-step="machines" data-state="wait">the machines <b data-note></b></li>
     <li data-step="building" data-state="wait">the building <b data-note></b></li>
@@ -64,12 +71,12 @@
        the click with nothing on screen to explain it. -->
   <div class="door-pick" hidden>
     <button type="button" class="door-go" data-pick="walk">
-      Walk the building
-      <em>eight live cells and a guide that takes you round</em>
+      See it running
+      <em>eight robots, live in this browser — no video, no screenshots</em>
     </button>
     <a class="door-go door-go--alt" href="/written.html" data-pick="read">
-      Read it as a document
-      <em>the same work, benchmarks and all, on one page</em>
+      Read it instead
+      <em>the same work on one page, with the numbers</em>
     </a>
   </div>
 </div>
