@@ -190,19 +190,32 @@ export function cladding(material, opt = {}) {
     );
   };
 
-  /* The cache key carries the configuration rather than just the word.
-  
+  /* One key for all of them, and the word is enough.
+
      Without a key at all, a patched material and an unpatched standard
      material hash to the same program and whichever compiles first wins.
-     With a constant one, every cladding material in the building shares a
-     program, and three only runs onBeforeCompile on a cache miss -- so a
-     second material asking for "cladding" with a different axis or pitch
-     would be drawn with the first one's constants. Nothing in the building
-     is known to have been drawn wrong by that; it is closed because it is
-     the kind of fault that is invisible until it is load-bearing. */
-  const key = "cladding:" + [u.uCladAxis.value.x, u.uPitch.value, u.uCrown.value,
-    u.uRamp.value, u.uDepth.value, u.uSeam.value, u.uBase.value, u.uDado.value]
-    .map(n => +n.toFixed(4)).join(",");
-  material.customProgramCacheKey = () => key;
+
+     It then carried the eight profile numbers, on the reasoning that three
+     only runs onBeforeCompile on a cache miss -- so a second cladding asking
+     for the same program with a different pitch would be drawn with the
+     first one's. That is the right worry about the wrong mechanism, and
+     measuring it settled it: these eight are `uniform` declarations in the
+     GLSL, read as uniforms, and the object holding them is built fresh per
+     call and assigned into that material's own shader.uniforms. three keeps
+     materialProperties.uniforms per material even when the program is
+     shared, so a shared program changes which shader runs and not what it is
+     handed.
+
+     Checked three ways rather than reasoned about once. Read back off the
+     renderer with one key for all of them, every material still had its own
+     numbers -- the deck at 0.62, the curtain at 0.115 on a vertical axis,
+     the bay at 0.30, none of them collapsed. The entrance, which shows the
+     envelope wall, the curtain and the deck at once, renders the same to
+     within the camera's own drift. And weldmesh.js, which is this file's
+     structure exactly, has been shipping a constant key all along.
+
+     The saving is three programs of thirty-six, which is small and free: the
+     four profiles in this building were compiling four copies of one shader. */
+  material.customProgramCacheKey = () => "cladding";
   return material;
 }
