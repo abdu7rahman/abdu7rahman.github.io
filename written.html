@@ -26,7 +26,7 @@
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=8069d1b0">
+<link rel="stylesheet" href="style.css?v=f09b4472">
 <link rel="stylesheet" href="landing.css?v=e4b0f285">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
@@ -247,8 +247,18 @@
                 <ul class="chips">
                   <li>ROS&nbsp;2 Jazzy</li><li>C++</li><li>TurtleBot4</li><li>nav2_costmap_2d</li>
                 </ul>
-                <a class="demo" href="https://youtu.be/4fczERUsW1Y" target="_blank" rel="noopener" data-cur="open">
-                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch it on the robot</span></a>
+                <figure class="vid">
+                  <a class="vid__open" href="https://youtu.be/4fczERUsW1Y" target="_blank" rel="noopener"
+                     data-cur="open" data-embed="4fczERUsW1Y"
+                     data-embed-title="Custom Planners - Tight Space Navigation">
+                    <img class="vid__poster" src="assets/hw-nav.jpg" width="960" height="540" loading="lazy"
+                         alt="Two small differential-drive robots in a lab aisle, easing through the gap between a bench leg and someone standing beside them.">
+                    <span class="vid__badge">
+                      <svg class="ico ico--sm" aria-hidden="true"><use href="#i-play"/></svg><span>Watch it on the robot</span></span>
+                  </a>
+                  <figcaption class="vid__cap">Custom Planners &mdash; Tight Space Navigation. The only run on this
+                    page that is hardware rather than a simulator or a bench.</figcaption>
+                </figure>
               </div>
               <dl class="proj__stats">
                 <div><dt>Global planners</dt><dd>4</dd></div>
@@ -846,7 +856,7 @@
 } }
 </script>
 <script type="module" src="world/index.js?v=52c6a4c9"></script>
-<script src="main.js?v=a712628a" defer></script>
+<script src="main.js?v=27e41a9b" defer></script>
 <script src="carousel.js?v=b32d1589" defer></script>
 <script src="immersive.js?v=22a99886" defer></script>
 <script src="states.js?v=39ef2b5c" defer></script>

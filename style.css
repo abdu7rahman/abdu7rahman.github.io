@@ -513,6 +513,45 @@ a { color: inherit; }
 }
 .demo:hover { border-color: var(--signal); }
 
+/* A video that plays in the page, without the page calling YouTube before
+   the reader asks it to.
+ *
+ * The poster is served from assets/ rather than i.ytimg.com, and the iframe
+ * is built in main.js on the click. Until then nothing here touches a third
+ * party, which is the same stance the analytics worker takes -- it goes out
+ * of its way to store no IP, UA or cookie, and a thumbnail hotlinked from
+ * Google's CDN would hand over every one of those on every pageview for the
+ * sake of one JPEG.
+ *
+ * It is an <a> to the watch page rather than a <button>, so with JavaScript
+ * off the click still reaches the video instead of doing nothing. */
+.vid { margin: 14px 0 0; }
+.vid__open {
+  display: block; position: relative; overflow: hidden;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--rule-2);
+  line-height: 0;
+}
+.vid__poster { display: block; width: 100%; height: auto; }
+/* --night behind --night-ink is 18.1:1, so the label reads over whatever
+   frame the poster happens to be, rather than over an assumed dark one. */
+.vid__badge {
+  position: absolute; left: 12px; bottom: 12px;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 13px; border-radius: var(--r-pill);
+  background: var(--night); color: var(--night-ink);
+  font: 400 14px/1 var(--sans); letter-spacing: -.015em;
+}
+.vid__open:hover .vid__badge { background: var(--signal); }
+.vid__frame {
+  display: block; width: 100%; aspect-ratio: 16 / 9; border: 0;
+  border-radius: var(--r-lg);
+}
+.vid__cap {
+  margin: 9px 0 0;
+  font: 400 13px/1.5 var(--sans); letter-spacing: -.005em; color: var(--ink-3);
+}
+
 .proj__stats { margin: 4px 0 0; }
 .proj__stats > div { padding: 7px 0; border-top: 1px solid var(--rule); }
 .proj__stats > div:first-child { border-top: 0; padding-top: 0; }

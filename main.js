@@ -185,3 +185,42 @@
   }
   window.addEventListener("scroll", onScroll, { passive: true });
 })();
+
+/* Click-to-play, so a video plays in the page and the page still calls
+   nobody until it is asked to.
+
+   The markup is a plain link to the watch page with a poster inside it, so
+   with this script absent or broken the click opens YouTube rather than
+   doing nothing. With it, the first click swaps the link for a
+   youtube-nocookie iframe that starts playing. Nothing is preconnected and
+   no iframe exists until then -- an embed present on load fetches from
+   three Google domains and sets storage whether or not anyone watches. */
+(function () {
+  "use strict";
+
+  var links = document.querySelectorAll("a[data-embed]");
+  if (!links.length) return;
+
+  Array.prototype.forEach.call(links, function (a) {
+    a.addEventListener("click", function (ev) {
+      /* Leave the modified clicks alone: ctrl, cmd, shift and middle-click
+         all mean "somewhere else", and swallowing them to play it here is
+         the opposite of what was asked. */
+      if (ev.defaultPrevented || ev.button !== 0 ||
+          ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+
+      var f = document.createElement("iframe");
+      f.className = "vid__frame";
+      f.src = "https://www.youtube-nocookie.com/embed/" +
+              encodeURIComponent(a.getAttribute("data-embed")) +
+              "?autoplay=1&rel=0";
+      f.title = a.getAttribute("data-embed-title") || "Video";
+      f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+      f.setAttribute("allowfullscreen", "");
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      a.parentNode.replaceChild(f, a);
+      f.focus();
+    });
+  });
+})();
