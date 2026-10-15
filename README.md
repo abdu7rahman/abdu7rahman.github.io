@@ -6,14 +6,17 @@
 
 Served by GitHub Pages from this repository's root, with no build step.
 
-- **`index.html`** is the page: a name, a few lines and the work, in one column.
+- **`index.html`** is the written page: about, the work as a carousel of project cards, the
+  measured results, the stack and the path. `landing.css` styles it on top of the shared
+  `style.css`, and `states.js` turns its sections into states on a desktop.
 - **`demo.html`** runs some of the repositories in the browser through Pyodide. Five demos
   fetch their Python from GitHub as the page loads; three run copies of private repositories,
   each recorded in `vendor/*/PROVENANCE.md` with its commit and a SHA-256 per file.
 - **`404.html`**, and **`admin.html`**, which forwards to the traffic dashboard. The dashboard is
   the Cloudflare worker in `worker/`.
 - **`written.html`** forwards to the root, where the written page now lives, and **`sw.js`**
-  retires the service worker an earlier version of the site installed.
+  retires the service worker the old WebGL building installed. The building and the written
+  page's 3D world are both gone.
 
 The baked files under `assets/` come from `tools/`: `bake_arm.py` (the UR12e and Hand-E mesh
 the arm demos draw), `bake_qlc_costs.py` (the Go2 course cost fields), `train_clone.py` (the

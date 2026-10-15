@@ -6,12 +6,12 @@
  * no og:image at all.
  *
  * The card is drawn from the site's own tokens rather than a separate design,
- * so the preview and the page it opens are recognisably the same thing: the
- * home page's background, cream and accent from style.css, and its name in
- * the same STIX Two Text file -- inlined as base64 from the exact file the
+ * so the preview and the page it opens are recognisably the same thing. Since
+ * the landing page went dark and set its display type in a self-hosted STIX
+ * Two Text (landing.css), the card follows: same background, same warm cream,
+ * same accent, same font file -- inlined as base64 from the exact file the
  * page itself loads, so the renderer produces the same picture on any
- * machine and can never drift to a second copy of the font. Like the page it
- * is a name, a line and an address, with nothing glowing.
+ * machine and can never drift to a second copy of the font.
  *
  *   node tools/gen_og.js
  *
@@ -57,9 +57,9 @@ function inlineFonts() {
   return { css, files: 1 };
 }
 
-// style.css's dark tokens, not a second palette. If these drift from
-// style.css the card stops looking like the page, which is the only thing it
-// is for.
+// landing.css's own tokens, not a second palette. If these drift from
+// landing.css the card stops looking like the page, which is the only thing
+// it is for.
 const T = {
   bg: '#0a0a0a', bg2: '#141414', card: '#1c1c1c',
   fg: '#fcf9f3', mut: '#86868b', rule: '#272727', accent: '#ff8a5c',
@@ -67,12 +67,18 @@ const T = {
 const SANS = '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",'
            + 'Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif';
 const DISPLAY = '"STIX Two Text",Georgia,"Times New Roman",serif';
+// The same layered glow landing.css puts on h1/.hero__eyebrow/.sec__label
+// .tag/.carousel__pos: a tight bloom on the letterforms, a wide soft one for
+// the halo, both of which only ever brighten against black.
+const GLOW = '0 0 1px rgba(255, 249, 240, .7), 0 0 28px rgba(255, 138, 92, .30)';
+
 // Kept short enough to sit on one line each. nowrap below turns a value that
 // outgrows its column into a frame overflow, which the check catches, rather
 // than a silent second line that makes the row look broken.
 const FACTS = [
-  ['Now', 'Advanced Robotics and AI intern, Siemens'],
+  ['Now', 'Advanced Robotics & AI, Siemens'],
   ['Study', 'MS Robotics, Northeastern ’27'],
+  ['Built', 'Planners from scratch, benchmarked'],
 ];
 
 function page(fontCss) {
@@ -86,22 +92,28 @@ body {
   position:relative; overflow:hidden; text-align:center;
 }
 .l { position:relative }
+.eyebrow { font-size:22px; font-weight:600; letter-spacing:-.01em; color:${T.accent}; text-shadow:${GLOW} }
 h1 {
-  font-family:${DISPLAY}; font-weight:500; font-size:76px; line-height:1.05; letter-spacing:-.01em;
-  margin-top:40px; color:${T.fg};
+  font-family:${DISPLAY}; font-weight:600; font-size:82px; line-height:1.05; letter-spacing:-.03em;
+  margin-top:14px; color:${T.fg}; text-shadow:${GLOW};
 }
-.lede { margin:24px auto 0; font-size:28px; line-height:1.36; letter-spacing:-.015em;
-  color:${T.mut}; max-width:34ch }
+.rule { display:none }
+.lede { margin:22px auto 0; font-size:26px; line-height:1.36; letter-spacing:-.02em;
+  color:${T.mut}; max-width:30ch }
 .facts { display:flex; justify-content:center; gap:56px; margin-top:auto; padding-top:26px }
 .fact dt { font-size:16px; letter-spacing:-.01em; color:${T.mut} }
 .fact dd { margin-top:6px; font-size:19px; font-weight:500; color:${T.fg}; white-space:nowrap }
 .foot { position:relative; display:flex; align-items:center; justify-content:center;
   border-top:1px solid ${T.rule}; padding-top:24px; margin-top:26px }
 .url { font-size:22px; font-weight:500; color:${T.accent} }
+.tag { font-size:16px; color:${T.mut} }
+.chips { display:none }
 </style>
 <div class="l">
+  <p class="eyebrow">Robotics engineer</p>
   <h1>Mohammed Abdul Rahman</h1>
-  <p class="lede">Robotics engineer. Robot learning, manipulation and motion planning.</p>
+  <p class="lede">Motion planning, manipulation, and the bringup that makes them run.
+    Five of these repos run in your browser.</p>
 </div>
 
 <div class="l">
@@ -110,6 +122,10 @@ h1 {
   </div>
   <div class="foot">
     <span class="url">abdu7rahman.github.io</span>
+    <div class="chips">
+      <span class="chip">ROS 2</span><span class="chip">MoveIt 2</span>
+      <span class="chip">Isaac Sim</span><span class="chip">Physical AI</span>
+    </div>
   </div>
 </div>`;
 }

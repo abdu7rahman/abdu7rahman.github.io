@@ -1,3 +1,102 @@
+/* Scroll-spy for the rail. Marks the section whose heading most recently
+   crossed the top third of the viewport, which behaves better than plain
+   intersection ratios when sections differ a lot in height. */
+(function () {
+  "use strict";
+
+  var links = Array.prototype.slice.call(document.querySelectorAll("[data-nav]"));
+  if (!links.length) return;
+
+  var targets = links
+    .map(function (a) {
+      var el = document.getElementById(a.getAttribute("href").slice(1));
+      return el ? { link: a, el: el } : null;
+    })
+    .filter(Boolean);
+
+  var current = null;
+  var strip = document.querySelector(".rail__nav");
+  var smooth = !(window.matchMedia &&
+                 window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  // Below the width that fits all six labels the strip scrolls sideways, and
+  // a current-section marker parked off its right edge marks nothing. Move
+  // the strip, not the page: scrollIntoView would walk up to the document
+  // and scroll that too, undoing the scroll that got us here.
+  function reveal(a) {
+    if (!strip || strip.scrollWidth <= strip.clientWidth + 2) return;
+    var ab = a.getBoundingClientRect(), sb = strip.getBoundingClientRect();
+    var pad = 24, to = strip.scrollLeft;
+    if (ab.left - pad < sb.left) to += ab.left - pad - sb.left;
+    else if (ab.right + pad > sb.right) to += ab.right + pad - sb.right;
+    if (to === strip.scrollLeft) return;
+    if (strip.scrollTo) strip.scrollTo({ left: to, behavior: smooth ? "smooth" : "auto" });
+    else strip.scrollLeft = to;
+  }
+
+  function setCurrent(entry) {
+    if (entry === current) return;
+    if (current) current.link.removeAttribute("aria-current");
+    if (entry) { entry.link.setAttribute("aria-current", "true"); reveal(entry.link); }
+    current = entry;
+  }
+
+  // Staged, there is no scroll to spy on and every answer this gives is wrong.
+  // The seven states are position: absolute inset 0 on the same pixels, so all
+  // seven report a top of 0 -- under the 288px line a 900px window puts here --
+  // and the loop below walks past every one of them and settles on the last;
+  // then the document is exactly one viewport, so the bottom test is true as
+  // well and pins it to the last a second time. Measured: with the page staged
+  // at Work, one resize left aria-current="true" on #work and #contact at the
+  // same time, states.js having set the first and this the second. states.js
+  // owns the marker while it owns the page, and `current` is dropped rather
+  // than kept so that the first pass after the document comes back re-applies
+  // it instead of matching against a section nobody is on any more.
+  function update() {
+    if (document.body.classList.contains("is-staged")) { current = null; return; }
+    var line = window.innerHeight * 0.32;
+    var active = targets[0];
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].el.getBoundingClientRect().top <= line) active = targets[i];
+    }
+    // pin the last section once the page is at the bottom
+    if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) {
+      active = targets[targets.length - 1];
+    }
+    setCurrent(active);
+  }
+
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () {
+      update();
+      ticking = false;
+    });
+  }
+
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+  update();
+
+  // Keep focus with the reader after an in-page jump, so keyboard and screen
+  // reader users land in the section rather than back at the top of the rail.
+  //
+  // This waited 320ms first, to let the smooth scroll finish. That wait was on
+  // the input path and bought nothing: preventScroll is exactly the flag that
+  // makes focus() safe to call mid-scroll, so the delay only meant a keyboard
+  // user pressed Enter and nothing took focus for a third of a second.
+  links.forEach(function (a) {
+    a.addEventListener("click", function () {
+      var el = document.getElementById(a.getAttribute("href").slice(1));
+      if (!el) return;
+      el.setAttribute("tabindex", "-1");
+      el.focus({ preventScroll: true });
+    });
+  });
+})();
+
 /* ── first-time reveal ──────────────────────────────────────────────────
    Sections lift in once as they arrive. Built to the rules in Emil
    Kowalski's animation guidance:
@@ -85,4 +184,43 @@
     window.requestAnimationFrame(function () { sweep(); ticking = false; });
   }
   window.addEventListener("scroll", onScroll, { passive: true });
+})();
+
+/* Click-to-play, so a video plays in the page and the page still calls
+   nobody until it is asked to.
+
+   The markup is a plain link to the watch page with a poster inside it, so
+   with this script absent or broken the click opens YouTube rather than
+   doing nothing. With it, the first click swaps the link for a
+   youtube-nocookie iframe that starts playing. Nothing is preconnected and
+   no iframe exists until then -- an embed present on load fetches from
+   three Google domains and sets storage whether or not anyone watches. */
+(function () {
+  "use strict";
+
+  var links = document.querySelectorAll("a[data-embed]");
+  if (!links.length) return;
+
+  Array.prototype.forEach.call(links, function (a) {
+    a.addEventListener("click", function (ev) {
+      /* Leave the modified clicks alone: ctrl, cmd, shift and middle-click
+         all mean "somewhere else", and swallowing them to play it here is
+         the opposite of what was asked. */
+      if (ev.defaultPrevented || ev.button !== 0 ||
+          ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+
+      var f = document.createElement("iframe");
+      f.className = "vid__frame";
+      f.src = "https://www.youtube-nocookie.com/embed/" +
+              encodeURIComponent(a.getAttribute("data-embed")) +
+              "?autoplay=1&rel=0";
+      f.title = a.getAttribute("data-embed-title") || "Video";
+      f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+      f.setAttribute("allowfullscreen", "");
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      a.parentNode.replaceChild(f, a);
+      f.focus();
+    });
+  });
 })();

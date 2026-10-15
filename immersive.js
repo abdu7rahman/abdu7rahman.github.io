@@ -1,22 +1,27 @@
-/* The demos page's feel: inertial scrolling, a cursor that reacts, and
- * buttons that lean toward the pointer.
+/* The landing page's feel: inertial scrolling, a cursor that reacts, buttons
+ * that lean toward the pointer, and cards that tilt under it.
  *
  * All of it is the same bet -- that a page which answers the pointer
  * continuously reads as a built thing rather than a document -- and all of it
  * is off under prefers-reduced-motion, on touch, or without JS, because every
  * one of these is an embellishment on a page that already works.
  *
- * Only the demos page loads it; the home page is a list and keeps the
- * reader's own pointer. The cursor stands down the moment it is over an
- * instrument -- the crosshair demo.css sets on those canvases is load-bearing,
- * and it comes back.
+ * Both dark pages. It used to be the landing page alone, on the grounds that
+ * demo.html is a set of instruments you draw maps and place obstacles on and a
+ * cursor lagging its own position by a frame is wrong there. That was the
+ * right objection to the wrong scope: it is true of the canvases, not of the
+ * page around them. So the runner gets the same scroll and the same cursor,
+ * and the cursor stands down the moment it is over an instrument -- the
+ * crosshair demo.css sets on those canvases is load-bearing, and it comes
+ * back.
  */
 (function () {
   "use strict";
 
   if (!document.body) return;
   var cls = document.body.classList;
-  if (!cls.contains("runner-page")) return;
+  var RUNNER = cls.contains("runner-page");
+  if (!cls.contains("home") && !RUNNER) return;
 
   var reduce = window.matchMedia &&
                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -73,6 +78,9 @@
       // well would move the cell out from under the hand placing the thing.
       // Anything that calls preventDefault on a wheel event owns it.
       if (e.defaultPrevented) return;
+      // And in staged mode there is no document scroll to ease: states.js owns
+      // the wheel, and two things easing the same gesture is one too many.
+      if (document.body.classList.contains("is-staged")) return;
       // Leave anything with its own scrollbar alone -- the log on a demo card,
       // a code block, a select. Hijacking those breaks them.
       var n = e.target;
@@ -199,7 +207,7 @@
   }
   function curTick() { if (curRaf == null) curRaf = requestAnimationFrame(curStep); }
 
-  var HOT = "a[href],button,summary,[role=radio],input,textarea";
+  var HOT = "a[href],button,summary,[role=radio],input,textarea,.proj";
   document.addEventListener("pointerover", function (e) {
     if (!e.target.closest) return;
     if (e.target.closest(HOT)) ring.classList.add("is-hot");
@@ -222,7 +230,7 @@
   // Not the runner's own controls: .seg__btn and .tbtn are small, adjacent
   // and switch what a running simulation is doing, and a control that leans
   // away from where you clicked is a control you miss.
-  var MAGNETS = document.querySelectorAll(".btn, .runner__back");
+  var MAGNETS = document.querySelectorAll(".btn, .rail__cta, .carousel__btn, .runner__back");
   Array.prototype.forEach.call(MAGNETS, function (el) {
     el.addEventListener("pointermove", function (e) {
       var b = el.getBoundingClientRect();
@@ -235,4 +243,19 @@
     el.addEventListener("pointerleave", function () { el.style.transform = ""; }, { passive: true });
   });
 
+  /* ── card tilt ─────────────────────────────────────────────────────────
+     Small angles on purpose. A card that tilts far enough to be obvious is
+     also tilted far enough that the text on it stops being flat to the
+     reader, and these cards are mostly text. */
+  var cards = document.querySelectorAll(".proj");
+  Array.prototype.forEach.call(cards, function (card) {
+    card.addEventListener("pointermove", function (e) {
+      var b = card.getBoundingClientRect();
+      var px = (e.clientX - b.left) / b.width - 0.5;
+      var py = (e.clientY - b.top) / b.height - 0.5;
+      card.style.transform = "perspective(900px) rotateX(" + (-py * 3.2).toFixed(2) + "deg) rotateY("
+                           + (px * 3.6).toFixed(2) + "deg)";
+    }, { passive: true });
+    card.addEventListener("pointerleave", function () { card.style.transform = ""; }, { passive: true });
+  });
 })();
