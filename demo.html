@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Run my robots — Mohammed Abdul Rahman</title>
+<title>Run my robots · Mohammed Abdul Rahman</title>
 <meta name="theme-color" content="#0a0a0a">
-<meta name="description" content="My robotics repos, running in your browser. Draw a map and search it, drive a TurtleBot with your cursor, race five local controllers, reach into a UR12e's workspace, walk a Go2 across a course under two cost functions, seat a connector with two UR5s, or read a 32-D action space. Python from the repos, executed unmodified.">
+<meta name="description" content="My robotics repos, running in your browser. Draw a map and search it, drive a TurtleBot with your cursor, race five local controllers, reach into a UR12e's workspace, walk a Go2 across a course under four cost functions, seat a connector with two UR5s, or read a 32-D action space. Python from the repos, executed unmodified.">
 <meta property="og:title" content="Run my robots in your browser">
-<meta property="og:description" content="Five planners on a map you draw; a DWA-tracked robot chasing your cursor; five local controllers racing over one plan; a UR12e deciding whether it can see your hand; a Go2 crossing ice under two cost functions; and an eight-phase bimanual assembly controller.">
+<meta property="og:description" content="Five planners on a map you draw; a DWA-tracked robot chasing your cursor; five local controllers racing over one plan; a UR12e deciding whether it can see your hand; a Go2 crossing ice under four cost functions; and an eight-phase bimanual assembly controller.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Mohammed Abdul Rahman">
 <meta property="og:url" content="https://abdu7rahman.github.io/demo.html">
 <meta property="og:image" content="https://abdu7rahman.github.io/assets/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Mohammed Abdul Rahman, robotics engineer. Motion planning, manipulation, and the bringup that makes them run. Four of these repos execute in your browser.">
+<meta property="og:image:alt" content="Mohammed Abdul Rahman. Robot learning, manipulation and motion planning.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://abdu7rahman.github.io/assets/og.png">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=f09b4472">
+<link rel="stylesheet" href="style.css?v=5e960dc1">
 <link rel="stylesheet" href="demo.css?v=8bf39065">
 <script>document.documentElement.classList.remove("no-js");document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("no-js");});</script>
 </head>
@@ -39,11 +39,7 @@
 <main id="main" class="runner">
 
   <header class="runner__head">
-    <!-- written.html, not "./". This page is the document site's runner and
-         the document is where a reader following a link into it came from;
-         "./" used to be that document and is the WebGL building now, so Back
-         went somewhere the reader had never been. -->
-    <a class="runner__back" href="written.html"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg><span>Back</span></a>
+    <a class="runner__back" href="./"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg><span>Back</span></a>
     <p class="hero__eyebrow" style="border:0;padding:0;margin:0">Interactive</p>
     <h1 class="runner__title">Run my robots</h1>
     <p class="runner__lede">
@@ -52,19 +48,19 @@
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">reactive_autonomous_nav</a>
       and
       <a class="inline" href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">motion-replanning-ur12e</a>
-      and execute it here, unmodified &mdash; ROS is stubbed at the import boundary and nothing below
+      and execute it here, unmodified. ROS is stubbed at the import boundary and nothing below
       it is touched. Search a map you draw; drive a TurtleBot with your cursor and throw obstacles in
       its way; race all five of the package's local controllers over one plan; then reach into a
       UR12e's workspace, block the arm, and watch it cancel and replan around your hand.
     </p>
     <p class="runner__lede">
       The last two come from repositories that are private, so their modules are
-      <strong>copied</strong> into <code>vendor/</code> rather than fetched &mdash; each with a
+      <strong>copied</strong> into <code>vendor/</code> rather than fetched, each with a
       <code>PROVENANCE.md</code> naming the commit and a SHA-256 per file. They still execute: click
       a point on a Go2 course and watch four cost functions drive to it, then put back the two
       constants a physics cross-check refuted; or run a bimanual assembly controller against its own
       analytic plant. Below those, a reference block reads a 32-dimensional action space out of the
-      model that defines it &mdash; structure rather than a demo, and labelled as such.
+      model that defines it: structure rather than a demo, and labelled as such.
     </p>
     <p class="runner__tocl">Fetched from GitHub as this page loads</p>
     <ol class="runner__toc">
@@ -127,9 +123,9 @@
       </div>
 
       <dl class="stats" id="stats">
-        <div><dt>Plan time</dt><dd id="s-ms">—</dd></div>
-        <div><dt>Path cells</dt><dd id="s-len">—</dd></div>
-        <div><dt>Expanded</dt><dd id="s-exp">—</dd></div>
+        <div><dt>Plan time</dt><dd id="s-ms">–</dd></div>
+        <div><dt>Path cells</dt><dd id="s-len">–</dd></div>
+        <div><dt>Expanded</dt><dd id="s-exp">–</dd></div>
       </dl>
     </aside>
 
@@ -153,36 +149,36 @@
       <h2 class="chase__title">Chase</h2>
       <p class="chase__lede">
         Your cursor is the goal. <code>astar_planner.py</code> plans to it, and
-        <code>dwa_controller.py</code> tracks that plan &mdash; sampling a velocity window, rolling
+        <code>dwa_controller.py</code> tracks that plan: sampling a velocity window, rolling
         every candidate forward, scoring them on heading, clearance and speed, and committing to
         one, ten times a second at the node's own <code>dt</code>. Both files are the ones fetched
         above, running unmodified.
       </p>
       <p class="chase__lede">
         <strong>Click anywhere to drop an obstacle.</strong> The costmap is re-inflated, the global
-        plan is thrown away and re-run, and the controller keeps tracking whatever comes back &mdash;
+        plan is thrown away and re-run, and the controller keeps tracking whatever comes back,
         which is the entire point of the repository.
       </p>
       <p class="chase__lede">
         <strong>Swap the controller and chase again.</strong> Same planner, same costmap, same
-        cursor &mdash; only the thing following the plan changes, and they follow it differently
+        cursor; only the thing following the plan changes, and they follow it differently
         enough to feel it. Each one draws what it is actually looking at: the point Pure Pursuit
-        steers at, the point on the path nearest Stanley&rsquo;s front axle &mdash; not its centre, which
-        is the whole idea of the law &mdash; and the band TEB is deforming.
+        steers at, the point on the path nearest Stanley&rsquo;s front axle (not its centre, which
+        is the whole idea of the law), and the band TEB is deforming.
         Only DWA has a rollout fan, because only DWA scores a window of trajectories. MPPI is here
         too, but it runs in a worker: a tick costs about 580&nbsp;ms and that is one indivisible
         call, so on the main thread it would freeze the cursor instead of chasing it. Off the main
         thread the page stays at 60&nbsp;fps and the robot does what a real base does when its
-        controller is slow &mdash; keeps moving on the last command until a new one arrives. Pick it
+        controller is slow: it keeps moving on the last command until a new one arrives. Pick it
         and watch the lag in the readout; that number is the honest cost of 1000 samples a tick.
       </p>
       <p class="chase__lede">
-        <strong>The last one is not from the repository &mdash; it was trained here.</strong>
+        <strong>The last one is not from the repository. It was trained here.</strong>
         <em>Clone</em> is a small network fitted to DWA's own output:
         <code>tools/train_clone.py</code> drives the real
         <code>dwa_controller.py</code> across generated maps, records what it saw and what twist it
         committed to, and fits an MLP to that. Driving with it, the fan you see is the observation
-        the network actually got &mdash; range along a spread of bearings, plus the goal in the
+        the network actually got: range along a spread of bearings, plus the goal in the
         robot's frame and its current speed. No velocity window, no rollouts: one forward pass.
         The section below has the numbers, including the ones that are not flattering.
       </p>
@@ -215,8 +211,8 @@
       <p class="panel__label">Five controllers, one plan</p>
       <h2 class="chase__title">Race</h2>
       <p class="chase__lede">
-        The package ships five local controllers. They all take the same job &mdash; here is a path,
-        follow it &mdash; and they disagree about how. So: one A* plan, one costmap, five identical
+        The package ships five local controllers. They all take the same job (here is a path,
+        follow it) and they disagree about how. So: one A* plan, one costmap, five identical
         robots, and each controller running <em>its own</em> <code>_control_loop</code> at
         <em>its own</em> <code>dt</code>, on the tuning the repo ships. Nothing is normalised.
       </p>
@@ -228,19 +224,19 @@
         holds the line.
       </p>
       <p class="chase__lede">
-        The order changed recently, which is the argument for downloading the code instead of
-        drawing a picture of it. TEB used to come last on both maps; it now comes first, at
-        <strong>319</strong> and <strong>534</strong> steps against Pure Pursuit&rsquo;s 353 and 601.
-        Its band had been carrying no time intervals at all &mdash; the published method optimises
-        poses <em>and</em> the durations between them, and without the second half the speed had to
-        come from a pure-pursuit gain on the distance to a fixed band index, which made it a function
-        of how finely the plan happened to be sampled rather than of any limit the robot has. Timing
-        the band took 39&nbsp;percent off <code>rooms-200</code>. This page pulls from
-        <code>main</code>, so it raced the old one until the day it did not.
+        The order has changed as the controllers got fixed, which is the argument for downloading
+        the code instead of drawing a picture of it. TEB used to come last. Its band had been
+        carrying no time intervals at all: the published method optimises poses <em>and</em> the
+        durations between them, and without the second half the speed had to come from a
+        pure-pursuit gain on the distance to a fixed band index, which made it a function of how
+        finely the plan happened to be sampled rather than of any limit the robot has. Timing the
+        band took 39 to 41&nbsp;percent off its step counts, and on the repository&rsquo;s chicane
+        race it now finishes second, behind DWA. This page pulls from <code>main</code>, so it
+        raced the old one until the day it did not.
       </p>
       <p class="chase__lede chase__lede--note">
-        MPPI is off by default. It is now the slowest of the four on that same suite &mdash; 423 and
-        655 steps &mdash; but that is not the reason. It draws 1000
+        MPPI is off by default. It is also the slowest of the five on that chicane, 23.8&nbsp;s
+        against DWA&rsquo;s 14.0, but that is not the reason. It draws 1000
         samples a tick and spends real time doing it: about <strong>470&nbsp;ms a tick in this
         tab</strong> against roughly 2&nbsp;ms for DWA, which is 18&nbsp;seconds of driving that
         takes three minutes to watch. The profile puts that cost in
@@ -266,10 +262,10 @@
       <p class="chase__lede">
         This is the UR12e cell from
         <a class="inline" href="https://github.com/abdu7rahman/motion-replanning-ur12e" target="_blank" rel="noopener">motion-replanning-ur12e</a>,
-        seen down the RealSense &mdash; Universal Robots&rsquo; own UR12e geometry, at joint frames
+        seen down the RealSense: Universal Robots&rsquo; own UR12e geometry, at joint frames
         solved against the description package&rsquo;s kinematics rather than a two-link stand-in.
-        The arm runs the node&rsquo;s own cycle &mdash; open, <em>PICK</em>,
-        close, <em>PLACE</em>, open, then park while the baseline rebuilds &mdash; and its joints are
+        The arm runs the node&rsquo;s own cycle (open, <em>PICK</em>,
+        close, <em>PLACE</em>, open, then park while the baseline rebuilds) and its joints are
         solved each frame rather than played back. The pick and place are not coordinates I picked:
         <code>_build_poses()</code> offsets the home pose by <code>pick_z_offset</code> and
         <code>place_y_offset</code>, and those two numbers are read out of the fetched source, so
@@ -283,14 +279,14 @@
         the tool is following and the node does what it does on the robot: injects a collision sphere
         at <code>SPHERE_RADIUS</code>, notices a planned waypoint is inside
         <code>SPHERE_RADIUS + PATH_CLEARANCE</code>, cancels the motion, waits
-        <code>DECEL_WAIT</code> for the arm to actually stop, and replans &mdash; lifting by
+        <code>DECEL_WAIT</code> for the arm to actually stop, and replans, lifting by
         <code>DETOUR_HEIGHT</code> and going over, or stepping aside, whichever
         <code>plan_arc_detour</code> picks for the direction it was travelling. Every threshold in
         that sentence is read off the node.
       </p>
       <p class="chase__lede">
         The interesting part is where it <em>stops</em> seeing you. Walk the hand onto a link and it
-        vanishes into the self-filter &mdash; the repo's own test puts that edge at 11&nbsp;cm, and
+        vanishes into the self-filter. The repo's own test puts that edge at 11&nbsp;cm, and
         you can find it yourself. Chase the tool and the dashed circle turns: that is
         <code>PREEMPT_DIST</code>, the radius inside which the node cancels the motion it is
         executing and replans. Both are the cost of never reporting the robot as an obstacle.
@@ -309,7 +305,7 @@
       <p class="chase__lede">
         The demo above reacts: something enters the path, the motion is cancelled, a new one is
         planned. This one runs the <code>predictive_replanning</code> package from the same
-        repository, which asks a different question &mdash; not <em>is anything in the way</em> but
+        repository, which asks a different question: not <em>is anything in the way</em> but
         <em>where will it be when I get there</em>. The cell in three dimensions, base at the
         origin. The arm is Universal Robots&rsquo; own UR12e geometry, drawn at the joint frames
         the package&rsquo;s forward kinematics returns; the faint spheres around it are the
@@ -317,8 +313,8 @@
       </p>
       <p class="chase__lede">
         <strong>Move your cursor into the arm&rsquo;s path.</strong> A constant-velocity Kalman
-        filter tracks it from noisy positions &mdash; it is never told the velocity, it has to
-        estimate one &mdash; and then forecasts forward. What it draws is not a predicted point but a
+        filter tracks it from noisy positions (it is never told the velocity, it has to
+        estimate one) and then forecasts forward. What it draws is not a predicted point but a
         <em>cone</em>: at horizon <em>h</em> the obstacle is a sphere of
         <code>r_obstacle + n&sigma;&nbsp;&middot;&nbsp;&sigma;(h)</code>, and &sigma; grows with
         <em>h</em> because the filter&rsquo;s own uncertainty grows. Avoiding the mean would make it
@@ -326,18 +322,18 @@
       </p>
       <p class="chase__lede">
         The cone stops widening because it is capped. A constant-velocity filter extrapolates without
-        bound &mdash; its two-second covariance implies a sphere <strong>2.40&nbsp;m</strong> across
-        against a true mean error of 0.98&nbsp;m &mdash; and inflating by that marks the whole
+        bound. Its two-second covariance implies a sphere <strong>2.40&nbsp;m</strong> across
+        against a true mean error of 0.98&nbsp;m, and inflating by that marks the whole
         workspace blocked and stops the robot dead. <code>sigma_cap</code> saturates it at the volume
         the cell actually confines an obstacle to, which is why the tube here opens from
         0.11&nbsp;m to 0.29&nbsp;m and then holds.
       </p>
       <p class="chase__lede chase__lede--note">
         When a waypoint inside the horizon enters the tube, <code>deform_minimal</code> pushes the
-        trajectory out of it &mdash; endpoints pinned, and every waypoint the arm has already
+        trajectory out of it, with the endpoints pinned and every waypoint the arm has already
         executed frozen, because a plan cannot edit the past. It does not re-fire every frame:
         a threat that is new replans at once, one merely getting worse has to clear a floor first,
-        and a path that comes clear stands the whole thing down &mdash; the repo&rsquo;s own rule,
+        and a path that comes clear stands the whole thing down. That is the repo&rsquo;s own rule,
         with its own two constants. The readout gives the time to collision, how many times it has
         replanned and how far off the plan the tool has been pushed. Park the cursor on the dashed
         line and it fires a second or two ahead.
@@ -345,7 +341,7 @@
       <p class="chase__lede chase__lede--note">
         The arm never stops. When a leg ends the next one is planned from where it actually
         finished and sent back the other way, so nothing is reset and the replan count keeps
-        climbing &mdash; leave the cursor in the path and watch it repair the same cycle over and
+        climbing. Leave the cursor in the path and watch it repair the same cycle over and
         over rather than replaying a fixed six seconds.
       </p>
       <p class="chase__key" id="foresee-key">
@@ -360,12 +356,12 @@
 
   <section class="chase" id="terrain" data-demo="terrain">
     <div class="chase__head" data-reveal>
-      <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/qlc/</code></p>
+      <p class="panel__label">A copy, not a fetch: <code>vendor/qlc/</code></p>
       <h2 class="chase__title">Cross the ice</h2>
       <p class="chase__lede">
         <strong>Click anywhere on the course.</strong> Four cost functions for a Unitree Go2 plan and
-        drive to the point you pick &mdash; default Nav2 inflation, a hand-tuned legged costmap, a
-        supervised learned cost, and maximum-entropy IRL &mdash; over the same terrain, with the same
+        drive to the point you pick (default Nav2 inflation, a hand-tuned legged costmap, a
+        supervised learned cost, and maximum-entropy IRL) over the same terrain, with the same
         A* and the same DWA. The only thing that differs between the four routes is the cost function.
         The dashed line is a privileged oracle handed the exact cost the simulator charges: a ceiling,
         not a competitor.
@@ -423,8 +419,9 @@
     <div class="chase__head chase__head--again" data-reveal>
       <p class="chase__lede">
         <strong>Then break the physics on purpose.</strong> The switch puts <code>FALL_RATE</code>
-        back to 0.5 and the ice drag back to 0.95 &mdash; the two constants the surrogate shipped with
-        before a MuJoCo cross-check measured them and found the sign backwards and no falls at all.
+        back to 0.5 and the ice drag back to 0.95, the two constants the surrogate shipped with
+        before a MuJoCo cross-check measured them. It found the drag sign backwards, and the robot
+        no more likely to fall on ice than on grippy ground.
         That one constant produced 20 of the 36 failures in the Nav2 row of the first results table.
         Removing it moved Nav2 from 70.0% to <strong>87.5%</strong> over 120 courses and the effect
         the project was built to show disappeared.
@@ -437,11 +434,11 @@
           <code>replan_period</code> ticks, DWA every tick, a stuck counter so a stack that paints
           itself into a corner is recorded as a planning failure rather than a timeout. Setting the
           goal is <code>qlc-goto</code>, which copies the recipe with a new <code>Pose2D</code> and
-          regenerates &mdash; so a goal inside a wall is refused rather than carved out.
+          regenerates, so a goal inside a wall is refused rather than carved out.
         </p>
         <p class="chase__lede">
           Two of the four are torch, and there is no wasm build of it, so their forward pass cannot
-          run here &mdash; but their output can. A cost model's only input is the feature stack, and a
+          run here, but their output can. A cost model's only input is the feature stack, and a
           course's feature stack is a pure function of its <code>TerrainConfig</code>, so course
           <em>i</em> at seed 1234 has one learned cost field and always will.
           <code>tools/bake_qlc_costs.py</code> computes those ten fields against the repository's own
@@ -453,7 +450,7 @@
         <p class="chase__lede">
           One course is not the table. Over the repository's 120: <code>nav2_inflation</code> 87.5%,
           <code>learned</code> 86.7%, <code>reactive</code> 85.0%, <code>irl</code> 81.7%, oracle
-          93.3% &mdash; every interval overlapping every other. The four cost functions are
+          93.3%, with every interval overlapping every other. The four cost functions are
           indistinguishable, and Nav2, the baseline the whole premise said had to lose, comes out
           highest. That is the null result, and it is the finding.
         </p>
@@ -463,7 +460,7 @@
 
   <section class="chase" id="assemble" data-demo="assemble">
     <div class="chase__head" data-reveal>
-      <p class="panel__label">A copy, not a fetch &mdash; <code>vendor/oba/</code></p>
+      <p class="panel__label">A copy, not a fetch: <code>vendor/oba/</code></p>
       <h2 class="chase__title">Seat a connector</h2>
       <p class="chase__lede">
         Two UR5s on a NIST Assembly Task Board. An eight-phase insertion controller picks up a D-sub
@@ -498,14 +495,14 @@
           <code>IS_ANALYTIC</code> is true, <code>rollout</code> refuses to record a phase gate when
           this is the environment, and <code>PhaseGate.measured_by</code> has no member that could
           describe it. Every success rate the project reports is read from Isaac Sim. There are none
-          on this page, and the scripted expert is a positive control &mdash; it is built not to
+          on this page, and the scripted expert is a positive control: it is built not to
           fail.
         </p>
         <p class="chase__lede">
           The arms are drawn as a two-link sketch to the end-effector position the plant integrates.
           There are no joints in this fixture: <code>ArmState.joint_positions_rad</code> is
           <code>(0.0,) * 6</code> and the module says so. Rotations are not integrated either, so the
-          detector's angular tolerance is not exercised by anything you see &mdash; that is covered
+          detector's angular tolerance is not exercised by anything you see. That is covered
           by unit tests that build a misaligned state directly, and for real by Isaac Sim.
         </p>
         <p class="chase__lede">
@@ -524,7 +521,7 @@
 
   <section class="ref" id="space">
     <div class="chase__head" data-reveal>
-      <p class="panel__label">Reference, not a demo &mdash; <code>vendor/rfm/</code></p>
+      <p class="panel__label">Reference, not a demo: <code>vendor/rfm/</code></p>
       <h2 class="chase__title">One action space, seven robots</h2>
       <p class="chase__lede">
         No robot here: this is structure. Every embodiment in robot-foundation-model's mixture writes
@@ -555,14 +552,14 @@
         <p class="chase__lede">
           <code>rfm.eval.ablations.FAILURE_MODES</code>: nine named ways this can look healthy and be
           dead, each with a metric, a threshold and a written consequence. They exist because the
-          project kept measuring healthy numbers over dead code paths &mdash; its own evidence index
-          opens by counting twelve. Move a slider and <code>rfm.eval.metrics.check_alarms</code>
+          project kept measuring healthy numbers over dead code paths; its own evidence index
+          counts twelve. Move a slider and <code>rfm.eval.metrics.check_alarms</code>
           scores the snapshot; what lights up is what that function returned. Two of the nine are
           greyed because they are <code>check_trace_alarms</code> territory and no slider reaches
           them.
         </p>
         <div class="lab-dials">
-          <label class="lab-dial"><span>VL probe score <em>(FM-1 &mdash; baseline 65.0)</em></span>
+          <label class="lab-dial"><span>VL probe score <em>(FM-1, baseline 65.0)</em></span>
             <input type="range" id="fm-vl" data-fm-input="vl_probe_score" min="55" max="65" step="0.5" value="64">
             <output id="fm-vl-v">64</output></label>
           <label class="lab-dial"><span>dynamics copy margin <em>(FM-2)</em></span>
@@ -591,11 +588,11 @@
       <details class="lab-more">
         <summary>Coverage, as <code>describe_coverage()</code> prints it</summary>
         <p class="chase__lede chase__lede--note">
-          The one real result this project has is not on this page and is not a robot doing anything:
-          prediction error separates failures at AUROC 0.946&nbsp;&plusmn;&nbsp;0.008 against controls
-          at 0.11, and the repository still declines to call it a win because the same checkpoint
-          predicts the next latent worse than copying the present one. The policy has never completed
-          the task &mdash; 0 of 16.
+          What this project has measured is not on this page, and it is not its own models doing
+          anything. Neither of them, a VLA and a world action model, has completed the task yet. The
+          external baseline has: a LoRA fine-tune of pi0.5 succeeds 93 of 100 times on a simulated
+          lift where the released checkpoint manages 51, and a competence head on its features
+          separates the failures at AUROC 0.932.
         </p>
         <pre class="lab-pre" id="rfm-coverage">describe_coverage() runs when the module loads</pre>
       </details>
@@ -606,11 +603,11 @@
     <p class="panel__label">Console</p>
     <pre id="log" class="log" aria-live="polite">booting…</pre>
     <p class="console__note">
-      All seven run client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
-      and send nothing anywhere. For the first four the source is fetched live from
+      Everything here runs client-side via <a class="inline" href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>
+      and sends nothing anywhere. For the first five the source is fetched live from
       <code>raw.githubusercontent.com</code>, so if the repo changes, so does this page. The last
       three run in a second runtime that does not start until you press something in one of their
-      sections, and their modules are copies &mdash; the byte count in the log is the copy's, and
+      sections, and their modules are copies: the byte count in the log is the copy's, and
       <code>vendor/qlc/PROVENANCE.md</code>, <code>vendor/oba/PROVENANCE.md</code> and
       <code>vendor/rfm/PROVENANCE.md</code> record which commit each came from and a SHA-256 per file.
       <a class="inline" href="https://github.com/abdu7rahman/reactive_autonomous_nav" target="_blank" rel="noopener">
@@ -621,22 +618,22 @@
   <footer class="foot">
     <div class="grid">
       <p class="foot__l">Mohammed Abdul Rahman</p>
-      <p class="foot__r">build robots that may work</p>
+      <p class="foot__r">building robots that may work</p>
       <p class="foot__count" id="visits" hidden><span data-count></span> visits</p>
     </div>
   </footer>
 </main>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-<script src="main.js?v=27e41a9b" defer></script>
-<script src="immersive.js?v=22a99886" defer></script>
+<script src="main.js?v=1d0fb1ce" defer></script>
+<script src="immersive.js?v=6669af11" defer></script>
 <!-- Analytics. Paste the worker URL from worker/README.md into data-analytics
      to switch this on; while it is empty the collector does nothing. -->
 <script src="analytics.js?v=9744e924" data-analytics="https://portfolio-analytics.abdu7rahman.workers.dev/e" defer></script>
-<script src="feedback.js?v=f5943204" defer></script>
+<script src="feedback.js?v=2975c535" defer></script>
 <script src="visits.js?v=e085290f" defer></script>
-<script src="demo.js?v=1f42f87f" defer></script>
-<script src="lab.js?v=d4094538" defer></script>
-<script src="field.js?v=1c23bf3b" defer></script>
+<script src="demo.js?v=2fe0828a" defer></script>
+<script src="lab.js?v=03e1a428" defer></script>
+<script src="field.js?v=1288384c" defer></script>
 </body>
 </html>

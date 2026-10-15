@@ -10,18 +10,15 @@
  *
  * Enhancement only, three ways down: no JS and the canvas is never built, no
  * WebGL and it removes itself, prefers-reduced-motion and it draws a single
- * frame and stops. In every one of those cases landing.css's own gradient is
- * what shows, which is why that gradient is still there.
+ * frame and stops. In every one of those cases the page's own background is
+ * what shows.
  */
 (function () {
   "use strict";
 
-  // Refuses on the landing page rather than requiring it. This was written
-  // for `home` and then the world replaced it there; the gate outlived the
-  // reason for it and left the file loaded by nothing. The three pages that
-  // want weather include the script, and the one that has a world of its own
-  // is the one place it must not run.
-  if (!document.body || document.body.classList.contains("home")) return;
+  // The pages that want weather include the script: the demos page, 404 and
+  // admin. The home page does not.
+  if (!document.body) return;
 
   // Kept as the query and not just its answer, so a change of the preference
   // while the page is open is answered too. Read once, it was not: measured on
@@ -31,8 +28,7 @@
   // because the fog drifts at u_time * 0.015 and two and a half seconds of that
   // barely moves a pixel value -- but the loop behind it was a requestAnimation
   // Frame running every frame for a reader who had just asked for no animation,
-  // which is what the preference is about and not the amplitude. states.js
-  // takes the whole stage down on the same event; this is the same contract.
+  // which is what the preference is about and not the amplitude.
   var stillMq = window.matchMedia &&
                 window.matchMedia("(prefers-reduced-motion: reduce)");
   var reduce = !!(stillMq && stillMq.matches);
@@ -52,7 +48,7 @@
     "attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}";
 
   // The accent arrives as a uniform rather than a literal so the one place
-  // the colour is defined stays landing.css.
+  // the colour is defined stays style.css.
   var FRAG = [
     "precision highp float;",
     "uniform vec2 u_res;",

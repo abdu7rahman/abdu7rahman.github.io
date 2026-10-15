@@ -43,23 +43,21 @@
   --night-ink: #f5f5f7;
   --night-mut: #86868b;
 
-  /* The dark palette. It lives here rather than in landing.css because both
-     dark documents now read it: index.html paints its own rules with it, and
-     demo.html remaps the tokens above onto it so that page's chrome and the
-     canvases demo.js draws from --paper/--ink/--rule/--signal come out of one
-     set of values instead of two that can drift apart.
+  /* The dark palette, which every page is drawn in. demo.css remaps the
+     tokens above onto it so that page's chrome and the canvases demo.js draws
+     from --paper/--ink/--rule/--signal come out of one set of values instead
+     of two that can drift apart, and the home page, 404 and admin do the same
+     further down.
      Every pair carrying text was checked with tools/check_contrast.py's own
      maths before being chosen. */
   --landing-bg:     #0a0a0a;   /* not pure black */
   --landing-bg-2:   #141414;   /* a band, one level up */
   --landing-card:   #1c1c1c;   /* a card surface */
   --landing-fg:     #fcf9f3;   /* warm cream, 18.8:1 on --landing-bg */
-  /* Was #86868b (= --night-mut), which cleared 5.09:1 on --landing-bg-2 --
-     enough on a solid band, not enough once the world shows through one. The
-     page's own worst case is the scrim's 21% of a fully-lit world over
-     --landing-bg, which composites to #3d3c3b; #86868b reads 3.14:1 there and
-     this reads 4.65:1. tools/check_contrast.py checks that composite now, so
-     the two cannot drift. */
+  /* Was #86868b (= --night-mut), which cleared 5.09:1 on --landing-bg-2.
+     The home page sets its secondary text in this, so it gets more room than
+     the 4.5:1 floor: 8.36:1 on --landing-bg and 7.78:1 on --landing-bg-2, as
+     tools/check_contrast.py measures them. */
   --landing-mut:    #a8a8ad;
   --landing-rule:   #272727;   /* 1.33:1 on --landing-bg, inside the hairline band */
   /* Not --signal (#d70015): that reads at 3.68-3.90:1 on black, under the
@@ -121,7 +119,7 @@
      UA or cookie, and a font CDN on every pageview would hand that away for
      a single file. Display sizes only -- body copy stays in --sans. Single
      variable file, weight 400-700, Latin subset. SIL Open Font License.
-     Shared, because both dark documents set their titles in it. */
+     Shared, because every page sets its title in it. */
   --font-display: "STIX Two Text", Georgia, "Times New Roman", serif;
 
   /* Motion tokens. Built-in CSS easings are too weak for UI; these are the
@@ -153,9 +151,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 32px; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 
-/* The three pages of this site cross-fade into each other instead of cutting.
+/* The pages of this site cross-fade into each other instead of cutting.
    Cross-document, so it needs declaring in every document that takes part --
-   all three load this file, which is the whole set. Browsers without it
+   every page loads this file, which is the whole set. Browsers without it
    navigate exactly as they did; the reduced-motion rule above already flattens
    the transition to nothing, and this only ever fires on a same-origin
    navigation, so leaving for GitHub or a mailto still cuts. */
@@ -169,31 +167,6 @@ html { scroll-behavior: smooth; scroll-padding-top: 32px; }
    new page immediately, which is the cut this reader asked for. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
-  [style*="view-transition-name"], .rail__cta, .runner__title { view-transition-name: none !important; }
-}
-
-/* One element crosses the navigation instead of fading with the rest of the
-   page: the words "Run my robots". They are the label on the pill in the bar
-   here and the title of the page there, and clicking the first is how you get
-   the second, so the pill travelling across and growing into the headline is
-   the literal truth of what just happened rather than an effect.
-
-   Names have to be unique per document, which is why the hero's copy of the
-   same button does not carry one -- the bar's is the one that is always on
-   screen to leave from. */
-body.home .rail__cta { view-transition-name: run-robots; }
-body.runner-page .runner__title { view-transition-name: run-robots; }
-::view-transition-group(run-robots) {
-  animation-duration: 460ms;
-  animation-timing-function: var(--ease);
-}
-/* The pill and the headline are different shapes and different sizes, so
-   cross-fading the two snapshots over the morph is what stops it reading as a
-   stretched screenshot of one of them. */
-::view-transition-old(run-robots), ::view-transition-new(run-robots) {
-  animation-duration: 300ms;
-  height: 100%;
-  object-fit: contain;
 }
 
 body {
@@ -242,12 +215,7 @@ a { color: inherit; }
 .skip:focus { left: 12px; top: 12px; }
 
 /* ── shell ─────────────────────────────────────────────────── */
-/* One column. The 232px left rail is gone: a permanent sidebar spends a fifth
-   of the window on navigation nobody uses twice, and it forces the content
-   into a narrow off-centre strip. The nav is a bar over the top now, and the
-   content gets the middle of the page. */
-.shell { display: block; }
-
+/* The twelve columns the demos page's footer is laid out on. */
 .grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -257,146 +225,17 @@ a { color: inherit; }
   padding-inline: clamp(22px, 5vw, 40px);
 }
 
-/* ── top bar ───────────────────────────────────────────────── */
-/* Translucent chrome with the page scrolling underneath it, rather than an
-   opaque strip that permanently costs 52px of window. The saturate() is what
-   keeps colour alive through the blur instead of going milky. */
-.rail {
-  position: sticky; top: 0; z-index: 40;
-  height: var(--nav-h);
-  display: flex; align-items: center; gap: 28px;
-  padding: 0 clamp(22px, 5vw, 40px);
-  background: rgba(251, 251, 253, .72);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-}
-/* A scroll edge, not a divider: a fade where the content passes beneath says
-   "this is in front" without drawing a line the layout does not have. */
-.rail::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px;
-  pointer-events: none;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, .05), transparent);
-}
-
-.rail__top { flex: none; }
-/* Padding, then the same amount back off the margin, so the box a finger has
-   to hit clears 24px without the mark moving on the page. WCAG 2.2 target
-   size: these are standalone links, so the exemption for a link sitting
-   inside a sentence does not cover them. */
-.mark {
-  text-decoration: none; display: inline-flex; align-items: center; gap: 10px; flex: none;
-  padding-block: 6px; margin-block: -6px;
-}
-.mark__initials {
-  font: 600 15px/1 var(--sans); letter-spacing: -.01em; color: var(--ink);
-}
-.mark__rule { display: none; }
-
-/* flex: 1 with min-width: 0 let the siblings win outright: at 320px the mark,
-   the two social links and the call to action took the whole bar and the
-   section nav was laid out 0px wide -- present, focusable, and impossible to
-   see or reach. It gets a floor now and the siblings give way instead. */
-.rail__nav {
-  flex: 1 1 auto; min-width: min(160px, 100%);
-  overflow-x: auto; scrollbar-width: none;
-  overscroll-behavior-x: contain;
-}
-.rail__nav::-webkit-scrollbar { display: none; }
-.rail__nav ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
-
-.rail__nav a {
-  display: block; white-space: nowrap;
-  padding: 7px 11px; border-radius: var(--r-pill);
-  text-decoration: none;
-  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
-  color: var(--ink-2);
-  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
-}
-/* The numbers were a print affectation. A nav item should say where it goes. */
-.rail__nav .num { display: none; }
-.rail__nav .lbl { font: inherit; letter-spacing: inherit; }
-.rail__nav a[aria-current="true"] { color: var(--ink); background: rgba(0, 0, 0, .06); }
-
-.rail__foot { display: flex; gap: 2px; flex: none; }
-/* Both pages list GitHub and LinkedIn in full further down. On a phone the
-   bar has one job -- get you to a section -- and 60px of duplicate icons is
-   the cost of it not doing that job. The call to action beside them is not a
-   duplicate of anything and stays. */
-@media (max-width: 560px) { .rail__foot .icolink { display: none; } }
-.icolink {
-  display: inline-flex; align-items: center; gap: 7px;
-  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
-  color: var(--ink-2); text-decoration: none;
-  padding: 7px 11px; border-radius: var(--r-pill);
-  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
-}
-.icolink span { display: none; }   /* the mark is the label at this size */
-
 /* ── icons ─────────────────────────────────────────────────── */
 .ico { width: 18px; height: 18px; flex: none; display: block; }
 .ico--sm { width: 14px; height: 14px; }
 .ico--link { width: 15px; height: 15px; }
 
-/* ── hero ──────────────────────────────────────────────────── */
-/* Centred, and everything in one column. The old hero put the name in an
-   eight-column block with a four-column table of facts alongside it, which is
-   a magazine spread -- two things competing at the top of the page. One
-   centred column has an order: name, sentence, the things you can press. */
-.hero { padding: clamp(56px, 11vh, 116px) 0 clamp(48px, 8vh, 88px); text-align: center; }
-
+/* ── eyebrow and buttons ───────────────────────────────────── */
 .hero__eyebrow {
   grid-column: 1 / -1;
   font: 600 15px/1.3 var(--sans); letter-spacing: -.01em; text-transform: none;
   color: var(--signal);
   margin-bottom: 12px;
-}
-
-/* The size ceiling is high on purpose. This is the one piece of display type
-   on the page and it should be unambiguously the first thing read; -.03em is
-   the tracking that size wants, since letters read too far apart as they grow. */
-.hero__name {
-  grid-column: 1 / -1;
-  font-size: clamp(2.75rem, 7.4vw, 5.5rem);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -.03em;
-}
-
-.hero__lede {
-  grid-column: 1 / -1;
-  margin: 22px auto 0;
-  font-size: clamp(1.0625rem, 1.6vw, 1.3125rem);
-  line-height: 1.42;
-  letter-spacing: -.018em;
-  color: var(--ink-2);
-  max-width: 34ch;
-}
-
-/* The facts read as a quiet caption row under the actions rather than as a
-   second table beside the name. */
-.hero__meta {
-  grid-column: 1 / -1;
-  margin: 44px 0 0;
-  /* A grid, not wrapping flex: four items in a flex row broke 3 + 1 and the
-     lone one centred under the gap, which reads as a mistake. A grid keeps the
-     columns even at every step -- 4, then 2, then 1, all of which divide 4. */
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px 24px;
-}
-.hero__meta > div { padding: 0; border: 0; }
-.hero__meta dt {
-  font: 400 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
-  color: var(--ink-3);
-}
-.hero__meta dd {
-  margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--ink);
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-}
-.hero__meta .ico { color: var(--ink-3); }
-
-.hero__actions {
-  grid-column: 1 / -1;
-  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
-  margin-top: 42px;
 }
 
 .btn {
@@ -421,206 +260,7 @@ a { color: inherit; }
 .btn--solid { background: var(--signal); border-color: var(--signal); color: #fff; }
 .btn--solid:hover { background: #b3000f; border-color: #b3000f; color: #fff; opacity: 1; }
 
-/* ── sections ──────────────────────────────────────────────── */
-/* No rule between sections. A band of a different surface, or simply the
-   space, is what separates them -- a full-width hairline every 700px is the
-   editorial habit this design dropped. The Work section gets the recessed
-   band, because that is where the cards sit and a card needs something to be
-   raised off. */
-.sec { padding: clamp(72px, 10vh, 128px) 0; }
-.sec--band { background: var(--paper-2); }
-#work { background: var(--paper-2); }
-.sec--end { padding-bottom: 0; }
-
-.sec__label { grid-column: 1 / 4; position: sticky; top: 44px; align-self: start; }
-.sec__label .tag {
-  display: block;
-  font: 600 13px/1 var(--sans); letter-spacing: -.01em; color: var(--signal);
-  margin-bottom: 14px;
-}
-.sec__label h2 { font-size: 1.75rem; line-height: 1.15; }
-.sec__note {
-  margin-top: 12px; font-size: .875rem; color: var(--ink-3); max-width: 22ch;
-}
-
-.sec__body { grid-column: 4 / 13; }
-
-.lead { font-size: 1.0625rem; color: var(--ink-2); max-width: 62ch; margin-bottom: 44px; }
-
-/* ── projects ──────────────────────────────────────────────── */
-/* Cards on a band, not rows separated by rules. A rule says "these are two
-   entries in a list"; a raised surface says "this is a thing", which is what
-   each of these is. The lift is small at rest and grows on hover, so the card
-   answers a pointer by coming toward it. */
-.projects { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-
-.proj {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 172px;
-  gap: 0 24px;
-  padding: 28px 28px 30px;
-  background: var(--paper-3);
-  border-radius: var(--r-xl);
-  box-shadow: var(--lift-1);
-  position: relative;
-  transition: box-shadow var(--dur-move) var(--ease),
-              transform var(--dur-move) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .proj:hover { box-shadow: var(--lift-2); transform: translateY(-2px); }
-}
-
-.proj__idx {
-  font: 400 15px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-3);
-  padding-top: 7px;
-}
-
-.proj__title { font-size: 1.5rem; line-height: 1.2; }
-.proj__title a {
-  text-decoration: none;
-  display: inline-flex; align-items: baseline; gap: 8px;
-  background-image: linear-gradient(var(--signal), var(--signal));
-  background-size: 0% 1px; background-repeat: no-repeat; background-position: 0 100%;
-  transition: background-size .28s var(--ease), color .18s var(--ease);
-}
-.proj__title a:hover { color: var(--signal); background-size: 100% 1px; }
-.proj__title .ico--link { transition: transform .22s var(--ease); align-self: center; }
-.proj__title a:hover .ico--link { transform: translate(2px, -2px); }
-
-.proj__desc { margin-top: 12px; color: var(--ink-2); font-size: 16px; line-height: 1.45; max-width: 62ch; }
-
-.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
-.chips li {
-  font: 400 13px/1 var(--sans); letter-spacing: -.01em;
-  color: var(--ink-3);
-  border: 1px solid var(--rule-2);
-  padding: 6px 11px;
-  border-radius: var(--r-pill);
-}
-
-.demo {
-  display: inline-flex; align-items: center; gap: 7px;
-  /* 18px tall, and standing on its own rather than inside a sentence, so the
-     inline-link exemption from WCAG 2.2's 24px target minimum does not apply.
-     The extra height is padding taken back off the top margin: the hit box
-     grows, the card's rhythm does not change. */
-  margin-top: 13px;
-  padding-top: 3px; padding-bottom: 5px;
-  font: 400 15px/1 var(--sans); letter-spacing: -.015em;
-  color: var(--signal); text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color .18s var(--ease);
-}
-.demo:hover { border-color: var(--signal); }
-
-/* A video that plays in the page, without the page calling YouTube before
-   the reader asks it to.
- *
- * The poster is served from assets/ rather than i.ytimg.com, and the iframe
- * is built in main.js on the click. Until then nothing here touches a third
- * party, which is the same stance the analytics worker takes -- it goes out
- * of its way to store no IP, UA or cookie, and a thumbnail hotlinked from
- * Google's CDN would hand over every one of those on every pageview for the
- * sake of one JPEG.
- *
- * It is an <a> to the watch page rather than a <button>, so with JavaScript
- * off the click still reaches the video instead of doing nothing. */
-.vid { margin: 14px 0 0; }
-.vid__open {
-  display: block; position: relative; overflow: hidden;
-  border-radius: var(--r-lg);
-  border: 1px solid var(--rule-2);
-  line-height: 0;
-}
-.vid__poster { display: block; width: 100%; height: auto; }
-/* --night behind --night-ink is 18.1:1, so the label reads over whatever
-   frame the poster happens to be, rather than over an assumed dark one. */
-.vid__badge {
-  position: absolute; left: 12px; bottom: 12px;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 8px 13px; border-radius: var(--r-pill);
-  background: var(--night); color: var(--night-ink);
-  font: 400 14px/1 var(--sans); letter-spacing: -.015em;
-}
-.vid__open:hover .vid__badge { background: var(--signal); }
-.vid__frame {
-  display: block; width: 100%; aspect-ratio: 16 / 9; border: 0;
-  border-radius: var(--r-lg);
-}
-.vid__cap {
-  margin: 9px 0 0;
-  font: 400 13px/1.5 var(--sans); letter-spacing: -.005em; color: var(--ink-3);
-}
-
-.proj__stats { margin: 4px 0 0; }
-.proj__stats > div { padding: 7px 0; border-top: 1px solid var(--rule); }
-.proj__stats > div:first-child { border-top: 0; padding-top: 0; }
-.proj__stats dt {
-  font: 400 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
-  color: var(--ink-3);
-}
-.proj__stats dd {
-  margin: 2px 0 0;
-  font-size: 1.5rem; font-weight: 600; line-height: 1.15;
-  letter-spacing: -.022em;
-  font-variant-numeric: tabular-nums;
-}
-.proj__stats .unit { font-family: var(--mono); font-size: .8125rem; margin-left: 2px; color: var(--ink-3); }
-
-/* ── benchmark ─────────────────────────────────────────────── */
-.bench { margin: 0 0 48px; }
-.bench__cap { margin-bottom: 16px; }
-.bench__cap h3 { font-size: 1.1875rem; }
-.bench__cap p { font: 400 14px/1.45 var(--sans); letter-spacing: -.016em; color: var(--ink-3); margin-top: 5px; }
-
-.bench__table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.bench__table th, .bench__table td { text-align: left; padding: 11px 14px 11px 0; }
-.bench__table thead th {
-  font: 500 12px/1.4 var(--sans); letter-spacing: -.005em; text-transform: none;
-  color: var(--ink-3);
-  border-bottom: 1px solid var(--rule-2);
-  padding-bottom: 8px;
-}
-.bench__table tbody th {
-  font: 500 14px/1.4 var(--sans); letter-spacing: -.016em; color: var(--ink);
-}
-.bench__table tbody th .sub {
-  display: block; font-weight: 400; font-size: 10.5px; color: var(--ink-3); letter-spacing: .04em;
-}
-.bench__table tbody td { font: 400 13px/1.4 var(--mono); color: var(--ink-2); }
-.bench__table tbody tr { border-bottom: 1px solid var(--rule); }
-.bench__table tbody tr:hover { background: var(--paper-3); }
-.bench__table tr.is-mine { background: var(--signal-w); }
-.bench__table tr.is-mine:hover { background: var(--signal-w); }
-.bench__table tr.is-mine th, .bench__table tr.is-mine td { color: var(--ink); }
-.bench__table tbody td a { font-size: 12px; }
-.bench__table b { color: var(--signal); font-weight: 600; }
-.ta-r { text-align: right !important; }
-
-.viz-h { width: 200px; }
-.viz { padding-right: 0 !important; }
-.bar { display: block; height: 7px; border-radius: 1px; width: var(--w); min-width: 3px; }
-.bar + .bar { margin-top: 3px; }
-.bar--py  { background: var(--accent); }
-.bar--cpp { background: var(--signal); }
-
-.legend { list-style: none; display: flex; gap: 16px; margin: 10px 0 0; padding: 0; }
-.legend li {
-  display: inline-flex; align-items: center; gap: 7px;
-  font: 400 13px/1 var(--sans); letter-spacing: -.01em; color: var(--ink-2);
-}
-.sw { width: 11px; height: 11px; border-radius: 3px; display: block; }
-.sw--py  { background: var(--accent); }
-.sw--cpp { background: var(--signal); }
-
-.bench__note { margin-top: 14px; font-size: .875rem; color: var(--ink-2); max-width: 66ch; }
-.bench__meta {
-  display: flex; align-items: flex-start; gap: 9px; flex-wrap: wrap;
-  margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--rule);
-  font: 400 12px/1.7 var(--mono); color: var(--ink-3);
-}
-.bench__meta .ico { color: var(--signal); margin-top: 3px; }
-
+/* ── inline ──────────────────────────────────────────────────── */
 code {
   font: 400 .875em/1 var(--mono);
   background: var(--signal-w); color: var(--ink);
@@ -638,59 +278,7 @@ a.inline {
   transition: border-color .18s var(--ease);
 }
 a.inline:hover { border-color: var(--signal); }
-
-/* ── stack ─────────────────────────────────────────────────── */
-.stack { margin: 0; }
-.stack > div {
-  display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 24px;
-  padding: 15px 0; border-top: 1px solid var(--rule);
-}
-.stack > div:last-child { border-bottom: 1px solid var(--rule); }
-.stack dt {
-  font: 500 13px/1.5 var(--sans); letter-spacing: -.01em; text-transform: none;
-  color: var(--signal);
-}
-.stack dd { margin: 0; font-size: .9375rem; color: var(--ink-2); }
-
-/* ── path ──────────────────────────────────────────────────── */
-.path { list-style: none; margin: 0; padding: 0; }
-.path > li {
-  display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 24px;
-  padding: 26px 0; border-top: 1px solid var(--rule);
-}
-.path > li:last-child { border-bottom: 1px solid var(--rule); }
-.path__when {
-  font: 400 15px/1.5 var(--sans); letter-spacing: -.015em; color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.path__what h3 { font-size: 1.125rem; line-height: 1.35; }
-.path__what .at { color: var(--signal); }
-.path__what p { margin-top: 8px; font-size: .9375rem; color: var(--ink-2); max-width: 64ch; }
-.path__roles {
-  font: 400 15px/1.5 var(--sans) !important; letter-spacing: -.015em;
-  color: var(--ink-3) !important; margin-top: 6px !important;
-}
-
-/* ── contact ───────────────────────────────────────────────── */
-.closing { font-size: 1.125rem; color: var(--ink); max-width: 52ch; margin-bottom: 36px; }
-
-.contact { list-style: none; margin: 0; padding: 0; }
-.contact li { border-top: 1px solid var(--rule); }
-.contact li:last-child { border-bottom: 1px solid var(--rule); }
-.contact a {
-  display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; align-items: center; gap: 14px;
-  padding: 17px 4px;
-  text-decoration: none;
-  font: 400 17px/1 var(--sans); letter-spacing: -.022em;
-  color: var(--ink);
-  transition: padding .22s var(--ease), color .18s var(--ease), background .18s var(--ease);
-}
-.contact a:hover { color: var(--signal); background: var(--paper-3); padding-left: 14px; }
-.contact .ico--link {
-  opacity: 0; transform: translate(-4px, 4px);
-  transition: opacity var(--dur-hover) var(--ease), transform var(--dur-hover) var(--ease);
-}
-.contact a:hover .ico--link { opacity: 1; transform: none; }
+.sw { width: 11px; height: 11px; border-radius: 3px; display: block; }
 
 /* ── footer ────────────────────────────────────────────────── */
 .foot { margin-top: clamp(64px, 9vh, 100px); border-top: 1px solid var(--rule); }
@@ -712,6 +300,95 @@ a.inline:hover { border-color: var(--signal); }
 }
 .foot__count[hidden] { display: none; }
 .foot__count [data-count] { font-family: var(--mono); color: var(--ink-2); }
+
+/* ── the home page ─────────────────────────────────────────────
+   One column of text: a name, two lines, links, a list. Laid out the way the
+   minimal pages of people whose work this builds on are laid out, and for the
+   same reason: the work is in the repositories, and the page only has to say
+   where. Set in the one serif the site already ships, nothing moves, nothing
+   is drawn behind it, there is no form, and the pointer is the reader's own. */
+body.plain {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: 0;
+  cursor: auto;
+  --cur-hand: pointer;
+}
+.page, body.plain .foot {
+  max-width: 620px;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 32px);
+}
+.page { padding-top: clamp(56px, 12vh, 112px); }
+.page a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--rule-2);
+  transition: text-decoration-color var(--dur-hover) var(--ease);
+}
+.page a:hover { text-decoration-color: var(--ink-3); }
+
+.intro h1 {
+  font: 600 1.75rem/1.2 var(--font-display);
+  letter-spacing: -.005em;
+  margin-bottom: 14px;
+}
+.intro p { color: var(--ink-3); }
+.intro p + p { margin-top: 8px; }
+.intro .links { margin-top: 16px; }
+
+.block { margin-top: 56px; }
+.block h2 {
+  font: 600 1rem/1.4 var(--font-display);
+  letter-spacing: 0;
+  color: var(--ink);
+  margin-bottom: 18px;
+}
+
+.work { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
+.work h3 {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  font: 600 1rem/1.45 var(--font-display);
+  letter-spacing: 0;
+}
+.work h3 a { text-decoration-color: transparent; }
+.work h3 a:hover { text-decoration-color: var(--ink-3); }
+.work p { margin-top: 2px; color: var(--ink-3); }
+.yr {
+  font-size: .875rem;
+  font-weight: 400;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.aside { margin-top: 28px; color: var(--ink-3); }
+
+.past { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.past li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 16px; color: var(--ink-3); }
+.past .yr { line-height: 1.8; }
+
+body.plain .foot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px;
+  margin-top: 56px;
+  padding-block: 0 56px;
+  border-top: 0;
+}
+body.plain .foot p { font: 400 .875rem/1.5 var(--font-display); }
+body.plain .foot__count [data-count] { font-family: inherit; color: inherit; }
+/* The separator is drawn, not written, so the counter's own text stays
+   "1,204 visits" and nothing else. */
+body.plain .foot__count::before { content: "\00a0\00b7\00a0"; }
+/* No read-position bar. It is for a long document you are working through,
+   and this page is a short list. */
+body.plain::after { display: none; }
+
+@media (max-width: 560px) {
+  .work h3 { flex-direction: column; gap: 0; }
+  .past li { grid-template-columns: 1fr; gap: 0; }
+}
 
 /* ── say something ─────────────────────────────────────────────
    The comment form, and the prompt that offers it. Both are injected by
@@ -752,7 +429,7 @@ a.inline:hover { border-color: var(--signal); }
 .say__hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .say__foot { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
 .say__b {
-  font: 500 15px/1 var(--sans); color: #fff; background: var(--ink);
+  font: 500 15px/1 var(--sans); color: var(--paper); background: var(--ink);
   border: 0; border-radius: var(--r-pill); padding: 11px 22px; cursor: var(--cur-hand);
 }
 .say__b:hover { opacity: .88; }
@@ -791,9 +468,8 @@ a[href], button, summary, [role="radio"] { cursor: var(--cur-hand); }
    behind is worse than no cursor at all. immersive.js drops .cur-on over
    those, which hands the pointer straight back.
 
-   --cur-ink rather than --signal directly, so index.html can point it at the
-   accent it paints with; demo.html and the body.util pages already remap
-   --signal itself. */
+   --cur-ink rather than --signal directly, so a page can point it somewhere
+   else; demo.css remaps --signal itself. */
 :root { --cur-ink: var(--signal); }
 .cur-dot, .cur-ring {
   position: fixed; top: 0; left: 0;
@@ -845,17 +521,15 @@ body.has-cur.cur-on, body.has-cur.cur-on * { cursor: none !important; }
 /* field.js's shader, built and appended at runtime. Fixed and full-bleed, so
    the whole page sits in the same weather rather than one section of it; the
    content is lifted one layer above it. The grain (z-index 55) and the
-   read-position bar (60) stay on top of both. Shared, because both dark
-   documents run the shader now. */
+   read-position bar (60) stay on top of both. Shared, because the demos,
+   404 and admin pages all run the shader. */
 .bg-field {
   position: fixed; inset: 0; width: 100%; height: 100%;
   z-index: 0; pointer-events: none;
 }
-/* Everything the field sits behind. `err` and `util` were left out when this
-   was written because the field only ran on `home`; now that it runs on the
-   three pages that are not `home`, their content has to be lifted over it too
-   or the shader paints across the page instead of behind it. */
-body.home .shell, body.runner-page .runner,
+/* Everything the field sits behind, on the three pages that run it. Without
+   the lift the shader paints across the page instead of behind it. */
+body.runner-page .runner,
 body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; z-index: 1; }
 
 /* A card in the corner, not a bar across the middle. Centred at the foot of
@@ -923,73 +597,13 @@ body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; 
 }
 
 /* ── responsive ────────────────────────────────────────────── */
-@media (max-width: 1080px) {
-  /* The hero is one centred column at every width now, so the old per-element
-     column spans have nothing left to do. Only the facts grid steps down. */
-  .hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sec__label { grid-column: 1 / 13; position: static; margin-bottom: 32px; }
-  .sec__note { max-width: 44ch; }
-  .sec__body { grid-column: 1 / 13; }
-  .proj { grid-template-columns: 34px minmax(0, 1fr) 150px; }
-}
-
 @media (max-width: 860px) {
   :root { --gutter: 18px; }
-  .hero__meta { grid-template-columns: 1fr; }
-  /* The bar is already the bar at every width, so this breakpoint only has to
-     tighten it -- the whole rail-to-topbar block that used to live here is the
-     base rule now. */
-  .rail { gap: 14px; padding-inline: clamp(18px, 5vw, 40px); }
-  .rail__nav a { padding: 7px 9px; font-size: 12.5px; }
-  /* The strip scrolls at every width below the one that fits all six labels,
-     so say so: a hard cut through the middle of a word reads as a broken
-     layout, a fade reads as more to the right. */
-  .rail__nav {
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
-            mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
-  }
-
-  .proj { grid-template-columns: 26px minmax(0, 1fr); }
-  .proj__stats { grid-column: 2; display: flex; flex-wrap: wrap; gap: 0 32px; margin-top: 18px; }
-  .proj__stats > div { border-top: 0; padding: 0; }
-  .proj__stats dd { font-size: 1.1875rem; }
-
-  .stack > div, .path > li { grid-template-columns: 1fr; gap: 6px; }
-  .viz-h, .viz { display: none; }
   .foot__l, .foot__r, .foot__count { grid-column: 1 / 13; text-align: left; }
   .foot__r { margin-top: 6px; }
   /* Once the byline stacks, a right-aligned count is the only thing on the
      footer's other edge, which reads as a stray rather than a column. */
   .foot__count { margin-top: 10px; }
-}
-
-@media (max-width: 560px) {
-  .bench__table thead th:nth-child(3), .bench__table tbody td:nth-child(3) { display: none; }
-  .hero__actions .btn span { font-size: 12px; }
-}
-
-/* ── interactive callout ───────────────────────────────────── */
-.tryit {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center; gap: 18px;
-  padding: 18px 20px; margin-bottom: 8px;
-  text-decoration: none; color: var(--ink);
-  border: 1px solid var(--signal); border-radius: var(--r-lg);
-  background: var(--signal-w);
-  transition: background .18s var(--ease), padding .22s var(--ease);
-}
-.tryit:hover { background: var(--paper-3); padding-left: 28px; }
-.tryit__tag {
-  font: 500 12px/1 var(--sans); letter-spacing: -.005em; text-transform: none;
-  color: var(--signal); border: 1px solid var(--signal); border-radius: var(--r-pill);
-  padding: 6px 8px; white-space: nowrap;
-}
-.tryit__body { font-size: .9375rem; line-height: 1.55; color: var(--ink-2); }
-.tryit__body b { color: var(--ink); }
-.tryit .ico--link { color: var(--signal); transition: transform .22s var(--ease); }
-.tryit:hover .ico--link { transform: translate(3px, -3px); }
-@media (max-width: 620px) {
-  .tryit { grid-template-columns: 1fr; gap: 10px; }
 }
 
 /* ── motion polish ────────────────────────────────────────────────────
@@ -1001,17 +615,8 @@ body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; 
 
 /* Press feedback. Buttons that do not answer a press feel dead, and this
    was missing everywhere -- the audit found zero :active states. */
-.btn:active,
-.icolink:active { transform: scale(0.985); }
-.btn, .icolink { transition: transform var(--dur-press) var(--ease), color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease); }
-
-/* Hover gating. Touch fires a false hover on tap and it sticks until the
-   next tap elsewhere. */
-@media (hover: hover) and (pointer: fine) {
-  .tryit:hover .ico--link { transform: translate(3px, -3px); }
-  .proj__title a:hover .ico--link { transform: translate(3px, -3px); }
-  .contact a:hover .ico--link { opacity: 1; transform: translate(0, 0); }
-}
+.btn:active { transform: scale(0.985); }
+.btn { transition: transform var(--dur-press) var(--ease), color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease); }
 
 /* First-time reveal. Sections lift in once as they arrive; 480ms is past
    the 300ms UI ceiling on purpose -- this is a marketing reveal seen once
@@ -1033,7 +638,7 @@ body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; 
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { transform: none; transition: opacity 200ms var(--ease); }
   [data-reveal].is-in { transform: none; }
-  .btn:active, .icolink:active { transform: none; }
+  .btn:active { transform: none; }
   .runner__back:hover { gap: 8px; }
 }
 
@@ -1065,71 +670,22 @@ body.err > *:not(.bg-field), body.util > *:not(.bg-field) { position: relative; 
       to   { opacity: 1; transform: none; }
     }
 
-    /* The benchmark bars draw themselves as their row arrives. These are the
-       page's own measurements, so the bar growing is the number being read
-       out rather than decoration for its own sake. */
-    .bar {
-      transform-origin: left center;
-      animation: bar-draw linear both;
-      animation-timeline: view();
-      animation-range: entry 15% cover 40%;
-    }
-    @keyframes bar-draw {
-      from { transform: scaleX(0); }
-      to   { transform: scaleX(1); }
-    }
-
-    /* A section recedes as it leaves. The reveals bring a block in and then
-       nothing ever happened to it again, so the page read as a list being
-       scrolled past rather than as somewhere you are moving through.
-
-       On `.sec` rather than on the blocks inside it: the entry animation
-       already owns those, and two animations on one element do not compose --
-       the later one simply wins.
-
-       Movement only. This faded as well to begin with, and measuring it
-       killed that: for a section taller than the window `exit` starts the
-       moment its top edge reaches the top of the screen, not when it is
-       nearly gone, so sections were sitting at 0.58 opacity with 344 to 532px
-       of themselves still in front of the reader. A 22px lift and a 1.2%
-       scale give the same depth cue and take nothing away from the text. */
-    .sec {
-      animation: sec-recede linear both;
-      animation-timeline: view();
-      animation-range: exit 0% exit 100%;
-    }
-    @keyframes sec-recede {
-      from { transform: none; }
-      to   { transform: translateY(-22px) scale(.988); }
-    }
-
-    /* A section's label drifts a little slower than its body. Small enough
-       that it reads as depth rather than as the page coming apart. */
-    .sec__label {
-      animation: label-drift linear both;
-      animation-timeline: view();
-      animation-range: cover 0% cover 100%;
-    }
-    @keyframes label-drift {
-      from { transform: translateY(-14px); }
-      to   { transform: translateY(14px); }
-    }
   }
 }
 
-/* 404 and admin were the last documents on the light palette once index.html
-   and demo.html both went dark. Each loads this file and nothing else, so the
-   remap lives here rather than in a page stylesheet neither of them has.
+/* The home page, 404 and admin load this file and nothing else, so the dark
+   remap they share lives here rather than in a page stylesheet none of them
+   has.
 
    On body rather than :root, which is the one difference from demo.css's
    version: that page has canvases whose colours demo.js reads off
-   documentElement, and this one has no script at all.
+   documentElement, and none of these draws anything from script.
 
    The light values above are not dead because of this. They are what every
-   one of these three documents falls back to if its remap does not arrive,
+   one of these documents falls back to if its remap does not arrive,
    which is exactly why tools/check_contrast.py still has to hold them to
    their ratios. */
-body.err, body.util {
+body.err, body.util, body.plain {
   color-scheme: dark;
   --paper:    var(--landing-bg);
   --paper-2:  var(--landing-bg-2);
@@ -1147,45 +703,10 @@ body.err, body.util {
 }
 body.err .btn--solid, body.util .btn--solid { color: #1a0e08; }
 
-/* The top bar earns its background: transparent over the top of the page,
-   and settling onto its surface once the reader has moved. scroll() rather
-   than view(), because this tracks the document, not an element. */
-@supports (animation-timeline: scroll()) {
-  .rail {
-    animation: rail-settle linear both;
-    animation-timeline: scroll(root block);
-    animation-range: 0 180px;
-  }
-  /* --rail-edge, not --rule: an animation beats a regular declaration, so
-     body.home setting a dark border on .rail lost to this keyframe and the
-     bar settled onto the light palette's hairline -- a white line across a
-     near-black bar. The keyframe reads a token each document can point
-     somewhere, and demo.css gets it for free through its own --rule remap. */
-  @keyframes rail-settle {
-    from { border-bottom-color: transparent; }
-    to   { border-bottom-color: var(--rail-edge, var(--rule)); }
-  }
-}
-
 /* ── the other two accessibility preferences ──────────────────────────
    Reduced motion was honoured and these two were not, which is half an
    answer: the same reader who turns motion down is the one who turns
    transparency or contrast up. Both have real targets on this page. */
-
-/* The mobile rail is the one translucent surface here -- a blurred bar
-   with content scrolling under it. Asked for less transparency, it
-   becomes an opaque bar with a hairline, which is the same structure
-   without the legibility cost of text over moving content. */
-@media (prefers-reduced-transparency: reduce) {
-  .rail {
-    background: var(--paper);
-    backdrop-filter: none;
-    border-bottom: 1px solid var(--rule-2);
-  }
-  /* The scroll edge is a translucency effect. Once the bar is opaque there is
-     nothing showing through to soften, and a hairline is the honest edge. */
-  .rail::after { display: none; }
-}
 
 /* More contrast means defined edges, not louder colour. The hairlines
    this page is built from are deliberately quiet; at this setting they
@@ -1197,24 +718,13 @@ body.err .btn--solid, body.util .btn--solid { color: #1a0e08; }
     --ink-3:  #4b4b50;   /* 4.9:1 -> 8.0:1 on the page */
     --signal: #9c000c;   /* 5.2:1 -> 8.4:1, so links clear AAA */
   }
-  .btn, .tryit, .chips li, .proj__stats > div { border-color: var(--rule-2); }
-  /* A card is separated by a shadow, which more-contrast readers may not see
-     at all. Give it the edge the shadow was standing in for. */
-  .proj, .bench, .tryit { border: 1px solid var(--rule-2); }
+  .btn { border-color: var(--rule-2); }
   .seg__btn.is-on, .tbtn:focus-visible { outline: 1px solid currentColor; }
-}
-
-/* The cards float on a shadow. Asked for less transparency, a reader is also
-   asking for less of that kind of soft depth cue, so the surfaces get a real
-   edge instead. */
-@media (prefers-reduced-transparency: reduce) {
-  .proj, .bench { box-shadow: none; border: 1px solid var(--rule-2); }
 }
 
 /* ── print ───────────────────────────────────────────────────────────
    A portfolio gets saved to PDF by people who want to read it later or
-   pass it on, and this printed as a rail full of nav, an interactive
-   callout to a page that cannot be printed, and every section still
+   pass it on, and the demos page printed with every section still
    invisible behind an IntersectionObserver that never fires because
    print has no viewport to scroll. */
 @media print {
@@ -1227,24 +737,21 @@ body.err .btn--solid, body.util .btn--solid { color: #1a0e08; }
   * { background: transparent !important; box-shadow: none !important; }
   body { color: #000; }
 
-  /* Navigation, the skip link and the interactive callout are all things
-     you cannot act on from paper. */
-  .rail, .skip, .tryit, .viz, .viz-h { display: none !important; }
-  .shell { display: block; }
+  /* The skip link is something you cannot act on from paper. */
+  .skip { display: none !important; }
 
   /* A link is useless in print unless it says where it goes. Internal
      anchors and mailto stay silent -- printing "#work" helps nobody. */
-  .proj__title a[href^="http"]::after,
-  .contact a[href^="http"]::after {
+  .page a[href^="http"]::after {
     content: " (" attr(href) ")";
     font: 400 9pt/1 var(--mono);
     color: #444;
     word-break: break-all;
   }
 
-  .sec, .proj, figure, .bench { break-inside: avoid; }
+  .work li, figure { break-inside: avoid; }
   h1, h2, h3 { break-after: avoid; }
-  .hero { padding-top: 0; }
+  .page { padding-top: 0; }
   a { text-decoration: underline; }
 }
 
@@ -1298,54 +805,6 @@ body.err .btn--solid, body.util .btn--solid { color: #1a0e08; }
        without a single hand-set delay -- and it stays correct at any scroll
        speed, in either direction. */
 
-    /* The hero hands the page over as you leave it, rather than just scrolling
-       off. `exit` is the range where the element is on its way out. */
-    .hero__name, .hero__lede, .hero__meta, .hero__actions {
-      animation: hero-part linear both;
-      animation-timeline: view();
-      animation-range: exit 0% exit 90%;
-    }
-    @keyframes hero-part {
-      from { opacity: 1; transform: none; }
-      to   { opacity: 0; transform: translateY(-30px) scale(.97); }
-    }
-
-    /* Benchmark bars draw themselves as the figure arrives. scaleX off the
-       left edge, so it is a transform rather than a width and never touches
-       layout -- a width animation on a table cell would reflow the row on
-       every frame. */
-    .bar {
-      transform-origin: 0 50%;
-      animation: bar-draw linear both;
-      animation-timeline: view();
-      animation-range: entry 20% entry 75%;
-    }
-    @keyframes bar-draw {
-      from { transform: scaleX(0); }
-      to   { transform: scaleX(1); }
-    }
-
-    /* The section number tracks its own section: it arrives with weight and
-       settles. Only on the index, where .tag exists. */
-    /* Lift and fade, and deliberately no scale.
-
-       Two attempts here were wrong and the overflow sweep caught both. The
-       first animated `letter-spacing`, which is layout rather than compositing
-       -- the rule at the top of this block exists precisely to forbid that --
-       and it widened the tag to 1,274 px on a 1024 px viewport, taking the
-       whole document sideways. The second kept a 1.3x scale, which is no
-       better: `.tag` is `display: block` inside a `grid-column: 1 / 4` label,
-       so it is a ~1,200 px box that happens to contain two digits, and scaling
-       it scales the box, not the number. */
-    .sec__label .tag {
-      animation: tag-settle linear both;
-      animation-timeline: view();
-      animation-range: entry 10% entry 70%;
-    }
-    @keyframes tag-settle {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: none; }
-    }
   }
 }
 

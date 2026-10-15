@@ -53,8 +53,8 @@
   form.noValidate = true;
   form.innerHTML =
     '<h2 class="say__h">Say something</h2>' +
-    '<p class="say__p">Corrections, questions, or a note. It reaches me and nobody else' +
-    ' &mdash; nothing here is published.</p>' +
+    '<p class="say__p">Corrections, questions, or a note. It reaches me and nobody else,' +
+    ' and nothing here is published.</p>' +
     '<label class="say__l" for="say-body">Your message</label>' +
     '<textarea class="say__t" id="say-body" name="body" rows="4" maxlength="2000" required></textarea>' +
     '<div class="say__row">' +
@@ -117,16 +117,8 @@
     // Not worth asking someone who is already looking at the form -- but this
     // is a "not now", not a "never". Scrolling past the form once should not
     // cost the prompt for the rest of the visit.
-    // A hidden state still reports a box, so on the staged page this read as
-    // "they are already looking at the form" everywhere and the prompt never
-    // appeared. Ask whether the form's own state is the one on screen.
-    if (window.__stage && window.__stage.on()) {
-      var own = form.body && form.body.closest ? form.body.closest("#main > *") : null;
-      if (own && own.classList.contains("is-live")) return false;
-    } else {
-      var box = form.getBoundingClientRect();
-      if (box.top < window.innerHeight && box.bottom > 0) return false;
-    }
+    var box = form.getBoundingClientRect();
+    if (box.top < window.innerHeight && box.bottom > 0) return false;
 
     bar = document.createElement("div");
     bar.className = "nudge";
@@ -149,15 +141,6 @@
 
     bar.querySelector(".nudge__b--go").addEventListener("click", function () {
       hidePrompt();
-      // Staged, the form is inside a state that is not on screen, and
-      // scrolling to something in a hidden panel arrives nowhere. Go to the
-      // state first; the scroll below is then a no-op that costs nothing.
-      var host = form.body && form.body.closest ? form.body.closest("#main > *") : null;
-      if (window.__stage && window.__stage.on() && host) {
-        var all = Array.prototype.slice.call(document.getElementById("main").children);
-        var at = all.indexOf(host);
-        if (at >= 0) window.__stage.go(at);
-      }
       form.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "center" });
       // preventScroll so focus does not fight the scroll that is still running.
       setTimeout(function () { try { form.body.focus({ preventScroll: true }); } catch (e) { form.body.focus(); } }, reduced() ? 0 : 320);

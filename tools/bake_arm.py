@@ -56,23 +56,6 @@ UNIT = 1e-4
 #: Pyodide, where the actual work is.
 BUDGET = 10000
 
-#: The hero on index.html renders the same robot on the GPU with a depth
-#: buffer, where the reasoning above does not apply at all: there is no fill
-#: per triangle to pay and twice the geometry costs nothing measurable. At
-#: 10000 its joint caps came out as cut gems -- a silhouette no amount of
-#: normal smoothing can round -- so it gets its own bake, from the same pinned
-#: meshes through the same pipeline:
-#:
-#:   python3 tools/bake_arm.py --src <checkout> --budget 26000 \
-#:                             --out assets/ur12e-hero.json
-#:
-#: 20751 triangles, 138 KiB gzipped. The decimator stalls at about 31600 no
-#: matter how high the budget goes, which is the source meshes' own ceiling
-#: after the 0.5 mm weld; 26000 is where the caps stop reading as faceted and
-#: the file is still worth its bytes. hero-arm.js does not fetch it below
-#: 901px, where landing.css hides the robot outright.
-HERO_BUDGET = 26000
-
 #: How that is split. The links a viewer reads as "the arm" get the triangles;
 #: the base is half-hidden by the shoulder and the coupler is 17 mm tall.
 SHARE = {
@@ -88,21 +71,15 @@ FLOOR = 24
 #: Lattice the vertices are snapped to before decimating, in metres. Half a
 #: millimetre is below what the drawing can resolve -- the arm is about a metre
 #: across a canvas some hundreds of pixels wide -- and it is what makes the
-#: decimator work at all. See `_cluster`.
+#: decimator work at all. See `_cluster`. It is also what actually caps the
+#: bake: the sources carry 129621 triangles between them, and snapping to
+#: 0.5 mm collapses that to about 31600 before the decimator is even asked for
+#: a number, which is why raising the budget past it changes nothing.
 WELD = 5e-4
 
 #: How hard the quadric decimator may push. Module level so a caller can lower
-#: it, and measured rather than left at the library's default -- see the sweep
-#: in tools/bake_mobile.py's header.
+#: it, and measured rather than left at the library's default.
 AGG = 8
-
-#: The weld is what actually caps the bake. The sources carry 129621 triangles
-#: between them; snapping to 0.5 mm collapses that to about 31600 before the
-#: decimator is even asked for a number, which is why raising the budget past
-#: it changes nothing. The hero bake passes --weld 1e-4 instead: one UNIT, the
-#: finest the int16 vertices can express, so nothing is merged that the format
-#: could have kept.
-HERO_WELD = 1e-4
 
 
 def _rpy(roll, pitch, yaw):
@@ -244,7 +221,7 @@ def _bake(mesh, T):
     return q[used].ravel().tolist(), inv.astype(np.int32).ravel().tolist()
 
 
-def _group(link_parts, budget, split=False):
+def _group(link_parts, budget):
     """Merge a link's parts by colour, then decimate each colour to budget.
 
     A UR forearm arrives as seven geometries but only four materials; three of
@@ -264,11 +241,6 @@ def _group(link_parts, budget, split=False):
     on the source before anything is thrown away: about 0 for a panel and near
     1 for a cap. It buys a part up to three times the share its area alone
     would have earned.
-
-    `split` spends each colour's share per connected solid instead of over the
-    whole colour at once. Off here and for every arm bake, which is why this
-    file's output is unchanged by its arrival; see `_split_decimate` for the
-    one assembly that needs it and the measurement that decided it.
     """
     import trimesh
     by_colour = {}
@@ -281,54 +253,12 @@ def _group(link_parts, budget, split=False):
     for c, m in sorted(merged.items(), key=lambda kv: -wts[kv[0]]):
         share = wts[c] / total if total else 0.0
         want = round(budget * share)
-        out.append((list(c), _split_decimate(m, want) if split else _decimate(m, want)))
+        out.append((list(c), _decimate(m, want)))
     return out
 
 
-def _split_decimate(mesh, budget):
-    """Decimate each connected component on its own share of `budget`.
-
-    Only ever asked for by bake_mobile, and only for the TurtleBot, because
-    the decision is a property of how the thing was drawn rather than of the
-    pipeline. `_decimate` on a whole assembly is a quadric collapse with no
-    idea that two surfaces 2 mm apart belong to opposite faces of the same
-    laser-cut plate: the error of pulling one into the other is (2 mm)^2,
-    which is nothing next to the error of shortening a 137 mm outline, so it
-    eats the thickness first and the Burger's four plates come out as warped
-    lozenges with the M3 standoffs between them gone entirely.
-
-    Splitting first spends the budget per solid, so a plate cannot be
-    collapsed into its neighbour and a standoff cannot be annihilated to pay
-    for one. Measured on burger_base.stl, asked for 7267: 7266 triangles at
-    1.79 mm mean deviation whole, against 12270 at 1.41 mm split -- and the
-    standoffs are there, which the deviation number does not say and the
-    render does.
-
-    It is wrong for the Go2 and the same measurement says so. A moulded shell
-    is not four plates and twelve pillars, it is one surface with 662 vent
-    slots and bolt heads counted as separate components, and `FLOOR` then buys
-    each of them 24 triangles whether the silhouette wanted them or not: the
-    hip goes from 1420 triangles to 9181 to gain 1.38 mm on a part 118 mm
-    across. So the Go2 is baked whole and this is not used on it.
-    """
-    import trimesh
-    comps = mesh.split(only_watertight=False)
-    if len(comps) <= 1:
-        return _decimate(mesh, budget)
-    wts = [_weight(c) for c in comps]
-    total = sum(wts)
-    parts = [_decimate(c, round(budget * w / total) if total else 0)
-             for c, w in zip(comps, wts)]
-    return trimesh.util.concatenate(parts)
-
-
 def _weight(m):
-    """A part's claim on the budget: area, weighted by how much of it bends.
-
-    Lifted out of `_group` unchanged when `_split_decimate` needed the same
-    rule one level down. Same numbers, one copy, so the two levels cannot
-    start disagreeing about what a curved surface is worth.
-    """
+    """A part's claim on the budget: area, weighted by how much of it bends."""
     w = m.copy()
     w.merge_vertices()
     a = w.face_adjacency_angles

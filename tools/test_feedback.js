@@ -51,11 +51,8 @@ async function session() {
   return body + '.' + b64(new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(body))));
 }
 
-/* The page under test is written.html, not index.html.
- *
- * index.html is the lab. The feedback form is a document control and it only
- * exists on the document, so this file follows it there rather than
- * asserting against a page that never had one.
+/* The page under test is demo.html. The home page is a short list and carries
+ * no form; the demos page is where the form is injected, above its footer.
  */
 (async () => {
   await new Promise(r => srv.listen(0, r));
@@ -77,7 +74,7 @@ async function session() {
         'access-control-allow-headers': 'content-type',
         'access-control-allow-methods': 'POST, OPTIONS' } });
     });
-    await p.goto(BASE + '/written.html', { waitUntil: 'load' });
+    await p.goto(BASE + '/demo.html', { waitUntil: 'load' });
     return { c, p, posted };
   }
 
@@ -95,14 +92,6 @@ async function session() {
     }));
     ok('and out of the tab order', await p.evaluate(() =>
       document.querySelector('.say__hp input').tabIndex === -1));
-
-    // The page may be a set of states rather than a scroll, in which case the
-    // form lives in one that has to be navigated to -- same as a reader
-    // clicking Contact in the bar.
-    await p.evaluate(() => {
-      if (window.__stage && window.__stage.on()) window.__stage.go(window.__stage.of - 1);
-    });
-    await p.waitForTimeout(800);
 
     const said = await p.evaluate(() => {
       document.querySelector('.say__b').click();
@@ -122,7 +111,7 @@ async function session() {
     ok('with the message, name and contact',
        !!sent.body && sent.name === 'Ada' && sent.contact === 'ada@example.com', JSON.stringify(sent));
     ok('an empty honeypot', sent.website === '', JSON.stringify(sent.website));
-    ok('and the page it came from', sent.path === '/written.html', JSON.stringify(sent.path));
+    ok('and the page it came from', sent.path === '/demo.html', JSON.stringify(sent.path));
     ok('the form thanks you afterwards', (await p.textContent('.say')).indexOf('Thank you') >= 0);
     await c.close();
   }
@@ -135,21 +124,17 @@ async function session() {
     await p.waitForTimeout(FAST + 1600);
     ok('appears once the reading time is earned', await p.evaluate(() => !!document.querySelector('.nudge')));
     // The guarantee is that the prompt does not trap you: the page still moves
-    // underneath it. How the page moves depends on what the page is -- a
-    // document scrolls, and a staged one changes state -- so ask for whichever
-    // one this is and check the same thing either way.
+    // underneath it.
     //
     // The site sets scroll-behavior: smooth, so scrollY has not moved by the
     // time a synchronous read happens -- ask for an instant scroll and give it
     // a frame regardless.
-    const staged = await p.evaluate(() => !!(window.__stage && window.__stage.on()));
-    const before = await p.evaluate((s) => s ? window.__stage.at() : window.scrollY, staged);
-    await p.evaluate((s) => s ? window.__stage.go(window.__stage.at() + 1)
-                              : window.scrollBy({ top: 240, behavior: 'instant' }), staged);
-    await p.waitForTimeout(staged ? 800 : 250);
-    const after = await p.evaluate((s) => s ? window.__stage.at() : window.scrollY, staged);
+    const before = await p.evaluate(() => window.scrollY);
+    await p.evaluate(() => window.scrollBy({ top: 240, behavior: 'instant' }));
+    await p.waitForTimeout(250);
+    const after = await p.evaluate(() => window.scrollY);
     ok('it is not a modal -- the page still moves underneath', after !== before,
-       (staged ? 'state ' : 'scrollY ') + before + ' -> ' + after);
+       'scrollY ' + before + ' -> ' + after);
     ok('and it takes no focus', await p.evaluate(() =>
       !document.querySelector('.nudge').contains(document.activeElement)));
     await c.close();

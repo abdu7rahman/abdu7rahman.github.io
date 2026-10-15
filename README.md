@@ -4,42 +4,36 @@
 [![code size](https://img.shields.io/github/languages/code-size/abdu7rahman/abdu7rahman.github.io?style=flat-square)](https://github.com/abdu7rahman/abdu7rahman.github.io)
 [![last commit](https://img.shields.io/github/last-commit/abdu7rahman/abdu7rahman.github.io?style=flat-square)](https://github.com/abdu7rahman/abdu7rahman.github.io/commits/main)
 
-Two presentations of one body of work, served by GitHub Pages from this
-repository's root.
+Served by GitHub Pages from this repository's root, with no build step.
 
-- **`index.html`** is the building: a React and three.js app, source in
-  `app/`, with test cells you walk through and a humanoid that plans a route
-  and walks it.
-- **`written.html`** and **`demo.html`** are the same work as a document,
-  with live 2D demos. `written.html` is the canonical prose, and
-  `tools/bake_content.py` generates the building's reading panels from it, so
-  the document is edited and the building follows.
+- **`index.html`** is the page: a name, a few lines and the work, in one column.
+- **`demo.html`** runs some of the repositories in the browser through Pyodide. Five demos
+  fetch their Python from GitHub as the page loads; three run copies of private repositories,
+  each recorded in `vendor/*/PROVENANCE.md` with its commit and a SHA-256 per file.
+- **`404.html`**, and **`admin.html`**, which forwards to the traffic dashboard. The dashboard is
+  the Cloudflare worker in `worker/`.
+- **`written.html`** forwards to the root, where the written page now lives, and **`sw.js`**
+  retires the service worker an earlier version of the site installed.
 
-`world/kinematics.js` is the UR12e forward kinematics both sites solve
-against, so an arm posed in the building and one posed in the document are
-the same arithmetic.
+The baked files under `assets/` come from `tools/`: `bake_arm.py` (the UR12e and Hand-E mesh
+the arm demos draw), `bake_qlc_costs.py` (the Go2 course cost fields), `train_clone.py` (the
+cloned DWA controller) and `gen_og.js` (the social card).
 
-## Build
+## Stamps
 
-```bash
-npm --prefix app run build     # Vite writes to the repository root
-python3 tools/stamp.py         # rewrite the asset hashes it just changed
-```
-
-Pages has no build step, so `build/` and the rewritten HTML are committed in
-the same commit as the source they came from. Use `npm run build` rather than
-`npx vite build`: the `prebuild` script clears `../build`, and without it
-stale hashed chunks pile up at the root.
+Pages sends `cache-control: max-age=600` on everything, so local links carry a content hash.
+Run `python3 tools/stamp.py` after changing any stamped file; `--check` fails on a stale one.
 
 ## Gates
 
-All of these pass before a push. There is no CI badge above because they are
-not run on a hosted runner: the three `node tools/test_*.js` suites drive a
-real Chromium, and the two that exercise the 3D lab need a GL stack.
+All of these pass before a push. The three `node` suites drive a real Chromium, which is why
+there is no CI badge above: they are not run on a hosted runner.
 
 ```bash
-node tools/test_lab.js          node tools/test_replan.js
-node tools/test_visits.js       node tools/test_analytics.js
+node tools/test_analytics.js    node tools/test_visits.js
 node tools/test_feedback.js     python3 tools/check_contrast.py
-python3 tools/check_shaders.py  python3 tools/stamp.py --check
+python3 tools/stamp.py --check
 ```
+
+The worker has two more: `tools/test_worker.mjs`, which needs `wrangler dev` running, and
+`tools/test_sweep.mjs`, which runs against a local SQLite database. See `worker/README.md`.

@@ -1,29 +1,3 @@
 __pycache__/
 *.pyc
 .DS_Store
-
-# Probe output. tools/journey.js writes a run of full-size renders here
-# every time it walks the page; they are evidence for one commit, not an
-# asset the site serves. Widened from the one directory to the prefix after
-# a second one turned up: comparing a change against a baseline means two
-# runs on disk at once, and the next probe that wants somewhere to put 20 MB
-# of PNGs should not have to come back here first.
-tmp-*/
-
-# The lab's toolchain and build output. The source is app/src; the bundle is
-# rebuilt from it, and node_modules is 206 MB of somebody else's code.
-app/node_modules/
-app/dist/
-# Probe renders. Everything that checks this build writes its frames next to
-# it; none of them is an asset the site serves, and no real app asset is a
-# PNG sitting at app/'s root.
-app/*.png
-
-# Baked from private Hugging Face repositories by tools/bake_hf.py: the
-# evaluation record of a pi-0.5 LoRA finetune and a window of a recorded
-# bimanual episode. Both source repositories are private, and publishing a
-# derivative of one to a public site is a decision for their owner and not a
-# side effect of a commit. Regenerate locally with HF_TOKEN set; add them
-# deliberately when they are meant to ship.
-assets/policy.json
-assets/episode.json

@@ -14,7 +14,7 @@
      site's palette. It is not any more, and a page that looks like a different
      site is a page you distrust before you have read it. The shared stylesheet
      and its body.util remap now, same as 404.html. -->
-<link rel="stylesheet" href="style.css?v=f09b4472">
+<link rel="stylesheet" href="style.css?v=5e960dc1">
 <style>
   .util-page { min-height: 100vh; display: grid; place-content: center;
                padding: var(--gutter); max-width: 640px; margin-inline: auto; }
@@ -64,8 +64,8 @@
     <p><code>cd worker &amp;&amp; ./setup.sh</code></p>
     <p class="mut">It creates the database, deploys, generates and stores the
        secrets, and points this page and the site at the result. It stops twice
-       for the two steps that need a browser &mdash; signing in to Cloudflare,
-       and creating the GitHub OAuth app &mdash; and tells you exactly what to
+       for the two steps that need a browser (signing in to Cloudflare,
+       and creating the GitHub OAuth app) and tells you exactly what to
        paste. Safe to re-run. The long version is in
        <code>worker/README.md</code>.</p>
     <p class="mut">Until it has run, the collector sends nothing at all, so the
@@ -88,6 +88,6 @@
     location.replace(WORKER);
   }
 </script>
-<script src="field.js?v=1c23bf3b" defer></script>
+<script src="field.js?v=1288384c" defer></script>
 </body>
 </html>

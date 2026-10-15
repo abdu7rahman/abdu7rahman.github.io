@@ -57,10 +57,9 @@
     /* A missing canvas is an answer, not a crash. Four of the five demos
        below already read it that way -- `if (!cvX) return { start: noop }`
        on the line after the call -- but the guard could never fire, because
-       this dereferenced the element first and threw on the way to it. The
-       lab serves this file inside a frame with the sections it does not use
-       stripped out, so the day a cell was retired the arm demo took its
-       canvas with it and this threw on every visit to the building. */
+       this dereferenced the element first and threw on the way to it. A page
+       that drops a section takes its canvas with it, and should cost that
+       section and nothing else. */
     if (!cv) return null;
     var w = Math.max(280, Math.round(cv.getBoundingClientRect().width));
     var dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -134,7 +133,7 @@
     theta_star: "Any-angle. Parents are rewired whenever line of sight allows, so paths cut diagonally instead of following the grid.",
     rrt: "Sampling. Grows a tree toward random draws with a goal bias; the result is smoothed afterwards.",
     smac: "Hybrid A* over an SE2 lattice. Every expansion is an arc the robot can actually drive, so the path obeys a 0.22 m turning radius instead of cutting a grid corner.",
-    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking. Its tree stays inside the planner, so this is the one planner with nothing to show under “explored”."
+    hybrid: "RRT that expands with the same motion primitives, then tries an analytic connect to the goal whenever one is close enough to be worth checking. “Explored” is its tree."
   };
 
   var COLS = 96, ROWS = 64;
@@ -356,7 +355,10 @@
     "    node.local_data = None; node.local_info = None; node.local_origin = (0.0, 0.0)",
     "    node.odom_to_map = None; node.current_path = None",
     "    node.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None)",
-    "    stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    # nanoseconds feeds the controllers' tick-rate and dt bookkeeping. 0 is",
+    "    # what the repository's own bench rig hands them, and it keeps MPPI on",
+    "    # its nominal dt, which is the simulated step the race gives it anyway.",
+    "    stamp = types.SimpleNamespace(nanoseconds=0, to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
     "    node.get_clock = lambda: types.SimpleNamespace(now=lambda: stamp)",
     "    return node",
     "def run(kind, mod_name, cls_name, flat, h, w, sr, sc, gr, gc):",
@@ -383,16 +385,20 @@
     "        sw = ((sc + 0.5) * 0.05, (sr + 0.5) * 0.05)",
     "        gw = ((gc + 0.5) * 0.05, (gr + 0.5) * 0.05)",
     "        import random as _r; _r.seed(7)",
+    "        # _plan_hybrid_unified publishes its RRT tree through _publish_tree,",
+    "        # which needs the publisher __init__ makes. Caught here instead, and",
+    "        # drawn as the explored set the way the RRT's own tree is.",
+    "        tree = []",
+    "        node._publish_tree = lambda ns: tree.extend((n.x, n.y) for n in ns)",
     "        fn = node._hybrid_astar if kind == 'smac' else node._plan_hybrid_unified",
     "        out = (fn((sw[0], sw[1], 0.0), (gw[0], gw[1], 0.0)) if kind == 'smac'",
     "               else fn(sw[0], sw[1], 0.0, gw[0], gw[1], 0.0))",
     "        ms = (time.perf_counter() - t0) * 1000.0",
     "        # _hybrid_astar returns (path, explored) -- the world-frame centre of",
     "        # every lattice node it popped. _plan_hybrid_unified returns the path",
-    "        # alone: its RRT tree is a local in that function and is not handed",
-    "        # back, so there is nothing to draw for it rather than nothing to find.",
+    "        # alone, and its tree comes from the catch above.",
     "        pts = out[0] if isinstance(out, tuple) else out",
-    "        seen = out[1] if (isinstance(out, tuple) and len(out) > 1) else []",
+    "        seen = out[1] if (isinstance(out, tuple) and len(out) > 1) else tree",
     "        w2g = lambda p: [int(p[1] / 0.05), int(p[0] / 0.05)]",
     "        path = [w2g(p) for p in (pts or [])]",
     "        expl = [w2g(p) for p in (seen or [])]",
@@ -900,7 +906,7 @@
     "    for name in names | {'cmd_pub', 'status_pub'}:",
     "        setattr(n, name, _S())",
     "    n.get_logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None, error=lambda *a, **k: None, debug=lambda *a, **k: None)",
-    "    stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    stamp = types.SimpleNamespace(nanoseconds=0, to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
     "    n.get_clock = lambda: types.SimpleNamespace(now=lambda: stamp)",
     "    return n",
     "def race_init(flat, h, w, res, sr, sc, gr, gc, active):",
@@ -1090,7 +1096,7 @@
     "    import re as _re",
     "    for _nm in set(_re.findall(r'self\\.(\\w+)\\s*=\\s*self\\.create_publisher', _SRC[cmod])):",
     "        setattr(c, _nm, _Sink())",
-    "    _stamp = types.SimpleNamespace(to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
+    "    _stamp = types.SimpleNamespace(nanoseconds=0, to_msg=lambda: types.SimpleNamespace(sec=0, nanosec=0))",
     "    c.get_clock = lambda: types.SimpleNamespace(now=lambda: _stamp)",
     "    _DWA.update(p=p, c=c, res=res, h=h, w=w, path=None, pose=(0.0, 0.0, 0.0),",
     "                replan=False)",
@@ -1290,7 +1296,9 @@
     "    d['pose'] = (x, y, yaw)",
     "    if not path or n.current_path is None: return [0.0, 0.0, 0, 0, [], [], [], 3, 0]",
     "    # stuck detection and recovery, ahead of everything else, as in the node",
-    "    n.position_history.append((x, y))",
+    "    # The node's own tuple: _is_stuck asks whether the waypoint index has",
+    "    # moved, not only the robot.",
+    "    n.position_history.append((x, y, n.wp_idx))",
     "    if not n.recovery_mode and n._is_stuck():",
     "        n.recovery_mode, n.recovery_timer = True, 0",
     "    if n.recovery_mode:",

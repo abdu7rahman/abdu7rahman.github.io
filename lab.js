@@ -369,7 +369,7 @@
       var rows = episodes.map(function (ep) {
         var spec = specFor(ep.stack);
         var ratio = ep.optimal_length && ep.path_length
-          ? (ep.path_length / ep.optimal_length).toFixed(2) + "×" : "—";
+          ? (ep.path_length / ep.optimal_length).toFixed(2) + "×" : "–";
         return '<tr><th scope="row"><i class="kx" style="background:' + spec.col +
                '"></i>' + spec.label + "</th>" +
                '<td class="' + (ep.outcome === "success" ? "" : "is-bad") + '">' +
@@ -430,7 +430,7 @@
         setBusy(false, "Run the course");
         episodes = []; renderTable();
         if (readEl) {
-          readEl.textContent = "that point is " + course.goal_material + " — the gait rejects it, " +
+          readEl.textContent = "that point is " + course.goal_material + ", which the gait rejects, " +
             "and the course is not re-cleared around a goal you set. Pick somewhere it could stand.";
         }
         return;
@@ -946,7 +946,7 @@
       var spec = run.spec;
       var bits = ["step " + f.step + " / " + run.steps + "  (" + f.t.toFixed(2) +
                   " s at the plant's 50 Hz)",
-                  "phase " + (f.phase || "—"),
+                  "phase " + (f.phase || "–"),
                   "right " + f.grasp[0] + ", left " + f.grasp[1],
                   "progress " + Math.round(f.progress * 100) + "%"];
       if (task === "connector_insertion") {
@@ -955,7 +955,7 @@
                     ", jams at " + spec.max_force_n + ")");
       } else {
         var occ = f.detail && f.detail.occupied_clips;
-        bits.splice(3, 0, "clips occupied " + (occ === undefined ? "—" : occ) + " of " +
+        bits.splice(3, 0, "clips occupied " + (occ === undefined ? "–" : occ) + " of " +
                     spec.clips.length + (spec.require_ordered ? ", order enforced" : ""));
       }
       if (done) {
